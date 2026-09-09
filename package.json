@@ -1,0 +1,37 @@
+{
+  "name": "electricity-accountant-app",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server",
+    "electron"
+  ],
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail --names client,server,electron --prefix-colors cyan,green,magenta \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:electron\"",
+    "dev:client": "npm run dev --workspace client",
+    "dev:server": "npm run dev --workspace server",
+    "dev:electron": "npm run dev --workspace electron",
+    "build": "npm run build --workspace client",
+    "typecheck": "npm run typecheck --workspace client",
+    "test": "npm run test --workspace server && npm run test --workspace electron",
+    "lint": "npm run lint --workspace client && npm run lint --workspace server && npm run lint --workspace electron",
+    "start:server": "npm run start --workspace server",
+    "start:electron": "npm run start --workspace electron",
+    "smoke:electron": "npm run smoke --workspace electron",
+    "db:migrate": "npm run db:migrate --workspace server",
+    "db:seed:dev": "npm run db:seed:dev --workspace server",
+    "db:setup:dev": "npm run db:setup:dev --workspace server",
+    "db:verify": "npm run db:verify --workspace server",
+    "db:verify:group2": "npm run db:verify:group2 --workspace server",
+    "admin:provision": "npm run admin:provision --workspace server",
+    "push:generate-vapid": "npm run push:generate-vapid --workspace server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  }
+}

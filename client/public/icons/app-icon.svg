@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="حسابات الكهرباء">
+  <rect width="512" height="512" rx="112" fill="#0f766e"/>
+  <path d="M126 150c0-25 20-45 45-45h170c25 0 45 20 45 45v212c0 25-20 45-45 45H171c-25 0-45-20-45-45V150Z" fill="#fff"/>
+  <path d="M183 169h146v45H183z" rx="12" fill="#ccfbf1"/>
+  <path d="M203 264h-31v-31h31zm69 0h-31v-31h31zm69 0h-31v-31h31zm-138 69h-31v-31h31zm69 0h-31v-31h31zm69 0h-31v-31h31z" fill="#0f766e"/>
+  <path d="m286 36-93 137h67l-35 113 101-145h-70l30-105Z" fill="#fbbf24" stroke="#78350f" stroke-linejoin="round" stroke-width="8"/>
+</svg>
