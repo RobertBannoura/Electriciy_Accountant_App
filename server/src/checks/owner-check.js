@@ -1,22 +1,29 @@
+import Decimal from 'decimal.js'
 import { pool } from '../db/pool.js'
+import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { AppError } from '../errors/app-error.js'
+import { claimFinancialOperation } from '../financial/financial-operation.js'
+
+const CheckDecimal = Decimal.clone({ precision: 100 })
 
 export async function issueOwnerCheck({
   databasePool = pool,
   input,
   storeId,
   userId,
+  operation,
 }) {
   const client = await databasePool.connect()
   try {
     await client.query('BEGIN')
+    await claimFinancialOperation(client, { userId, operation })
 
     const supplierResult = await client.query(
       `
         SELECT id::TEXT AS id, name
         FROM suppliers
         WHERE id = $1::BIGINT AND is_active = TRUE
-        FOR SHARE
+        FOR UPDATE
       `,
       [input.supplierId],
     )
@@ -24,6 +31,20 @@ export async function issueOwnerCheck({
       throw new AppError('المورد غير موجود أو غير فعال', 404, 'SUPPLIER_NOT_FOUND')
     }
     const supplier = supplierResult.rows[0]
+    const balanceResult = await client.query(
+      'SELECT balance_ils::TEXT AS balance_ils FROM supplier_balances WHERE supplier_id = $1::BIGINT',
+      [supplier.id],
+    )
+    const balance = new CheckDecimal(balanceResult.rows[0]?.balance_ils ?? '0')
+    if (new CheckDecimal(input.amount).greaterThan(balance)) {
+      throw new AppError(
+        balance.greaterThan(0)
+          ? `قيمة الشيك أكبر من دين المورد البالغ ₪${balance.toFixed()}`
+          : 'لا يوجد دين مستحق لهذا المورد',
+        409,
+        'SUPPLIER_PAYMENT_EXCEEDS_DEBT',
+      )
+    }
 
     const checkResult = await client.query(
       `
@@ -80,6 +101,19 @@ export async function issueOwnerCheck({
       ],
     )
 
+    await writeAuditEntry(client, {
+      storeId,
+      userId,
+      action: 'payment',
+      entityType: 'check',
+      entityId: check.id,
+      newValues: {
+        supplierId: supplier.id,
+        checkNumber: check.check_number,
+        amountIls: check.amount,
+        status: check.status,
+      },
+    })
     await client.query('COMMIT')
     return { ...check, supplier_name: supplier.name, customer_id: null, customer_name: null }
   } catch (error) {

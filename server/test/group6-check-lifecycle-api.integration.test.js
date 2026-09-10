@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { once } from 'node:events'
 import test from 'node:test'
 
@@ -11,20 +12,19 @@ test(
     process.env.DATABASE_URL = databaseUrl
     process.env.NODE_ENV = 'test'
 
-    const [{ app }, { pool }, reminderModule] = await Promise.all([
+    const [{ app }, { pool }, reminderModule, { provisionAdmin }] = await Promise.all([
       import('../src/app.js'),
       import('../src/db/pool.js'),
       import('../src/checks/check-reminders.js'),
+      import('../src/auth/provision-admin.js'),
     ])
-    const { provisionAdmin } = await import('../src/auth/provision-admin.js')
     const adminUsername = 'group6_integration_admin'
-    const adminPassword = 'group6-integration-password'
+    const adminPassword = randomBytes(32).toString('base64url')
     await provisionAdmin(pool, {
       username: adminUsername,
       password: adminPassword,
       displayName: 'Integration Test Admin',
     })
-
     const server = app.listen(0, '127.0.0.1')
     await once(server, 'listening')
     const address = server.address()
@@ -392,6 +392,7 @@ async function jsonRequest(url, { token, storeId, method = 'GET', body } = {}) {
   if (token) headers.set('Authorization', `Bearer ${token}`)
   if (storeId) headers.set('X-Store-Id', storeId)
   if (body !== undefined) headers.set('Content-Type', 'application/json')
+  if (!['GET', 'HEAD'].includes(method.toUpperCase())) headers.set('X-Request-Id', crypto.randomUUID())
   const response = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
   const payload = await response.json()
   return { response, body: payload }

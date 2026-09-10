@@ -17,7 +17,7 @@ export async function provisionAdmin(
   }
 
   if (!isValidProvisionedPassword(password)) {
-    throw new Error('ADMIN_PASSWORD must contain at least 12 characters.')
+    throw new Error('ADMIN_PASSWORD must contain at least 15 characters.')
   }
 
   if (normalizedDisplayName.length === 0 || normalizedDisplayName.length > 100) {

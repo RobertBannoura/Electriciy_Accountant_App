@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict'
+import { randomBytes, scrypt as nodeScrypt } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { promisify } from 'node:util'
 import {
   isValidLoginPassword,
   isValidProvisionedPassword,
   normalizeUsername,
 } from '../src/auth/credentials.js'
-import { hashPassword, verifyPassword } from '../src/auth/password.js'
+import {
+  hashPassword,
+  passwordHashNeedsUpgrade,
+  verifyPassword,
+} from '../src/auth/password.js'
 import { provisionAdmin } from '../src/auth/provision-admin.js'
 import {
   createSessionToken,
@@ -14,6 +21,8 @@ import {
   readBearerToken,
 } from '../src/auth/session-token.js'
 
+const scrypt = promisify(nodeScrypt)
+
 test('normalizes login usernames and validates credential bounds', () => {
   assert.equal(normalizeUsername('  admin  '), 'admin')
   assert.equal(normalizeUsername(''), null)
@@ -21,7 +30,9 @@ test('normalizes login usernames and validates credential bounds', () => {
   assert.equal(isValidLoginPassword('short'), true)
   assert.equal(isValidLoginPassword(''), false)
   assert.equal(isValidProvisionedPassword('short'), false)
-  assert.equal(isValidProvisionedPassword('long-password'), true)
+  assert.equal(isValidProvisionedPassword('fourteen-char!'), false)
+  assert.equal(isValidProvisionedPassword('🔐'.repeat(8)), false)
+  assert.equal(isValidProvisionedPassword('fifteen-chars!!'), true)
 })
 
 test('hashes passwords with unique salts and verifies them safely', async () => {
@@ -29,10 +40,36 @@ test('hashes passwords with unique salts and verifies them safely', async () => 
   const secondHash = await hashPassword('a-secure-password')
 
   assert.notEqual(firstHash, secondHash)
+  assert.match(firstHash, /^scrypt\$16384\$8\$5\$/)
   assert.equal(firstHash.includes('a-secure-password'), false)
+  assert.equal(passwordHashNeedsUpgrade(firstHash), false)
   assert.equal(await verifyPassword('a-secure-password', firstHash), true)
   assert.equal(await verifyPassword('wrong-password', firstHash), false)
   assert.equal(await verifyPassword('a-secure-password', 'invalid-hash'), false)
+  assert.equal(await verifyPassword('a-secure-password', `${firstHash}$extra`), false)
+})
+
+test('verifies the previous scrypt profile only for a transparent upgrade', async () => {
+  const password = 'existing-admin-password'
+  const salt = randomBytes(16)
+  const key = await scrypt(password, salt, 64, {
+    N: 16_384,
+    r: 8,
+    p: 1,
+    maxmem: 64 * 1024 * 1024,
+  })
+  const legacyHash = [
+    'scrypt',
+    '16384',
+    '8',
+    '1',
+    salt.toString('base64url'),
+    key.toString('base64url'),
+  ].join('$')
+
+  assert.equal(passwordHashNeedsUpgrade(legacyHash), true)
+  assert.equal(await verifyPassword(password, legacyHash), true)
+  assert.equal(await verifyPassword('wrong-password', legacyHash), false)
 })
 
 test('creates opaque session tokens and stores only deterministic hashes', () => {
@@ -47,6 +84,17 @@ test('creates opaque session tokens and stores only deterministic hashes', () =>
   assert.equal(readBearerToken(`Bearer ${token}`), token)
   assert.equal(readBearerToken(`bearer ${token}`), null)
   assert.equal(hashSessionToken('invalid'), null)
+})
+
+test('the browser keeps the bearer token in sessionStorage rather than localStorage', async () => {
+  const clientApi = await readFile(
+    new URL('../../client/src/api.ts', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(clientApi, /sessionStorage\.setItem\(sessionTokenKey, token\)/)
+  assert.doesNotMatch(clientApi, /localStorage\.setItem\(sessionTokenKey/)
+  assert.match(clientApi, /headers\.set\('Authorization', `Bearer \$\{token\}`\)/)
 })
 
 test('revokes existing sessions when the admin password is reprovisioned', async () => {

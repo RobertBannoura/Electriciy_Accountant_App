@@ -1,6 +1,8 @@
 import Decimal from 'decimal.js'
+import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { pool } from '../db/pool.js'
 import { AppError } from '../errors/app-error.js'
+import { claimFinancialOperation } from '../financial/financial-operation.js'
 import { insertInventoryCostMovement, readInventoryCostBalance } from '../inventory/inventory-cost-writer.js'
 import { insertCustomerLedgerMovement } from '../payments/payment-writer.js'
 import { currentBusinessDate } from './return-date.js'
@@ -8,10 +10,11 @@ import { currentBusinessDate } from './return-date.js'
 const ReturnDecimal = Decimal.clone({ precision: 100, rounding: Decimal.ROUND_HALF_UP })
 const rounded = (value) => new ReturnDecimal(value).toDecimalPlaces(12).toFixed()
 
-export async function createCustomerReturn({ databasePool = pool, input, storeId, userId }) {
+export async function createCustomerReturn({ databasePool = pool, input, storeId, userId, operation }) {
   const client = await databasePool.connect()
   try {
     await client.query('BEGIN')
+    await claimFinancialOperation(client, { userId, operation })
     const saleResult = await client.query(
       `SELECT id::TEXT AS id, customer_id::TEXT AS customer_id,
         items_subtotal::TEXT AS items_subtotal, total::TEXT AS total,
@@ -153,6 +156,22 @@ export async function createCustomerReturn({ databasePool = pool, input, storeId
         notes: `مرتجع مبيعات للفاتورة ${sale.document_number}`, userId,
       })
     }
+    await writeAuditEntry(client, {
+      storeId,
+      userId,
+      action: 'return',
+      entityType: 'customer_return',
+      entityId: returnDocument.id,
+      newValues: { saleId: sale.id, customerId: sale.customer_id, totalIls: total.toFixed() },
+    })
+    await writeAuditEntry(client, {
+      storeId,
+      userId,
+      action: 'sale_reversal',
+      entityType: 'sale',
+      entityId: sale.id,
+      newValues: { customerReturnId: returnDocument.id, reversedTotalIls: total.toFixed() },
+    })
     await client.query('COMMIT')
     return { ...returnDocument, original_invoice_number: sale.document_number, items: lines }
   } catch (error) {

@@ -94,6 +94,7 @@ function fakeDatabase({ failBank = false } = {}) {
         state.checks.push(params)
         return { rowCount: 1, rows: [{ id: '31', method: 'transferred_customer_check', amount: '25', check_number: 'CUS-31', due_date: '2026-10-02', status: 'pending' }] }
       }
+      if (statement.startsWith('INSERT INTO audit_log')) return { rowCount: 1, rows: [] }
       throw new Error(`Unexpected query: ${statement}`)
     },
     release() { state.released = true },

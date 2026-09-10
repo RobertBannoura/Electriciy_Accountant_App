@@ -2,6 +2,7 @@ import webpush from 'web-push'
 import { env } from '../config/env.js'
 import { query } from '../db/pool.js'
 import { notificationCategories } from './notification-input.js'
+import { safeErrorDetails } from '../security/security-log.js'
 
 const categoryColumns = new Set(notificationCategories)
 const vapidConfigured = Boolean(env.vapidPublicKey && env.vapidPrivateKey && env.vapidSubject)
@@ -108,7 +109,10 @@ export async function notifyAdminAfterCommit(notification, {
     )
     return { successes, failures }
   } catch (error) {
-    logger.error('فشل مسار إشعار ما بعد الالتزام دون التأثير على العملية المالية', error)
+    logger.error(
+      'فشل مسار إشعار ما بعد الالتزام دون التأثير على العملية المالية',
+      safeErrorDetails(error),
+    )
     return { skipped: 'failed', successes: 0, failures: 1 }
   }
 }

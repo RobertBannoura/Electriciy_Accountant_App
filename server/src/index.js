@@ -3,6 +3,10 @@ import { env } from './config/env.js'
 import { pool } from './db/pool.js'
 import { startCheckDueNotificationScheduler } from './notifications/check-due-scheduler.js'
 
+if (!process.env.NODE_ENV) {
+  throw new Error('NODE_ENV must be set explicitly before starting the server.')
+}
+
 process.env.TZ = env.timezone
 
 const server = app.listen(env.port, '127.0.0.1', () => {

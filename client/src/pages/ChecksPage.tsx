@@ -66,6 +66,8 @@ export function ChecksPage({
     ? defaultStoreId!
     : ''
   const [checks, setChecks] = useState<CheckRecord[]>([])
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [status, setStatus] = useState<'' | CheckStatus>('')
   const [search, setSearch] = useState('')
@@ -92,6 +94,7 @@ export function ChecksPage({
     setLoading(true)
     setError(null)
     const params = new URLSearchParams()
+    params.set('page', String(page))
     if (status) params.set('status', status)
     if (search.trim()) params.set('search', search.trim())
     try {
@@ -101,15 +104,18 @@ export function ChecksPage({
         signal,
       })
       if (!response.ok) throw new Error(await errorMessage(response))
-      const payload = (await response.json()) as { checks: CheckRecord[] }
+      const payload = (await response.json()) as { checks: CheckRecord[]; pagination: { hasMore: boolean } }
       setChecks(payload.checks)
+      setHasMore(payload.pagination.hasMore)
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === 'AbortError') return
       setError(caught instanceof Error ? caught.message : 'تعذّر تحميل الشيكات')
     } finally {
       if (!signal?.aborted) setLoading(false)
     }
-  }, [operatingStoreId, search, status])
+  }, [operatingStoreId, page, search, status])
+
+  useEffect(() => setPage(1), [operatingStoreId, search, status])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -308,6 +314,11 @@ export function ChecksPage({
           </div>
         )}
       </div>
+      <nav aria-label="صفحات الشيكات" className="mt-4 flex items-center justify-center gap-3">
+        <button className="min-h-11 rounded-xl border border-slate-300 px-5 font-black disabled:opacity-40" disabled={loading || page === 1} onClick={() => setPage((value) => value - 1)} type="button">السابق</button>
+        <span className="font-black">صفحة {page}</span>
+        <button className="min-h-11 rounded-xl border border-slate-300 px-5 font-black disabled:opacity-40" disabled={loading || !hasMore} onClick={() => setPage((value) => value + 1)} type="button">التالي</button>
+      </nav>
     </section>
   )
 }

@@ -31,6 +31,7 @@ import { SupplierPaymentPage } from './pages/SupplierPaymentPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SupplierDetailPage, SuppliersPage } from './pages/SuppliersPage'
 import { MobileFinancePage } from './pages/MobileFinancePage'
+import { FinancialVerificationPage } from './pages/FinancialVerificationPage'
 import { SaveState, Store } from './types'
 
 type AuthState = 'checking' | 'anonymous' | 'authenticated'
@@ -65,6 +66,38 @@ function AuthenticatedApplication({
   const [browserStoreInitialized, setBrowserStoreInitialized] = useState(false)
   const [financialDraftActive, setFinancialDraftActive] = useState(false)
   const isOnline = useConnectionStatus()
+
+  useEffect(() => {
+    const desktop = window.desktop
+    if (!desktop) return
+    let stopped = false
+    let running = false
+
+    async function createDailyBackupIfDue() {
+      if (stopped || running || !navigator.onLine) return
+      running = true
+      try {
+        const status = await desktop!.getBackupStatus()
+        if (!status.automaticBackupDue || stopped) return
+        const response = await apiFetch('/backups/export')
+        if (!response.ok || stopped) return
+        await desktop!.saveBackup(await response.json(), true)
+      } catch {
+        console.warn('Automatic backup attempt failed.')
+      } finally {
+        running = false
+      }
+    }
+
+    void createDailyBackupIfDue()
+    const timer = window.setInterval(() => void createDailyBackupIfDue(), 60 * 60 * 1000)
+    window.addEventListener('online', createDailyBackupIfDue)
+    return () => {
+      stopped = true
+      window.clearInterval(timer)
+      window.removeEventListener('online', createDailyBackupIfDue)
+    }
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -218,6 +251,7 @@ function AuthenticatedApplication({
         <Route path="checks" element={<ChecksPage defaultStoreId={configuredStoreId} stores={stores} />} />
         <Route path="expenses" element={<ExpensesPage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />} />
         <Route path="reports" element={<ReportsPage stores={stores} />} />
+        <Route path="financial-verification" element={<FinancialVerificationPage />} />
         <Route
           path="settings"
           element={

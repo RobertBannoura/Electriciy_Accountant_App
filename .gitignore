@@ -12,3 +12,23 @@ release/
 tmp/
 
 output/
+
+# Generated secrets, signing material, and disposable database/backup artifacts
+.secrets/
+secrets/
+*.key
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.backup.json
+electricity-accountant-automatic-*.json
+electricity-accountant-*-manual.json
+*.dump
+*.sql.gz
+backups/
+pgdata/
+*-pgdata/

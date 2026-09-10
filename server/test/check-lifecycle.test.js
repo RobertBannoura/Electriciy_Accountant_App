@@ -40,6 +40,7 @@ function lifecycleDatabase(overrides = {}) {
         state.check.status = statement.includes("status = 'cleared'") ? 'cleared' : 'bounced'
         return { rows: [], rowCount: 1 }
       }
+      if (statement.startsWith('INSERT INTO audit_log')) return { rows: [], rowCount: 1 }
       throw new Error(`Unexpected query: ${statement}`)
     },
     release() { state.released += 1 },
@@ -133,8 +134,10 @@ test('issuing an owner check reduces supplier debt in the same transaction', asy
       state.commands.push(statement)
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(statement)) return { rows: [], rowCount: null }
       if (statement.includes('FROM suppliers')) return { rows: [{ id: '7', name: 'شركة النور' }], rowCount: 1 }
+      if (statement.includes('FROM supplier_balances')) return { rows: [{ balance_ils: '1000' }], rowCount: 1 }
       if (statement.startsWith('INSERT INTO checks')) return { rows: [{ id: '91', supplier_id: '7', check_number: 'O-9', amount: '250', currency_code: 'ILS', due_date: '2026-09-20', status: 'pending', notes: null, is_owner_issued: true }], rowCount: 1 }
       if (statement.startsWith('INSERT INTO supplier_ledger')) { state.ledgerParams = params; return { rows: [], rowCount: 1 } }
+      if (statement.startsWith('INSERT INTO audit_log')) return { rows: [], rowCount: 1 }
       throw new Error(`Unexpected query: ${statement}`)
     },
     release() { state.released = true },
@@ -158,6 +161,7 @@ test('owner check issuance rolls back the check when the supplier ledger write f
       state.commands.push(statement)
       if (['BEGIN', 'ROLLBACK'].includes(statement)) return { rows: [], rowCount: null }
       if (statement.includes('FROM suppliers')) return { rows: [{ id: '7', name: 'Supplier' }], rowCount: 1 }
+      if (statement.includes('FROM supplier_balances')) return { rows: [{ balance_ils: '1000' }], rowCount: 1 }
       if (statement.startsWith('INSERT INTO checks')) {
         return { rows: [{ id: '91', supplier_id: '7', check_number: 'O-9', amount: '250', is_owner_issued: true }], rowCount: 1 }
       }
@@ -178,6 +182,31 @@ test('owner check issuance rolls back the check when the supplier ledger write f
   assert.equal(state.commands.at(-1), 'ROLLBACK')
   assert.equal(state.released, true)
   assert.equal(state.commands.includes('COMMIT'), false)
+})
+
+test('owner check cannot overpay a supplier or create a negative payable balance', async () => {
+  const commands = []
+  const client = {
+    async query(sql) {
+      const statement = sql.replace(/\s+/g, ' ').trim()
+      commands.push(statement)
+      if (['BEGIN', 'ROLLBACK'].includes(statement)) return { rows: [], rowCount: null }
+      if (statement.includes('FROM suppliers')) return { rows: [{ id: '7', name: 'Supplier' }], rowCount: 1 }
+      if (statement.includes('FROM supplier_balances')) return { rows: [{ balance_ils: '200' }], rowCount: 1 }
+      throw new Error(`Unexpected query: ${statement}`)
+    },
+    release() {},
+  }
+  await assert.rejects(
+    issueOwnerCheck({
+      databasePool: { connect: async () => client },
+      input: { checkNumber: 'O-10', amount: '250', dueDate: '2026-09-20', supplierId: '7' },
+      storeId: '2', userId: null,
+    }),
+    (error) => error?.code === 'SUPPLIER_PAYMENT_EXCEEDS_DEBT',
+  )
+  assert.equal(commands.some((command) => command.startsWith('INSERT INTO checks')), false)
+  assert.equal(commands.at(-1), 'ROLLBACK')
 })
 
 test('reminders count Palestinian business days and respect snooze and bounced stop filters', async () => {

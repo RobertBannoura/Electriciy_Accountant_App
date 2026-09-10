@@ -8,6 +8,7 @@ import {
   requirePersistentAdmin,
 } from '../notifications/notification-input.js'
 import { getPushConfiguration } from '../notifications/push-service.js'
+import { logSecurityEvent, securityRequestContext } from '../security/security-log.js'
 
 export const pushRouter = Router()
 
@@ -43,23 +44,42 @@ pushRouter.put('/settings', async (request, response) => {
   const values = notificationCategories.map((category) => parsed.value[category])
   const result = await query(
     `
-      INSERT INTO push_notification_preferences (
-        user_id, sale_created, customer_payment, purchase_created,
-        supplier_payment, check_due, check_bounced
-      ) VALUES ($1::BIGINT, $2, $3, $4, $5, $6, $7)
-      ON CONFLICT (user_id) DO UPDATE SET
-        sale_created = EXCLUDED.sale_created,
-        customer_payment = EXCLUDED.customer_payment,
-        purchase_created = EXCLUDED.purchase_created,
-        supplier_payment = EXCLUDED.supplier_payment,
-        check_due = EXCLUDED.check_due,
-        check_bounced = EXCLUDED.check_bounced,
-        updated_at = NOW()
-      RETURNING sale_created, customer_payment, purchase_created,
-        supplier_payment, check_due, check_bounced
+      WITH updated AS (
+        INSERT INTO push_notification_preferences (
+          user_id, sale_created, customer_payment, purchase_created,
+          supplier_payment, check_due, check_bounced
+        ) VALUES ($1::BIGINT, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (user_id) DO UPDATE SET
+          sale_created = EXCLUDED.sale_created,
+          customer_payment = EXCLUDED.customer_payment,
+          purchase_created = EXCLUDED.purchase_created,
+          supplier_payment = EXCLUDED.supplier_payment,
+          check_due = EXCLUDED.check_due,
+          check_bounced = EXCLUDED.check_bounced,
+          updated_at = NOW()
+        RETURNING user_id, sale_created, customer_payment, purchase_created,
+          supplier_payment, check_due, check_bounced
+      ), audit AS (
+        INSERT INTO audit_log (
+          actor_user_id, action, entity_type, entity_id, new_values
+        )
+        SELECT $1::BIGINT, 'settings_change', 'push_notification_settings',
+          $1::BIGINT, to_jsonb(updated) - 'user_id'
+        FROM updated
+        RETURNING 1
+      )
+      SELECT updated.sale_created, updated.customer_payment, updated.purchase_created,
+        updated.supplier_payment, updated.check_due, updated.check_bounced
+      FROM updated CROSS JOIN audit
     `,
     [userId, ...values],
   )
+  logSecurityEvent('info', 'admin_settings_changed', {
+    ...securityRequestContext(request),
+    outcome: 'success',
+    setting: 'push_notifications',
+    userId,
+  })
   response.json({ settings: result.rows[0] })
 })
 
@@ -77,16 +97,23 @@ pushRouter.post('/subscriptions', async (request, response) => {
         user_id, store_id, endpoint, p256dh_key, auth_key, expires_at
       ) VALUES ($1::BIGINT, NULL, $2, $3, $4, $5::TIMESTAMPTZ)
       ON CONFLICT (endpoint) DO UPDATE SET
-        user_id = EXCLUDED.user_id,
         store_id = NULL,
         p256dh_key = EXCLUDED.p256dh_key,
         auth_key = EXCLUDED.auth_key,
         expires_at = EXCLUDED.expires_at,
         updated_at = NOW()
+      WHERE push_subscriptions.user_id = EXCLUDED.user_id
       RETURNING id::TEXT AS id
     `,
     [userId, subscription.endpoint, subscription.p256dh, subscription.auth, subscription.expiresAt],
   )
+  if (result.rowCount === 0) {
+    throw new AppError(
+      'اشتراك الإشعارات مسجل لحساب مدير آخر ولا يمكن نقله',
+      409,
+      'PUSH_SUBSCRIPTION_OWNED_BY_ANOTHER_ADMIN',
+    )
+  }
   response.status(201).json({ subscription: { id: result.rows[0].id } })
 })
 
@@ -112,9 +139,14 @@ async function ensurePreferences(userId) {
 function parseEndpoint(value) {
   try {
     const endpoint = new URL(value)
-    return endpoint.protocol === 'https:' && endpoint.href.length <= 4096 ? endpoint.href : null
+    return endpoint.protocol === 'https:'
+      && endpoint.href.length <= 4096
+      && endpoint.username === ''
+      && endpoint.password === ''
+      && endpoint.hash === ''
+      ? endpoint.href
+      : null
   } catch {
     return null
   }
 }
-

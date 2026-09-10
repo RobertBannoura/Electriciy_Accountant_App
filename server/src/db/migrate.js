@@ -3,6 +3,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { pool } from './pool.js'
+import { logSecurityEvent, safeErrorDetails } from '../security/security-log.js'
 
 const migrationsDirectory = fileURLToPath(
   new URL('../../db/migrations/', import.meta.url),
@@ -92,6 +93,9 @@ async function run() {
 }
 
 run().catch((error) => {
-  console.error('Migration failed:', error)
+  logSecurityEvent('error', 'database_migration_failed', {
+    ...safeErrorDetails(error),
+    outcome: 'failure',
+  })
   process.exitCode = 1
 })

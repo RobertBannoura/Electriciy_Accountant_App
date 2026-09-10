@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { once } from 'node:events'
 import test from 'node:test'
 import Decimal from 'decimal.js'
@@ -13,19 +14,18 @@ test(
     process.env.DATABASE_URL = databaseUrl
     process.env.NODE_ENV = 'test'
 
-    const [{ app }, { pool }] = await Promise.all([
+    const [{ app }, { pool }, { provisionAdmin }] = await Promise.all([
       import('../src/app.js'),
       import('../src/db/pool.js'),
+      import('../src/auth/provision-admin.js'),
     ])
-    const { provisionAdmin } = await import('../src/auth/provision-admin.js')
     const adminUsername = 'group5_integration_admin'
-    const adminPassword = 'group5-integration-password'
+    const adminPassword = randomBytes(32).toString('base64url')
     await provisionAdmin(pool, {
       username: adminUsername,
       password: adminPassword,
       displayName: 'Integration Test Admin',
     })
-
     const server = app.listen(0, '127.0.0.1')
     await once(server, 'listening')
     const address = server.address()
@@ -127,6 +127,34 @@ test(
         assertMoney(created.body.sale.paid_total, '100')
         assertMoney(created.body.sale.remaining_due, '0')
         assertMoney(await customerBalance(pool, customer.id), '0')
+      })
+
+      await t.test('card or bank sale records bank inflow without touching physical cash', async () => {
+        const customer = await createCustomer(baseUrl, token, store.id, `Group 9 bank customer ${unique}`)
+        const created = await createSale(baseUrl, token, store.id, {
+          invoiceNumber: `BANK-${unique}`,
+          customerId: customer.id,
+          productId: pieceProduct.id,
+          quantity: '1',
+          actualPrice: '120',
+          payments: [{ method: 'bank_card', amount: '120', reference: `CARD-${unique}` }],
+        })
+
+        assert.equal(created.response.status, 201)
+        assertMoney(created.body.sale.paid_total, '120')
+        assertMoney(created.body.sale.remaining_due, '0')
+        const movementFacts = await pool.query(
+          `SELECT
+             (SELECT COUNT(*)::INTEGER FROM bank_movements AS bank
+              INNER JOIN payments ON payments.id = bank.source_id
+              WHERE payments.sale_id = $1::BIGINT AND payments.payment_method = 'bank_card'
+                AND bank.source_type = 'sale_payment' AND bank.amount_ils = 120) AS bank_count,
+             (SELECT COUNT(*)::INTEGER FROM financial_movements AS cash
+              INNER JOIN payments ON payments.id = cash.source_id
+              WHERE payments.sale_id = $1::BIGINT) AS cash_count`,
+          [created.body.sale.id],
+        )
+        assert.deepEqual(movementFacts.rows[0], { bank_count: 1, cash_count: 0 })
       })
 
       let debtCustomer
@@ -426,6 +454,9 @@ async function apiRequest(baseUrl, path, options) {
   const headers = new Headers(options.body ? { 'Content-Type': 'application/json' } : undefined)
   headers.set('Authorization', `Bearer ${options.token}`)
   if (options.storeId) headers.set('X-Store-Id', options.storeId)
+  if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) {
+    headers.set('X-Request-Id', crypto.randomUUID())
+  }
   return jsonRequest(`${baseUrl}${path}`, {
     method: options.method,
     headers,

@@ -1,15 +1,18 @@
 import { pool } from '../db/pool.js'
+import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { AppError } from '../errors/app-error.js'
+import { claimFinancialOperation } from '../financial/financial-operation.js'
 import {
   insertCustomerLedgerMovement,
   insertIncomingPayment,
 } from '../payments/payment-writer.js'
 import { calculateSalePaymentBreakdown } from '../sales/sale-payment-input.js'
 
-export async function createMaintenance({ databasePool = pool, input, storeId, userId }) {
+export async function createMaintenance({ databasePool = pool, input, storeId, userId, operation }) {
   const client = await databasePool.connect()
   try {
     await client.query('BEGIN')
+    await claimFinancialOperation(client, { userId, operation })
     await requireStore(client, storeId)
     const customer = await requireCustomer(client, input.customerId)
     const paymentBreakdown = calculateSalePaymentBreakdown(
@@ -95,10 +98,10 @@ export async function createMaintenance({ databasePool = pool, input, storeId, u
       }
     }
 
-    await insertAudit(client, {
+    await writeAuditEntry(client, {
       storeId,
       userId,
-      action: 'create',
+      action: 'maintenance',
       entityType: 'maintenance',
       entityId: maintenance.id,
       newValues: {
@@ -109,6 +112,20 @@ export async function createMaintenance({ databasePool = pool, input, storeId, u
         remainingDueIls: paymentBreakdown.value.remainingDue,
       },
     })
+    for (const payment of savedPayments) {
+      await writeAuditEntry(client, {
+        storeId,
+        userId,
+        action: 'payment',
+        entityType: payment.method === 'check' ? 'check' : 'payment',
+        entityId: payment.id,
+        newValues: {
+          maintenanceId: maintenance.id,
+          method: payment.method,
+          amountIls: payment.converted_ils_amount,
+        },
+      })
+    }
     await client.query('COMMIT')
     return { ...maintenance, customer_name: customer?.name ?? null, reversed_at: null, payments: savedPayments }
   } catch (error) {
@@ -125,10 +142,12 @@ export async function reverseMaintenance({
   reason,
   storeId,
   userId,
+  operation,
 }) {
   const client = await databasePool.connect()
   try {
     await client.query('BEGIN')
+    await claimFinancialOperation(client, { userId, operation })
     await requireStore(client, storeId)
     const originalResult = await client.query(
       `
@@ -216,7 +235,9 @@ export async function reverseMaintenance({
       `
         SELECT id::TEXT AS id, customer_id::TEXT AS customer_id,
                check_number, bank_name, amount::TEXT AS amount,
-               due_date::TEXT AS due_date, is_giro,
+               due_date::TEXT AS due_date, status,
+               supplier_id::TEXT AS supplier_id,
+               transferred_at::TEXT AS transferred_at, is_giro,
                original_owner_name, original_owner_phone
         FROM checks
         WHERE maintenance_id = $1::BIGINT AND store_id = $2::BIGINT
@@ -224,7 +245,19 @@ export async function reverseMaintenance({
       `,
       [maintenanceId, storeId],
     )
+    if (originalChecks.rows.some((check) => check.transferred_at && check.status !== 'bounced')) {
+      throw new AppError(
+        'لا يمكن عكس الصيانة ما دام أحد شيكاتها محولاً إلى مورد ولم يُعكس ارتجاعه',
+        409,
+        'MAINTENANCE_CHECK_TRANSFER_ACTIVE',
+      )
+    }
     for (const check of originalChecks.rows) {
+      // A bounced check already has an append-only customer debit (and, when
+      // transferred, a supplier credit). Reversing that payment a second time
+      // would recreate debt after the maintenance charge is removed.
+      if (check.status === 'bounced') continue
+
       const reversedCheckId = await reverseCheck(client, {
         check,
         reversalId: reversal.id,
@@ -244,12 +277,20 @@ export async function reverseMaintenance({
           userId,
         })
       }
+      if (check.status === 'pending') {
+        await client.query(
+          `UPDATE checks
+           SET status = 'reversed', reminder_snoozed_until = NULL
+           WHERE id = $1::BIGINT AND status = 'pending'`,
+          [check.id],
+        )
+      }
     }
 
-    await insertAudit(client, {
+    await writeAuditEntry(client, {
       storeId,
       userId,
-      action: 'reverse',
+      action: 'maintenance_reversal',
       entityType: 'maintenance',
       entityId: maintenanceId,
       oldValues: original,
@@ -385,21 +426,4 @@ async function reverseCheck(
     ],
   )
   return result.rows[0].id
-}
-
-async function insertAudit(
-  client,
-  { storeId, userId, action, entityType, entityId, oldValues = null, newValues = null },
-) {
-  await client.query(
-    `
-      INSERT INTO audit_log (
-        store_id, actor_user_id, action, entity_type, entity_id,
-        old_values, new_values
-      ) VALUES (
-        $1::BIGINT, $2::BIGINT, $3, $4, $5::BIGINT, $6::JSONB, $7::JSONB
-      )
-    `,
-    [storeId, userId, action, entityType, entityId, oldValues, newValues],
-  )
 }

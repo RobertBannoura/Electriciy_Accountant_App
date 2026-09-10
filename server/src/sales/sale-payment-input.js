@@ -47,7 +47,7 @@ export function parseSalePayments(value) {
 
     let exchangeRate = null
     if (method === 'cash' && currency !== 'ILS') {
-      exchangeRate = normalizeDecimal(row?.exchangeRate, { scale: 6 })
+      exchangeRate = normalizeDecimal(row?.exchangeRate, { scale: 12 })
       if (exchangeRate === undefined || new PaymentDecimal(exchangeRate).lessThanOrEqualTo(0)) {
         return { error: 'الدفع بالدولار أو الدينار يحتاج سعر صرف يدوي أكبر من صفر' }
       }

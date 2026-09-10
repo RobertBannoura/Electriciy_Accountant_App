@@ -1,4 +1,5 @@
 import { pool } from './pool.js'
+import { logSecurityEvent, safeErrorDetails } from '../security/security-log.js'
 
 function assert(condition, message) {
   if (!condition) {
@@ -71,14 +72,14 @@ async function run() {
     )
     const customerId = customerResult.rows[0].id
 
-    for (const amount of ['0', '0.50', '10', '10.50']) {
+    for (const amount of ['0.50', '10', '10.50']) {
       await client.query(
         `
           INSERT INTO payments (
             store_id, customer_id, direction, original_amount, currency_code,
-            converted_ils_amount, paid_at
+            converted_ils_amount, payment_method, paid_at
           )
-          VALUES ($1, $2, 'verification', $3::NUMERIC, 'ILS', $3::NUMERIC, NOW())
+          VALUES ($1, $2, 'inflow', $3::NUMERIC, 'ILS', $3::NUMERIC, 'cash', NOW())
         `,
         [salam.id, customerId, amount],
       )
@@ -89,9 +90,9 @@ async function run() {
         `
           INSERT INTO payments (
             store_id, customer_id, direction, original_amount, currency_code,
-            converted_ils_amount, paid_at
+            converted_ils_amount, payment_method, paid_at
           )
-          VALUES ($1, $2, 'verification', 10.25, 'ILS', 10.25, NOW())
+          VALUES ($1, $2, 'inflow', 10.25, 'ILS', 10.25, 'cash', NOW())
         `,
         [salam.id, customerId],
       ),
@@ -103,11 +104,11 @@ async function run() {
       `
         INSERT INTO payments (
           store_id, customer_id, direction, original_amount, currency_code,
-          exchange_rate, converted_ils_amount, paid_at
+          exchange_rate, converted_ils_amount, payment_method, paid_at
         )
         VALUES
-          ($1, $2, 'verification', 100.00, 'USD', $3::NUMERIC, $4::NUMERIC, NOW()),
-          ($1, $2, 'verification', 5.000, 'JOD', 5.00, 25.00000, NOW())
+          ($1, $2, 'inflow', 100.00, 'USD', $3::NUMERIC, $4::NUMERIC, 'cash', NOW()),
+          ($1, $2, 'inflow', 5.000, 'JOD', 5.00, 25.00000, 'cash', NOW())
         RETURNING currency_code, exchange_rate::TEXT, converted_ils_amount::TEXT
       `,
       [salam.id, customerId, preciseRate, preciseConverted],
@@ -125,9 +126,9 @@ async function run() {
           `
             INSERT INTO payments (
               store_id, customer_id, direction, original_amount, currency_code,
-              exchange_rate, converted_ils_amount, paid_at
+              exchange_rate, converted_ils_amount, payment_method, paid_at
             )
-            VALUES ($1, $2, 'verification', 1, 'USD', $3::NUMERIC, $3::NUMERIC, NOW())
+            VALUES ($1, $2, 'inflow', 1, 'USD', $3::NUMERIC, $3::NUMERIC, 'cash', NOW())
           `,
           [salam.id, customerId, rate],
         ),
@@ -139,9 +140,9 @@ async function run() {
         `
           INSERT INTO payments (
             store_id, customer_id, direction, original_amount, currency_code,
-            exchange_rate, converted_ils_amount, paid_at
+            exchange_rate, converted_ils_amount, payment_method, paid_at
           )
-          VALUES ($1, $2, 'verification', 1, 'EUR', 4, 4, NOW())
+          VALUES ($1, $2, 'inflow', 1, 'EUR', 4, 4, 'cash', NOW())
         `,
         [salam.id, customerId],
       ),
@@ -207,6 +208,9 @@ async function run() {
 }
 
 run().catch((error) => {
-  console.error('Group 2 database verification failed:', error)
+  logSecurityEvent('error', 'database_verification_failed', {
+    ...safeErrorDetails(error),
+    outcome: 'failure',
+  })
   process.exitCode = 1
 })

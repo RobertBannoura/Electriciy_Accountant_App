@@ -1,10 +1,13 @@
 import { pool } from '../db/pool.js'
+import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { AppError } from '../errors/app-error.js'
+import { claimFinancialOperation } from '../financial/financial-operation.js'
 
-export async function clearCheck({ databasePool = pool, checkId, storeId }) {
+export async function clearCheck({ databasePool = pool, checkId, storeId, userId = null, operation }) {
   const client = await databasePool.connect()
   try {
     await client.query('BEGIN')
+    await claimFinancialOperation(client, { userId, operation })
     const check = await lockOperationalCheck(client, checkId, storeId)
 
     if (check.status === 'bounced') {
@@ -19,6 +22,15 @@ export async function clearCheck({ databasePool = pool, checkId, storeId }) {
         `,
         [check.id],
       )
+      await writeAuditEntry(client, {
+        storeId,
+        userId,
+        action: 'check_status_change',
+        entityType: 'check',
+        entityId: check.id,
+        oldValues: { status: 'pending' },
+        newValues: { status: 'cleared' },
+      })
     }
 
     await client.query('COMMIT')
@@ -36,10 +48,12 @@ export async function bounceCheck({
   checkId,
   storeId,
   userId,
+  operation,
 }) {
   const client = await databasePool.connect()
   try {
     await client.query('BEGIN')
+    await claimFinancialOperation(client, { userId, operation })
     const check = await lockOperationalCheck(client, checkId, storeId)
 
     if (check.status === 'cleared') {
@@ -126,6 +140,31 @@ export async function bounceCheck({
       `,
       [check.id],
     )
+
+    if (check.status === 'pending') {
+      await writeAuditEntry(client, {
+        storeId,
+        userId,
+        action: 'check_status_change',
+        entityType: 'check',
+        entityId: check.id,
+        oldValues: { status: 'pending' },
+        newValues: { status: 'bounced' },
+      })
+      await writeAuditEntry(client, {
+        storeId,
+        userId,
+        action: 'bounced_reversal',
+        entityType: 'check',
+        entityId: check.id,
+        newValues: {
+          customerReversal: Boolean(check.customer_id),
+          supplierTransferReversal: Boolean(check.customer_id && check.supplier_id && check.transferred_at),
+          ownerSupplierReversal: Boolean(check.is_owner_issued),
+          amountIls: check.amount,
+        },
+      })
+    }
 
     await client.query('COMMIT')
     return { ...check, status: 'bounced' }

@@ -8,6 +8,10 @@ import {
 } from '../customers/customer-input.js'
 import { parseCustomerPaymentInput } from '../customers/customer-payment-input.js'
 import { createCustomerPayment } from '../customers/create-customer-payment.js'
+import {
+  financialOperation,
+  requireFinancialRequestId,
+} from '../financial/financial-operation.js'
 import { notifyCustomerPaymentCreated } from '../notifications/financial-notifications.js'
 import { getCustomerStatement } from '../statements/account-statements.js'
 import { parseStatementRange } from '../statements/statement-input.js'
@@ -44,8 +48,8 @@ customersRouter.get('/', async (request, response) => {
       WHERE customers.is_active = TRUE
         AND (
           $1::TEXT IS NULL
-          OR POSITION(LOWER($1) IN LOWER(customers.name)) > 0
-          OR POSITION(LOWER($1) IN LOWER(COALESCE(customers.phone, ''))) > 0
+          OR LOWER(customers.name) LIKE '%' || LOWER($1) || '%'
+          OR LOWER(customers.phone) LIKE '%' || LOWER($1) || '%'
         )
       ORDER BY customers.name, customers.id
       LIMIT 500
@@ -387,7 +391,7 @@ customersRouter.post('/:customerId/projects', async (request, response) => {
   response.status(201).json({ project: result.rows[0] })
 })
 
-customersRouter.post('/:customerId/payments', async (request, response) => {
+customersRouter.post('/:customerId/payments', requireFinancialRequestId, async (request, response) => {
   const customerId = requireCustomerId(request.params.customerId)
   const parsed = parseCustomerPaymentInput(request.body)
   if (parsed.error) {
@@ -399,6 +403,11 @@ customersRouter.post('/:customerId/payments', async (request, response) => {
     input: parsed.value,
     storeId: request.storeId,
     userId: request.auth.user.id,
+    operation: financialOperation(request, 'payment:customer', {
+      storeId: request.storeId,
+      customerId,
+      input: parsed.value,
+    }),
   })
 
   await notifyCustomerPaymentCreated({ payment })

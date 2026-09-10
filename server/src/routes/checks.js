@@ -10,6 +10,12 @@ import { AppError } from '../errors/app-error.js'
 import { requireStore } from '../middleware/require-store.js'
 import { normalizeOptionalText, parseId } from '../products/product-input.js'
 import { notifyCheckBounced } from '../notifications/financial-notifications.js'
+import { paginatedResult, parsePagination } from '../pagination/pagination.js'
+import { logSecurityEvent, securityRequestContext } from '../security/security-log.js'
+import {
+  financialOperation,
+  requireFinancialRequestId,
+} from '../financial/financial-operation.js'
 
 const CUSTOMER_CHECK_STATUSES = new Set(['pending', 'cleared', 'bounced'])
 
@@ -18,6 +24,7 @@ export const checksRouter = Router()
 checksRouter.use(requireStore)
 
 checksRouter.get('/', async (request, response) => {
+  const pagination = parsePagination(request.query)
   const requestedStatus = normalizeOptionalText(request.query.status, 20)
   if (request.query.status && !CUSTOMER_CHECK_STATUSES.has(requestedStatus)) {
     throw new AppError('حالة الشيك غير صالحة', 400, 'INVALID_CHECK_STATUS')
@@ -63,19 +70,19 @@ checksRouter.get('/', async (request, response) => {
         AND ($2::TEXT IS NULL OR checks.status = $2)
         AND (
           $3::TEXT IS NULL
-          OR POSITION(LOWER($3) IN LOWER(checks.check_number)) > 0
-          OR POSITION(LOWER($3) IN LOWER(COALESCE(customers.name, ''))) > 0
-          OR POSITION(LOWER($3) IN LOWER(COALESCE(suppliers.name, ''))) > 0
-          OR POSITION(LOWER($3) IN LOWER(COALESCE(checks.original_owner_name, ''))) > 0
-          OR POSITION(LOWER($3) IN LOWER(COALESCE(checks.original_owner_phone, ''))) > 0
+          OR LOWER(checks.check_number) LIKE '%' || LOWER($3) || '%'
+          OR LOWER(customers.name) LIKE '%' || LOWER($3) || '%'
+          OR LOWER(suppliers.name) LIKE '%' || LOWER($3) || '%'
+          OR LOWER(checks.original_owner_name) LIKE '%' || LOWER($3) || '%'
+          OR LOWER(checks.original_owner_phone) LIKE '%' || LOWER($3) || '%'
         )
       ORDER BY checks.due_date, checks.id
-      LIMIT 500
+      LIMIT $4::INTEGER OFFSET $5::INTEGER
     `,
-    [request.storeId, requestedStatus, search],
+    [request.storeId, requestedStatus, search, pagination.fetchLimit, pagination.offset],
   )
-
-  response.json({ checks: result.rows })
+  const page = paginatedResult(result.rows, pagination)
+  response.json({ checks: page.rows, pagination: page.pagination })
 })
 
 checksRouter.get('/reminders', async (request, response) => {
@@ -103,17 +110,37 @@ checksRouter.put('/reminder-settings', async (request, response) => {
   }
   await query(
     `
-      INSERT INTO system_settings (store_id, key, value)
-      VALUES ($1::BIGINT, 'check_follow_up_business_days', to_jsonb($2::INTEGER))
-      ON CONFLICT (store_id, key)
-      DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+      WITH updated AS (
+        INSERT INTO system_settings (store_id, key, value)
+        VALUES ($1::BIGINT, 'check_follow_up_business_days', to_jsonb($2::INTEGER))
+        ON CONFLICT (store_id, key)
+        DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        RETURNING store_id, value
+      )
+      INSERT INTO audit_log (
+        store_id, actor_user_id, action, entity_type, new_values
+      )
+      SELECT store_id, $3::BIGINT, 'settings_change', 'check_settings',
+        jsonb_build_object('businessDays', value)
+      FROM updated
     `,
-    [request.storeId, parsed.value.businessDays],
+    [
+      request.storeId,
+      parsed.value.businessDays,
+      request.auth.user.id,
+    ],
   )
+  logSecurityEvent('info', 'admin_settings_changed', {
+    ...securityRequestContext(request),
+    outcome: 'success',
+    setting: 'check_reminder_business_days',
+    storeId: request.storeId,
+    userId: request.auth.user.id,
+  })
   response.json({ businessDays: parsed.value.businessDays })
 })
 
-checksRouter.post('/owner-issued', async (request, response) => {
+checksRouter.post('/owner-issued', requireFinancialRequestId, async (request, response) => {
   const parsed = parseOwnerCheckInput(request.body)
   if (parsed.error) {
     throw new AppError(parsed.error, 400, 'INVALID_OWNER_CHECK')
@@ -122,22 +149,38 @@ checksRouter.post('/owner-issued', async (request, response) => {
     input: parsed.value,
     storeId: request.storeId,
     userId: request.auth.user.id,
+    operation: financialOperation(request, 'check:owner-issued', {
+      storeId: request.storeId,
+      input: parsed.value,
+    }),
   })
   response.status(201).json({ check })
 })
 
-checksRouter.post('/:checkId/clear', async (request, response) => {
+checksRouter.post('/:checkId/clear', requireFinancialRequestId, async (request, response) => {
   const checkId = requireCheckId(request.params.checkId)
-  const check = await clearCheck({ checkId, storeId: request.storeId })
+  const check = await clearCheck({
+    checkId,
+    storeId: request.storeId,
+    userId: request.auth.user.id,
+    operation: financialOperation(request, 'check:clear', {
+      storeId: request.storeId,
+      checkId,
+    }),
+  })
   response.json({ check })
 })
 
-checksRouter.post('/:checkId/bounce', async (request, response) => {
+checksRouter.post('/:checkId/bounce', requireFinancialRequestId, async (request, response) => {
   const checkId = requireCheckId(request.params.checkId)
   const check = await bounceCheck({
     checkId,
     storeId: request.storeId,
     userId: request.auth.user.id,
+    operation: financialOperation(request, 'check:bounce', {
+      storeId: request.storeId,
+      checkId,
+    }),
   })
   await notifyCheckBounced({ check })
   response.json({ check })
@@ -183,7 +226,7 @@ checksRouter.post('/:checkId/stop-bounced-reminder', async (request, response) =
   response.json({ check: result.rows[0] })
 })
 
-checksRouter.post('/:checkId/transfer', async (request, response) => {
+checksRouter.post('/:checkId/transfer', requireFinancialRequestId, async (request, response) => {
   const checkId = requireCheckId(request.params.checkId)
 
   const parsed = parseCheckTransferInput(request.body)
@@ -197,6 +240,11 @@ checksRouter.post('/:checkId/transfer', async (request, response) => {
     transferDate: parsed.value.transferDate,
     storeId: request.storeId,
     userId: request.auth.user.id,
+    operation: financialOperation(request, 'check:transfer', {
+      storeId: request.storeId,
+      checkId,
+      input: parsed.value,
+    }),
   })
 
   response.status(201).json({ check })

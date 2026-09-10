@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { once } from 'node:events'
 import test from 'node:test'
 
@@ -11,19 +12,18 @@ test(
     process.env.DATABASE_URL = databaseUrl
     process.env.NODE_ENV = 'test'
 
-    const [{ app }, { pool }] = await Promise.all([
+    const [{ app }, { pool }, { provisionAdmin }] = await Promise.all([
       import('../src/app.js'),
       import('../src/db/pool.js'),
+      import('../src/auth/provision-admin.js'),
     ])
-    const { provisionAdmin } = await import('../src/auth/provision-admin.js')
     const adminUsername = 'group4_integration_admin'
-    const adminPassword = 'group4-integration-password'
+    const adminPassword = randomBytes(32).toString('base64url')
     await provisionAdmin(pool, {
       username: adminUsername,
       password: adminPassword,
       displayName: 'Integration Test Admin',
     })
-
     const server = app.listen(0, '127.0.0.1')
     await once(server, 'listening')
     const address = server.address()
@@ -94,8 +94,12 @@ test(
         `
           INSERT INTO sales (
             store_id, customer_id, customer_project_id, document_number,
-            business_date, status, currency_code
-          ) VALUES ($1, $2, $3, 'SHOWROOM-PROJECT', CURRENT_DATE, 'recorded', 'ILS')
+            business_date, status, currency_code, items_subtotal,
+            invoice_discount, total, paid_total, remaining_due
+          ) VALUES (
+            $1, $2, $3, 'SHOWROOM-PROJECT', CURRENT_DATE, 'recorded', 'ILS',
+            0, 0, 0, 0, 0
+          )
           RETURNING id
         `,
         [showroom.id, customerId, projectId],
@@ -247,8 +251,13 @@ test(
         pool.query(
           `
             INSERT INTO sales (
-              store_id, customer_id, customer_project_id, business_date, status
-            ) VALUES ($1, $2, $3, CURRENT_DATE, 'recorded')
+              store_id, customer_id, customer_project_id, document_number,
+              business_date, status, items_subtotal, invoice_discount,
+              total, paid_total, remaining_due
+            ) VALUES (
+              $1, $2, $3, 'MISMATCHED-PROJECT', CURRENT_DATE, 'recorded',
+              0, 0, 0, 0, 0
+            )
           `,
           [showroom.id, anotherCustomer.body.customer.id, projectId],
         ),
@@ -257,8 +266,14 @@ test(
 
       const anonymousSale = await pool.query(
         `
-          INSERT INTO sales (store_id, customer_id, customer_project_id, business_date, status)
-          VALUES ($1, NULL, NULL, CURRENT_DATE, 'paid')
+          INSERT INTO sales (
+            store_id, customer_id, customer_project_id, document_number,
+            business_date, status, items_subtotal, invoice_discount,
+            total, paid_total, remaining_due
+          ) VALUES (
+            $1, NULL, NULL, 'ANONYMOUS-SALE', CURRENT_DATE, 'paid',
+            0, 0, 0, 0, 0
+          )
           RETURNING customer_id, customer_project_id
         `,
         [salam.id],
@@ -398,6 +413,9 @@ test(
         const headers = new Headers(options.body ? { 'Content-Type': 'application/json' } : undefined)
         headers.set('Authorization', `Bearer ${options.token}`)
         if (options.storeId) headers.set('X-Store-Id', options.storeId)
+        if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) {
+          headers.set('X-Request-Id', crypto.randomUUID())
+        }
         return jsonRequest(`${baseUrl}${path}`, {
           method: options.method,
           headers,

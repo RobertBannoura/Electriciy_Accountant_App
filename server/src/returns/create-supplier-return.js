@@ -1,16 +1,19 @@
 import Decimal from 'decimal.js'
+import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { pool } from '../db/pool.js'
 import { AppError } from '../errors/app-error.js'
+import { claimFinancialOperation } from '../financial/financial-operation.js'
 import { calculateHistoricalCostReversal } from '../inventory/inventory-costing.js'
 import { insertInventoryCostMovement, readInventoryCostBalance } from '../inventory/inventory-cost-writer.js'
 import { currentBusinessDate } from './return-date.js'
 
 const ReturnDecimal = Decimal.clone({ precision: 100, rounding: Decimal.ROUND_HALF_UP })
 
-export async function createSupplierReturn({ databasePool = pool, input, storeId, userId }) {
+export async function createSupplierReturn({ databasePool = pool, input, storeId, userId, operation }) {
   const client = await databasePool.connect()
   try {
     await client.query('BEGIN')
+    await claimFinancialOperation(client, { userId, operation })
     const purchaseResult = await client.query(
       `SELECT id::TEXT AS id, supplier_id::TEXT AS supplier_id, document_number
        FROM purchases
@@ -161,6 +164,14 @@ export async function createSupplierReturn({ databasePool = pool, input, storeId
           returnDocument.id, `مرتجع مشتريات للفاتورة ${purchase.document_number}`, userId],
       )
     }
+    await writeAuditEntry(client, {
+      storeId,
+      userId,
+      action: 'return',
+      entityType: 'supplier_return',
+      entityId: returnDocument.id,
+      newValues: { purchaseId: purchase.id, supplierId: purchase.supplier_id, totalIls: creditTotal.toFixed() },
+    })
     await client.query('COMMIT')
     return { ...returnDocument, original_purchase_number: purchase.document_number, items: lines }
   } catch (error) {

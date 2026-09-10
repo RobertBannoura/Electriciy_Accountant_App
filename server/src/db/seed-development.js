@@ -1,6 +1,7 @@
 import { env } from '../config/env.js'
 import { provisionAdmin } from '../auth/provision-admin.js'
 import { pool } from './pool.js'
+import { logSecurityEvent, safeErrorDetails } from '../security/security-log.js'
 
 const developmentStores = [
   { code: 'AL_SALAM_ELECTRIC', name: 'كهرباء السلام' },
@@ -46,6 +47,9 @@ async function run() {
 }
 
 run().catch((error) => {
-  console.error('Development seed failed:', error)
+  logSecurityEvent('error', 'development_seed_failed', {
+    ...safeErrorDetails(error),
+    outcome: 'failure',
+  })
   process.exitCode = 1
 })

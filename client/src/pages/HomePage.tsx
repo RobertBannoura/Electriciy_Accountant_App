@@ -77,7 +77,7 @@ async function responseError(response: Response, fallback: string) {
 
 async function showDesktopNotificationOnce(
   key: string,
-  options: { title: string; body: string },
+  options: { kind: 'checks_due' | 'checks_bounced'; count: number },
 ) {
   if (!window.desktop) return
   try {
@@ -167,21 +167,19 @@ export function HomePage({ isOnline, storeId }: { isOnline: boolean; storeId: st
     if (!storeId || !reminders || reminders.due_today.length === 0 || !window.desktop) return
     const day = reminders.due_today[0].due_date
     const notificationKey = `check-due-notification:${storeId}:${day}`
-    const body = reminders.due_today
-      .slice(0, 3)
-      .map((check) => `${check.customer_name ?? check.supplier_name ?? 'شيك'} — ₪${formatDecimal(check.amount)} — ${check.check_number}`)
-      .join('\n')
-    void showDesktopNotificationOnce(notificationKey, { title: 'شيكات مستحقة اليوم', body })
+    void showDesktopNotificationOnce(notificationKey, {
+      kind: 'checks_due',
+      count: reminders.due_today.length,
+    })
   }, [reminders, storeId])
 
   useEffect(() => {
     if (!storeId || !reminders || reminders.bounced.length === 0 || !window.desktop) return
     const notificationKey = `bounced-check-notification:${storeId}:${currentBusinessDate()}`
-    const body = reminders.bounced
-      .slice(0, 3)
-      .map((check) => `${check.customer_name ?? check.supplier_name ?? 'شيك'} — ₪${formatDecimal(check.amount)} — ${check.check_number}`)
-      .join('\n')
-    void showDesktopNotificationOnce(notificationKey, { title: 'شيكات مرتجعة تحتاج متابعة', body })
+    void showDesktopNotificationOnce(notificationKey, {
+      kind: 'checks_bounced',
+      count: reminders.bounced.length,
+    })
   }, [reminders, storeId])
 
   const widgetChecks = useMemo(

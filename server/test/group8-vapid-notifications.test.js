@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createECDH, randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import {
@@ -18,16 +19,30 @@ test('notification settings require an explicit boolean for every supported cate
 })
 
 test('push subscriptions accept HTTPS capability URLs and encrypted browser keys only', () => {
+  const p256dh = createECDH('prime256v1').generateKeys().toString('base64url')
+  const auth = randomBytes(16).toString('base64url')
   const parsed = parsePushSubscription({
     endpoint: 'https://push.example.test/subscription/1',
     expirationTime: null,
-    keys: { p256dh: 'A'.repeat(65), auth: 'B'.repeat(22) },
+    keys: { p256dh, auth },
   })
   assert.equal(parsed.value.endpoint, 'https://push.example.test/subscription/1')
   assert.equal(parsed.value.expiresAt, null)
   assert.match(parsePushSubscription({
     endpoint: 'http://push.example.test/unsafe',
-    keys: { p256dh: 'A'.repeat(65), auth: 'B'.repeat(22) },
+    keys: { p256dh, auth },
+  }).error, /غير صالح/)
+  assert.match(parsePushSubscription({
+    endpoint: 'https://push.example.test/subscription/2',
+    keys: { p256dh: Buffer.alloc(65, 4).toString('base64url'), auth },
+  }).error, /غير صالح/)
+  assert.match(parsePushSubscription({
+    endpoint: 'https://push.example.test/subscription/3',
+    keys: { p256dh, auth: randomBytes(15).toString('base64url') },
+  }).error, /غير صالح/)
+  assert.match(parsePushSubscription({
+    endpoint: 'https://user:password@push.example.test/subscription/4',
+    keys: { p256dh, auth },
   }).error, /غير صالح/)
 })
 
@@ -38,7 +53,7 @@ test('only a persistent admin account can manage push subscriptions', () => {
     (error) => error.statusCode === 403,
   )
   assert.throws(
-    () => requirePersistentAdmin({ auth: { user: { id: 'temporary-admin', role: 'admin' } } }),
+    () => requirePersistentAdmin({ auth: { user: { id: 'not-a-database-id', role: 'admin' } } }),
     (error) => error.statusCode === 409,
   )
 })
@@ -69,6 +84,48 @@ test('push delivery selects active admins and absorbs provider failure after com
   assert.equal(warnings.length, 1)
 })
 
+test('temporary push-provider failures retain valid subscriptions', async () => {
+  const queries = []
+  const dbQuery = async (sql) => {
+    queries.push(sql)
+    if (sql.includes('FROM push_subscriptions AS subscriptions')) {
+      return { rowCount: 1, rows: [{ id: '12', endpoint: 'https://push.example/2', p256dh_key: 'key', auth_key: 'auth' }] }
+    }
+    if (sql.includes('INSERT INTO push_notification_events')) return { rowCount: 1, rows: [{ id: '22' }] }
+    return { rowCount: 1, rows: [] }
+  }
+  const result = await notifyAdminAfterCommit({
+    category: 'sale_created', sourceType: 'sale', sourceId: '10',
+    businessDate: '2026-09-10', title: 'بيع جديد', body: 'تم تسجيل عملية بيع جديدة.',
+  }, {
+    configured: true,
+    dbQuery,
+    pushClient: { sendNotification: async () => { throw Object.assign(new Error('temporary'), { statusCode: 503 }) } },
+    logger: { error: () => {}, warn: () => {} },
+  })
+  assert.deepEqual(result, { successes: 0, failures: 1 })
+  assert.ok(queries.some((sql) => sql.includes('SET last_failure_at = NOW()')))
+  assert.ok(!queries.some((sql) => sql.includes('DELETE FROM push_subscriptions')))
+})
+
+test('lock-screen notification bodies omit party names, amounts, and check numbers', async () => {
+  const [financialNotifications, dueScheduler, desktopHome] = await Promise.all([
+    readFile(new URL('../src/notifications/financial-notifications.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/notifications/check-due-scheduler.js', import.meta.url), 'utf8'),
+    readFile(new URL('../../client/src/pages/HomePage.tsx', import.meta.url), 'utf8'),
+  ])
+  const notificationSources = `${financialNotifications}\n${dueScheduler}`
+  assert.doesNotMatch(notificationSources, /formatIlsAmount|customer_name|supplier_name|check\.amount|payment\.total_ils|purchase\.total|sale\.total/)
+  assert.match(notificationSources, /افتح التطبيق لعرض التفاصيل/)
+  const desktopNotificationRegion = desktopHome.slice(
+    desktopHome.indexOf("kind: 'checks_due'"),
+    desktopHome.indexOf('const widgetChecks'),
+  )
+  assert.match(desktopNotificationRegion, /kind: 'checks_due'/)
+  assert.match(desktopNotificationRegion, /kind: 'checks_bounced'/)
+  assert.doesNotMatch(desktopNotificationRegion, /check_number|customer_name|supplier_name|\.amount/)
+})
+
 test('notification examples use exact ILS grouping and due checks are deduplicable events', async () => {
   assert.equal(formatIlsAmount('1250.00'), '₪1,250')
   assert.equal(formatIlsAmount('500.50'), '₪500.5')
@@ -79,7 +136,7 @@ test('notification examples use exact ILS grouping and due checks are deduplicab
     notify: async (notification) => { notifications.push(notification) },
   })
   assert.equal(result.sent, 1)
-  assert.equal(notifications[0].body, 'شيك مستحق اليوم لأحمد بقيمة ₪2,000')
+  assert.equal(notifications[0].body, 'يوجد شيك مستحق اليوم. افتح التطبيق لعرض التفاصيل.')
   assert.deepEqual(
     [notifications[0].category, notifications[0].sourceType, notifications[0].sourceId, notifications[0].businessDate],
     ['check_due', 'check', '5', '2026-09-09'],
@@ -118,6 +175,8 @@ test('schema, routes, settings, and service worker implement VAPID without clien
   }
   assert.match(pushRoute, /publicKey: configuration\.publicKey/)
   assert.doesNotMatch(pushRoute, /vapidPrivateKey/)
+  assert.match(pushRoute, /WHERE push_subscriptions\.user_id = EXCLUDED\.user_id/)
+  assert.match(pushRoute, /PUSH_SUBSCRIPTION_OWNED_BY_ANOTHER_ADMIN/)
   assert.match(serviceWorker, /addEventListener\('push'/)
   assert.match(serviceWorker, /showNotification/)
   assert.match(serviceWorker, /addEventListener\('notificationclick'/)

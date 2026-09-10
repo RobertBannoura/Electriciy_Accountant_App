@@ -1,10 +1,13 @@
 import { pool } from '../db/pool.js'
+import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { AppError } from '../errors/app-error.js'
+import { claimFinancialOperation } from '../financial/financial-operation.js'
 
-export async function createExpense({ databasePool = pool, input, storeId, userId }) {
+export async function createExpense({ databasePool = pool, input, storeId, userId, operation }) {
   const client = await databasePool.connect()
   try {
     await client.query('BEGIN')
+    await claimFinancialOperation(client, { userId, operation })
     const storeResult = await client.query(
       'SELECT id FROM stores WHERE id = $1::BIGINT AND is_active = TRUE FOR SHARE',
       [storeId],
@@ -44,6 +47,19 @@ export async function createExpense({ databasePool = pool, input, storeId, userI
           `مصروف — ${input.category}`, userId],
       )
     }
+    await writeAuditEntry(client, {
+      storeId,
+      userId,
+      action: 'expense',
+      entityType: 'expense',
+      entityId: expense.id,
+      newValues: {
+        category: input.category,
+        amountIls: input.amount,
+        paymentMethod: input.paymentMethod,
+        expenseDate: input.expenseDate,
+      },
+    })
     await client.query('COMMIT')
     return expense
   } catch (error) {

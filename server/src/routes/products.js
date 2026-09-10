@@ -1,7 +1,9 @@
 import { Router } from 'express'
 import Decimal from 'decimal.js'
+import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { pool, query } from '../db/pool.js'
 import { AppError } from '../errors/app-error.js'
+import { requireStore } from '../middleware/require-store.js'
 import { generateInternalEan13, isValidEan13 } from '../barcodes/ean13.js'
 import { calculateAverageCostMovement } from '../inventory/inventory-costing.js'
 import {
@@ -18,6 +20,12 @@ import {
   parseId,
   parseProductInput,
 } from '../products/product-input.js'
+import { paginatedResult, parsePagination } from '../pagination/pagination.js'
+import {
+  claimFinancialOperation,
+  financialOperation,
+  requireFinancialRequestId,
+} from '../financial/financial-operation.js'
 
 export const productsRouter = Router()
 
@@ -42,6 +50,7 @@ productsRouter.get('/', async (request, response) => {
   if (request.query.storeId && !storeId) {
     throw new AppError('معرّف المتجر غير صالح', 400, 'INVALID_STORE_ID')
   }
+  if (storeId) await requireActiveStoreFilter(storeId)
   if (request.query.lowStock && !['true', 'false'].includes(request.query.lowStock)) {
     throw new AppError('مرشح المخزون المنخفض غير صالح', 400, 'INVALID_LOW_STOCK_FILTER')
   }
@@ -60,9 +69,9 @@ productsRouter.get('/', async (request, response) => {
           LIMIT 1
         ) AS barcode ON TRUE
         WHERE products.is_active = TRUE
-          AND ($1::TEXT IS NULL OR POSITION(LOWER($1) IN LOWER(products.name)) > 0)
+          AND ($1::TEXT IS NULL OR LOWER(products.name) LIKE '%' || LOWER($1) || '%')
           AND ($2::BIGINT IS NULL OR products.category_id = $2)
-          AND ($3::TEXT IS NULL OR POSITION(LOWER($3) IN LOWER(barcode.value)) > 0)
+          AND ($3::TEXT IS NULL OR barcode.value = $3 OR LOWER(barcode.value) LIKE '%' || LOWER($3) || '%')
           AND (
             $4::BIGINT IS NULL
             OR EXISTS (
@@ -138,7 +147,7 @@ productsRouter.get('/', async (request, response) => {
   response.json({ products: groupProductRows(result.rows) })
 })
 
-productsRouter.post('/', async (request, response) => {
+productsRouter.post('/', requireFinancialRequestId, async (request, response) => {
   const parsedProduct = parseProductInput(request.body)
   if (parsedProduct.error) {
     throw new AppError(parsedProduct.error, 400, 'INVALID_PRODUCT')
@@ -155,6 +164,14 @@ productsRouter.post('/', async (request, response) => {
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
+    const userId = inventoryMovementAuthorId(request)
+    await claimFinancialOperation(client, {
+      userId,
+      operation: financialOperation(request, 'product:create', {
+        product: parsedProduct.value,
+        inventory: parsedInventory.value,
+      }),
+    })
     await requireCategory(client, parsedProduct.value.categoryId)
     await requireStores(client, parsedInventory.value.map((item) => item.storeId))
     const productResult = await client.query(
@@ -304,6 +321,7 @@ productsRouter.patch('/:productId', async (request, response) => {
 })
 
 productsRouter.get('/:productId/inventory-movements', async (request, response) => {
+  const pagination = parsePagination(request.query)
   const productId = parseId(request.params.productId)
   const storeId = request.query.storeId ? parseId(request.query.storeId) : null
   if (!productId) {
@@ -312,6 +330,7 @@ productsRouter.get('/:productId/inventory-movements', async (request, response) 
   if (request.query.storeId && !storeId) {
     throw new AppError('معرّف المتجر غير صالح', 400, 'INVALID_STORE_ID')
   }
+  if (storeId) await requireActiveStoreFilter(storeId)
   const result = await query(
     `
       SELECT movements.id::TEXT AS id,
@@ -330,14 +349,19 @@ productsRouter.get('/:productId/inventory-movements', async (request, response) 
       WHERE movements.product_id = $1::BIGINT
         AND ($2::BIGINT IS NULL OR movements.store_id = $2)
       ORDER BY movements.occurred_at DESC, movements.id DESC
-      LIMIT 100
+      LIMIT $3::INTEGER OFFSET $4::INTEGER
     `,
-    [productId, storeId],
+    [productId, storeId, pagination.fetchLimit, pagination.offset],
   )
-  response.json({ movements: result.rows })
+  const page = paginatedResult(result.rows, pagination)
+  response.json({ movements: page.rows, pagination: page.pagination })
 })
 
-productsRouter.post('/:productId/inventory-movements', async (request, response) => {
+productsRouter.post(
+  '/:productId/inventory-movements',
+  requireStore,
+  requireFinancialRequestId,
+  async (request, response) => {
   const productId = parseId(request.params.productId)
   const requestedStoreId = parseId(request.body?.storeId)
   if (!productId) {
@@ -345,6 +369,13 @@ productsRouter.post('/:productId/inventory-movements', async (request, response)
   }
   if (!requestedStoreId) {
     throw new AppError('يجب اختيار متجر صالح', 400, 'INVALID_STORE_ID')
+  }
+  if (requestedStoreId !== request.storeId) {
+    throw new AppError(
+      'يجب أن يطابق متجر حركة المخزون سياق المتجر المعتمد',
+      409,
+      'STORE_CONTEXT_MISMATCH',
+    )
   }
 
   const client = await pool.connect()
@@ -360,7 +391,7 @@ productsRouter.post('/:productId/inventory-movements', async (request, response)
           AND inventory.is_active = TRUE
         FOR UPDATE OF inventory
       `,
-      [productId, requestedStoreId],
+      [productId, request.storeId],
     )
     if (inventoryResult.rowCount === 0) {
       throw new AppError(
@@ -373,6 +404,15 @@ productsRouter.post('/:productId/inventory-movements', async (request, response)
     if (parsed.error) {
       throw new AppError(parsed.error, 400, 'INVALID_INVENTORY_MOVEMENT')
     }
+    const userId = inventoryMovementAuthorId(request)
+    await claimFinancialOperation(client, {
+      userId,
+      operation: financialOperation(request, 'inventory:adjust', {
+        storeId: request.storeId,
+        productId,
+        input: parsed.value,
+      }),
+    })
     if (parsed.value.movementType === 'customer_return'
         || parsed.value.movementType === 'supplier_return') {
       throw new AppError(
@@ -381,11 +421,11 @@ productsRouter.post('/:productId/inventory-movements', async (request, response)
         'RETURN_REQUIRES_ORIGINAL_DOCUMENT',
       )
     }
-    const costBalance = await readInventoryCostBalance(client, parsed.value.storeId, productId)
+    const costBalance = await readInventoryCostBalance(client, request.storeId, productId)
     const inventoryBalanceResult = await client.query(
       `SELECT quantity::TEXT AS quantity FROM store_inventory_balances
        WHERE store_id = $1::BIGINT AND product_id = $2::BIGINT`,
-      [parsed.value.storeId, productId],
+      [request.storeId, productId],
     )
     if (!new Decimal(costBalance.quantity).equals(inventoryBalanceResult.rows[0].quantity)) {
       throw new AppError('رصيد تكلفة الصنف غير متطابق مع رصيد المخزون', 409, 'INVENTORY_COST_OUT_OF_SYNC')
@@ -413,7 +453,7 @@ productsRouter.post('/:productId/inventory-movements', async (request, response)
         RETURNING id::TEXT AS id, quantity_delta::TEXT AS quantity_delta, occurred_at
       `,
       [
-        parsed.value.storeId,
+        request.storeId,
         productId,
         parsed.value.movementType,
         parsed.value.quantityDelta,
@@ -422,7 +462,7 @@ productsRouter.post('/:productId/inventory-movements', async (request, response)
       ],
     )
     await insertInventoryCostMovement(client, {
-      storeId: parsed.value.storeId,
+      storeId: request.storeId,
       productId,
       inventoryMovementId: result.rows[0].id,
       quantityDelta: parsed.value.quantityDelta,
@@ -437,8 +477,22 @@ productsRouter.post('/:productId/inventory-movements', async (request, response)
         FROM store_inventory_balances
         WHERE store_id = $1::BIGINT AND product_id = $2::BIGINT
       `,
-      [parsed.value.storeId, productId],
+      [request.storeId, productId],
     )
+    await writeAuditEntry(client, {
+      storeId: request.storeId,
+      userId: inventoryMovementAuthorId(request),
+      action: 'inventory_adjustment',
+      entityType: 'inventory_movement',
+      entityId: result.rows[0].id,
+      newValues: {
+        productId,
+        movementType: parsed.value.movementType,
+        quantityDelta: parsed.value.quantityDelta,
+        quantityAfter: balanceResult.rows[0].quantity,
+        reason: parsed.value.reason,
+      },
+    })
     await client.query('COMMIT')
     response.status(201).json({
       movement: result.rows[0],
@@ -451,7 +505,8 @@ productsRouter.post('/:productId/inventory-movements', async (request, response)
   } finally {
     client.release()
   }
-})
+  },
+)
 
 productsRouter.post('/:productId/barcode/generate', async (request, response) => {
   const productId = parseId(request.params.productId)
@@ -617,6 +672,16 @@ async function requireCategory(client, categoryId) {
   )
   if (result.rowCount === 0) {
     throw new AppError('التصنيف غير موجود', 400, 'INVALID_CATEGORY')
+  }
+}
+
+async function requireActiveStoreFilter(storeId) {
+  const result = await query(
+    'SELECT 1 FROM stores WHERE id = $1::BIGINT AND is_active = TRUE',
+    [storeId],
+  )
+  if (result.rowCount === 0) {
+    throw new AppError('المتجر غير موجود أو غير فعال', 404, 'STORE_NOT_FOUND')
   }
 }
 

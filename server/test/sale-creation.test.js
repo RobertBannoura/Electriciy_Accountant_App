@@ -112,6 +112,7 @@ function fakeDatabase({
         state.ledgerInserts.push(params)
         return { rowCount: 1, rows: [] }
       }
+      if (statement.startsWith('INSERT INTO audit_log')) return { rowCount: 1, rows: [] }
       throw new Error(`Unexpected query: ${statement}`)
     },
     release() {

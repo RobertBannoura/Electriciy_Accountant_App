@@ -14,6 +14,8 @@ export const INVENTORY_MOVEMENT_TYPES = Object.freeze([
   'reversal',
 ])
 
+const MAXIMUM_INVENTORY_SETTINGS = 100
+
 const POSITIVE_MOVEMENTS = new Set(['opening', 'purchase', 'customer_return'])
 const NEGATIVE_MOVEMENTS = new Set(['sale', 'supplier_return'])
 
@@ -40,6 +42,9 @@ export function isWholeDecimal(value) {
 export function parseInventorySettings(value, saleUnit, { opening = false } = {}) {
   if (!Array.isArray(value) || value.length === 0) {
     return { error: 'يجب اختيار متجر واحد على الأقل للصنف' }
+  }
+  if (value.length > MAXIMUM_INVENTORY_SETTINGS) {
+    return { error: 'قائمة متاجر الصنف تتجاوز الحد المسموح' }
   }
 
   const seenStoreIds = new Set()

@@ -12,7 +12,14 @@ const child = spawn(electronPath, ['.', ...process.argv.slice(2)], {
 })
 
 child.once('error', (error) => {
-  console.error('تعذر تشغيل Electron:', error)
+  console.error('تعذر تشغيل Electron:', {
+    errorCode: typeof error?.code === 'string' && /^[A-Z0-9_]{1,64}$/.test(error.code)
+      ? error.code
+      : 'ELECTRON_LAUNCH_FAILED',
+    errorName: typeof error?.name === 'string' && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(error.name)
+      ? error.name
+      : 'Error',
+  })
   process.exitCode = 1
 })
 

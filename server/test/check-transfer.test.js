@@ -13,7 +13,7 @@ test('check transfer input requires one supplier and a real transfer date', () =
   assert.match(parseCheckTransferInput({ supplierId: '7', transferDate: '2026-02-30' }).error, /تاريخ التحويل/)
 })
 
-function fakeDatabase({ status = 'pending', supplierId = null, failLedger = false } = {}) {
+function fakeDatabase({ status = 'pending', supplierId = null, failLedger = false, supplierDebt = '1000' } = {}) {
   const state = { commands: [], updateParams: null, ledgerParams: null, released: false }
   const client = {
     async query(sql, params = []) {
@@ -31,8 +31,11 @@ function fakeDatabase({ status = 'pending', supplierId = null, failLedger = fals
           }],
         }
       }
-      if (statement.includes('FROM suppliers') && statement.includes('FOR SHARE')) {
+      if (statement.includes('FROM suppliers') && statement.includes('FOR UPDATE')) {
         return { rowCount: 1, rows: [{ id: '7', name: 'شركة النور' }] }
+      }
+      if (statement.includes('FROM supplier_balances')) {
+        return { rowCount: 1, rows: [{ balance_ils: supplierDebt }] }
       }
       if (statement.startsWith('UPDATE checks')) {
         state.updateParams = params
@@ -51,6 +54,7 @@ function fakeDatabase({ status = 'pending', supplierId = null, failLedger = fals
         if (failLedger) throw new Error('ledger failed')
         return { rowCount: 1, rows: [] }
       }
+      if (statement.startsWith('INSERT INTO audit_log')) return { rowCount: 1, rows: [] }
       throw new Error(`Unexpected query: ${statement}`)
     },
     release() { state.released = true },
@@ -109,4 +113,18 @@ test('a supplier-ledger failure rolls the check transfer back', async () => {
   assert.ok(state.updateParams)
   assert.equal(state.commands.at(-1), 'ROLLBACK')
   assert.ok(!state.commands.includes('COMMIT'))
+})
+
+test('a transferred customer check cannot overpay the selected supplier', async () => {
+  const { databasePool, state } = fakeDatabase({ supplierDebt: '300' })
+  await assert.rejects(
+    transferCheckToSupplier({
+      databasePool, checkId: '31', supplierId: '7',
+      transferDate: '2026-09-09', storeId: '2', userId: null,
+    }),
+    (error) => error?.code === 'SUPPLIER_PAYMENT_EXCEEDS_DEBT',
+  )
+  assert.equal(state.updateParams, null)
+  assert.equal(state.ledgerParams, null)
+  assert.equal(state.commands.at(-1), 'ROLLBACK')
 })

@@ -1,13 +1,21 @@
 import { query } from '../db/pool.js'
 import { AppError } from '../errors/app-error.js'
 import { hashSessionToken, readBearerToken } from '../auth/session-token.js'
+import { logSecurityEvent, securityRequestContext } from '../security/security-log.js'
 
 export function createRequireAuth({ dbQuery = query } = {}) {
   return async function requireAuthentication(request, _response, next) {
-    const token = readBearerToken(request.get('authorization'))
+    const authorizationHeader = request.get('authorization')
+    const token = readBearerToken(authorizationHeader)
     const tokenHash = token ? hashSessionToken(token) : null
 
     if (!tokenHash) {
+      logSecurityEvent('warn', 'authentication_rejected', {
+        ...securityRequestContext(request),
+        outcome: 'failure',
+        reason: authorizationHeader === undefined ? 'missing_authorization' : 'malformed_authorization',
+        statusCode: 401,
+      })
       throw new AppError('يجب تسجيل الدخول أولاً', 401, 'AUTHENTICATION_REQUIRED')
     }
 
@@ -30,6 +38,12 @@ export function createRequireAuth({ dbQuery = query } = {}) {
     )
 
     if (result.rowCount === 0) {
+      logSecurityEvent('warn', 'session_rejected', {
+        ...securityRequestContext(request),
+        outcome: 'failure',
+        reason: 'revoked_expired_disabled_or_unknown',
+        statusCode: 401,
+      })
       throw new AppError(
         'انتهت جلسة الدخول. يرجى تسجيل الدخول مرة أخرى',
         401,

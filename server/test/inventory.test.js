@@ -118,9 +118,11 @@ test('supports correction and reversal deltas in either direction', () => {
   }
 })
 
-test('inventory movements retain the authenticated user for auditing', () => {
+test('inventory movements retain the authenticated database admin ID', () => {
   assert.equal(
-    inventoryMovementAuthorId({ auth: { user: { id: '42' } } }),
+    inventoryMovementAuthorId({
+      auth: { user: { id: '42' } },
+    }),
     '42',
   )
 })

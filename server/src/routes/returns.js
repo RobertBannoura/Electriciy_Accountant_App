@@ -5,15 +5,22 @@ import { requireStore } from '../middleware/require-store.js'
 import { createCustomerReturn } from '../returns/create-customer-return.js'
 import { createSupplierReturn } from '../returns/create-supplier-return.js'
 import { parseReturnInput } from '../returns/return-input.js'
+import { paginatedResult, parsePagination } from '../pagination/pagination.js'
+import {
+  financialOperation,
+  requireFinancialRequestId,
+} from '../financial/financial-operation.js'
 
 export const returnsRouter = Router()
 returnsRouter.use(requireStore)
 
 returnsRouter.get('/customer/sources', async (request, response) => {
+  const pagination = parsePagination(request.query)
   const result = await query(
     `WITH recent_sales AS (
        SELECT id FROM sales WHERE store_id = $1::BIGINT
-       ORDER BY business_date DESC, id DESC LIMIT 100
+       ORDER BY business_date DESC, id DESC
+       LIMIT $2::INTEGER OFFSET $3::INTEGER
      )
      SELECT sale.id::TEXT AS document_id, sale.document_number,
        sale.business_date::TEXT AS business_date, sale.total::TEXT AS document_total,
@@ -31,16 +38,20 @@ returnsRouter.get('/customer/sources', async (request, response) => {
      ) AS returned ON TRUE
      WHERE item.quantity > COALESCE(returned.quantity, 0::NUMERIC)
      ORDER BY sale.business_date DESC, sale.id DESC, item.id`,
-    [request.storeId],
+    [request.storeId, pagination.fetchLimit, pagination.offset],
   )
-  response.json({ documents: groupSourceDocuments(result.rows) })
+  const documents = groupSourceDocuments(result.rows)
+  const page = paginatedResult(documents, pagination)
+  response.json({ documents: page.rows, pagination: page.pagination })
 })
 
 returnsRouter.get('/supplier/sources', async (request, response) => {
+  const pagination = parsePagination(request.query)
   const result = await query(
     `WITH recent_purchases AS (
        SELECT id FROM purchases WHERE store_id = $1::BIGINT
-       ORDER BY business_date DESC, id DESC LIMIT 100
+       ORDER BY business_date DESC, id DESC
+       LIMIT $2::INTEGER OFFSET $3::INTEGER
      )
      SELECT purchase.id::TEXT AS document_id, purchase.document_number,
        purchase.business_date::TEXT AS business_date,
@@ -58,27 +69,37 @@ returnsRouter.get('/supplier/sources', async (request, response) => {
      ) AS returned ON TRUE
      WHERE item.quantity > COALESCE(returned.quantity, 0::NUMERIC)
      ORDER BY purchase.business_date DESC, purchase.id DESC, item.id`,
-    [request.storeId],
+    [request.storeId, pagination.fetchLimit, pagination.offset],
   )
-  response.json({ documents: groupSourceDocuments(result.rows) })
+  const documents = groupSourceDocuments(result.rows)
+  const page = paginatedResult(documents, pagination)
+  response.json({ documents: page.rows, pagination: page.pagination })
 })
 
-returnsRouter.post('/customer', async (request, response) => {
+returnsRouter.post('/customer', requireFinancialRequestId, async (request, response) => {
   const parsed = parseReturnInput(request.body)
   if (parsed.error) throw new AppError(parsed.error, 400, 'INVALID_CUSTOMER_RETURN')
   const returnDocument = await createCustomerReturn({
     input: parsed.value, storeId: request.storeId,
     userId: request.auth.user.id,
+    operation: financialOperation(request, 'return:customer', {
+      storeId: request.storeId,
+      input: parsed.value,
+    }),
   })
   response.status(201).json({ return: returnDocument })
 })
 
-returnsRouter.post('/supplier', async (request, response) => {
+returnsRouter.post('/supplier', requireFinancialRequestId, async (request, response) => {
   const parsed = parseReturnInput(request.body)
   if (parsed.error) throw new AppError(parsed.error, 400, 'INVALID_SUPPLIER_RETURN')
   const returnDocument = await createSupplierReturn({
     input: parsed.value, storeId: request.storeId,
     userId: request.auth.user.id,
+    operation: financialOperation(request, 'return:supplier', {
+      storeId: request.storeId,
+      input: parsed.value,
+    }),
   })
   response.status(201).json({ return: returnDocument })
 })

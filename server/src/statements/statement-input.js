@@ -15,5 +15,9 @@ export function parseStatementRange(query, today = currentBusinessDate()) {
   if (from > to) {
     return { error: 'بداية كشف الحساب يجب ألا تكون بعد نهايته' }
   }
+  const rangeDays = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000
+  if (rangeDays > 366) {
+    return { error: 'فترة كشف الحساب الواحدة يجب ألا تتجاوز سنة' }
+  }
   return { value: { from, to } }
 }

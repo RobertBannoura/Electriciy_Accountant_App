@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { once } from 'node:events'
 import test from 'node:test'
 import Decimal from 'decimal.js'
@@ -13,19 +14,18 @@ test(
     process.env.DATABASE_URL = databaseUrl
     process.env.NODE_ENV = 'test'
 
-    const [{ app }, { pool }] = await Promise.all([
+    const [{ app }, { pool }, { provisionAdmin }] = await Promise.all([
       import('../src/app.js'),
       import('../src/db/pool.js'),
+      import('../src/auth/provision-admin.js'),
     ])
-    const { provisionAdmin } = await import('../src/auth/provision-admin.js')
     const adminUsername = 'maintenance_integration_admin'
-    const adminPassword = 'maintenance-integration-password'
+    const adminPassword = randomBytes(32).toString('base64url')
     await provisionAdmin(pool, {
       username: adminUsername,
       password: adminPassword,
       displayName: 'Integration Test Admin',
     })
-
     const server = app.listen(0, '127.0.0.1')
     await once(server, 'listening')
     const address = server.address()
@@ -214,7 +214,7 @@ test(
         )
         assertMoney(cashNet.rows[0].amount, '0')
         assertMoney(bankNet.rows[0].amount, '0')
-        assert.equal((await pool.query("SELECT 1 FROM audit_log WHERE entity_type = 'maintenance' AND entity_id = $1 AND action = 'reverse'", [created.body.maintenance.id])).rowCount, 1)
+        assert.equal((await pool.query("SELECT 1 FROM audit_log WHERE entity_type = 'maintenance' AND entity_id = $1 AND action = 'maintenance_reversal'", [created.body.maintenance.id])).rowCount, 1)
       })
 
       await t.test('11. maintenance uses the explicitly selected store context', async () => {
@@ -272,6 +272,9 @@ async function apiRequest(baseUrl, path, options) {
   const headers = new Headers(options.body ? { 'Content-Type': 'application/json' } : undefined)
   headers.set('Authorization', `Bearer ${options.token}`)
   if (options.storeId) headers.set('X-Store-Id', options.storeId)
+  if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) {
+    headers.set('X-Request-Id', crypto.randomUUID())
+  }
   return jsonRequest(`${baseUrl}${path}`, {
     method: options.method,
     headers,

@@ -36,12 +36,27 @@ test('service worker caches only the application shell and never handles financi
     readFile(clientFile('vite.config.ts'), 'utf8'),
   ])
   assert.match(serviceWorker, /request\.method !== 'GET'/)
+  assert.match(serviceWorker, /url\.pathname === '\/api'/)
   assert.match(serviceWorker, /url\.pathname\.startsWith\('\/api\/'\)/)
+  assert.match(serviceWorker, /request\.headers\.has\('Authorization'\)/)
   assert.match(serviceWorker, /request\.mode === 'navigate'/)
+  assert.doesNotMatch(serviceWorker, /addEventListener\(['"]sync['"]/)
+  assert.doesNotMatch(serviceWorker, /indexedDB|SyncManager|Background Sync/i)
   assert.match(entrypoint, /import\.meta\.env\.PROD && !window\.desktop/)
   assert.match(entrypoint, /serviceWorker\.register\('\/sw\.js'\)/)
   assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/)
   assert.match(vite, /base: '\/'/)
+})
+
+test('offline financial requests are rejected in the client and never queued for replay', async () => {
+  const [api, serviceWorker] = await Promise.all([
+    readFile(clientFile('src/api.ts'), 'utf8'),
+    readFile(clientFile('public/sw.js'), 'utf8'),
+  ])
+  assert.match(api, /!navigator\.onLine \|\| \(isMutation\(init\) && !serverReachable\)/)
+  assert.match(api, /return Promise\.reject/)
+  assert.doesNotMatch(`${api}\n${serviceWorker}`, /indexedDB|sync\.register|addEventListener\(['"]sync['"]|Background Sync/i)
+  assert.doesNotMatch(serviceWorker, /cache\.put\([^\n]*(POST|request\.method)/i)
 })
 
 test('mobile bottom navigation has the required visual order and emphasized finance center', async () => {

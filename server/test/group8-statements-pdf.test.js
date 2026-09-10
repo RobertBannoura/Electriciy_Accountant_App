@@ -43,7 +43,7 @@ test('customer and supplier statement routes validate party, store, and project 
 })
 
 test('statement and invoice documents expose Arabic print and PDF output without rasterization', async () => {
-  const [statement, invoice, actions, output, pdfDocuments, styles, electron, preload, html] = await Promise.all([
+  const [statement, invoice, actions, output, pdfDocuments, styles, electron, platformSecurity, preload, html] = await Promise.all([
     readFile(new URL('../../client/src/components/AccountStatementDialog.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../../client/src/components/InvoiceOutput.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../../client/src/components/DocumentOutputActions.tsx', import.meta.url), 'utf8'),
@@ -51,6 +51,7 @@ test('statement and invoice documents expose Arabic print and PDF output without
     readFile(new URL('../../client/src/pdf-documents.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../../client/src/styles.css', import.meta.url), 'utf8'),
     readFile(new URL('../../electron/main.cjs', import.meta.url), 'utf8'),
+    readFile(new URL('../../electron/platform-security.cjs', import.meta.url), 'utf8'),
     readFile(new URL('../../electron/preload.cjs', import.meta.url), 'utf8'),
     readFile(new URL('../../client/index.html', import.meta.url), 'utf8'),
   ])
@@ -73,7 +74,7 @@ test('statement and invoice documents expose Arabic print and PDF output without
   assert.match(electron, /generateTaggedPDF: true/)
   assert.match(electron, /preferCSSPageSize: true/)
   assert.match(electron, /app:save-pdf-data/)
-  assert.match(electron, /%PDF-/)
+  assert.match(platformSecurity, /%PDF-/)
   assert.match(preload, /savePdfData/)
   assert.match(html, /script-src 'self' 'wasm-unsafe-eval'/)
   assert.match(styles, /NotoSansArabic-Variable\.ttf/)

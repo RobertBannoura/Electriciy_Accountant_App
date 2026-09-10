@@ -9,6 +9,9 @@ export default defineConfig({
   // The privileged app://renderer origin used by Electron also resolves root paths.
   base: '/',
   plugins: [react(), tailwindcss()],
+  build: {
+    sourcemap: false,
+  },
   server: {
     port: 5173,
     strictPort: true,

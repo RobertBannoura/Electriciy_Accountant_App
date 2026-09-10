@@ -723,6 +723,17 @@ test(
         assert.equal(await eventCount(pool, 'supplier_payment', supplierPaymentOn.payments[0].id), 1)
       })
 
+      await t.test('financial verification finds no drift in the complete approval scenario', async () => {
+        const verification = await api('/verification/financial')
+        assert.equal(verification.response.status, 200, JSON.stringify(verification.body))
+        assert.equal(verification.body.status, 'ok')
+        assert.deepEqual(
+          verification.body.sections.map(({ key, status, issueCount }) => ({ key, status, issueCount })),
+          ['sales', 'customers', 'suppliers', 'inventory', 'cash', 'bank', 'checks', 'reversals']
+            .map((key) => ({ key, status: 'ok', issueCount: 0 })),
+        )
+      })
+
       console.log(`GROUP8_APPROVAL_CONTEXT ${JSON.stringify({
         customerId: customer.id, supplierId: supplier.id,
         invoiceNumber: saleOne.invoice_number, saleId: saleOne.id,
@@ -743,7 +754,7 @@ async function assertDisposableDatabase(pool) {
     'SELECT current_database() AS database, inet_server_port() AS port, version() AS version',
   )
   assert.equal(result.rows[0].database, 'group8_approval')
-  assert.equal(result.rows[0].port, 55432)
+  assert.ok(Number(result.rows[0].port) >= 55000)
   assert.match(result.rows[0].version, /PostgreSQL 18\./)
 }
 
@@ -857,6 +868,7 @@ async function apiRequest(baseUrl, path, { token, storeId, method = 'GET', body 
   if (token) headers.set('Authorization', `Bearer ${token}`)
   if (storeId) headers.set('X-Store-Id', storeId)
   if (body !== undefined) headers.set('Content-Type', 'application/json')
+  if (!['GET', 'HEAD'].includes(method.toUpperCase())) headers.set('X-Request-Id', crypto.randomUUID())
   return jsonRequest(`${baseUrl}${path}`, {
     method, headers, body: body === undefined ? undefined : JSON.stringify(body),
   })

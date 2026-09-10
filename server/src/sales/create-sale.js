@@ -1,6 +1,8 @@
 import Decimal from 'decimal.js'
+import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { pool } from '../db/pool.js'
 import { AppError } from '../errors/app-error.js'
+import { claimFinancialOperation } from '../financial/financial-operation.js'
 import { calculateAverageCostMovement } from '../inventory/inventory-costing.js'
 import {
   insertInventoryCostMovement,
@@ -18,10 +20,11 @@ const InventoryDecimal = Decimal.clone({
   rounding: Decimal.ROUND_HALF_UP,
 })
 
-export async function createSale({ databasePool = pool, input, storeId, userId }) {
+export async function createSale({ databasePool = pool, input, storeId, userId, operation }) {
   const client = await databasePool.connect()
   try {
     await client.query('BEGIN')
+    await claimFinancialOperation(client, { userId, operation })
     const storeResult = await client.query(
       'SELECT id FROM stores WHERE id = $1::BIGINT AND is_active = TRUE FOR SHARE',
       [storeId],
@@ -304,6 +307,31 @@ export async function createSale({ databasePool = pool, input, storeId, userId }
       }
     }
 
+    await writeAuditEntry(client, {
+      storeId,
+      userId,
+      action: 'sale',
+      entityType: 'sale',
+      entityId: sale.id,
+      newValues: {
+        documentNumber: input.invoiceNumber,
+        customerId: input.customerId,
+        totalIls: calculated.value.total,
+        paidTotalIls: paymentBreakdown.value.paidTotal,
+        remainingDueIls: paymentBreakdown.value.remainingDue,
+        itemCount: savedItems.length,
+      },
+    })
+    for (const payment of savedPayments) {
+      await writeAuditEntry(client, {
+        storeId,
+        userId,
+        action: 'payment',
+        entityType: payment.method === 'check' ? 'check' : 'payment',
+        entityId: payment.id,
+        newValues: { saleId: sale.id, method: payment.method, amountIls: payment.converted_ils_amount },
+      })
+    }
     await client.query('COMMIT')
     return { ...sale, items: savedItems, payments: savedPayments }
   } catch (error) {

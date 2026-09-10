@@ -372,14 +372,18 @@ function MovementEditor({ onClose, onSaved, product }: { onClose: () => void; on
   const [quantity, setQuantity] = useState('')
   const [reason, setReason] = useState('')
   const [movements, setMovements] = useState<Movement[]>([])
+  const [movementPage, setMovementPage] = useState(1)
+  const [hasMoreMovements, setHasMoreMovements] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const loadMovements = useCallback(async () => {
-    const response = await apiFetch(`/products/${product.id}/inventory-movements`)
+  const loadMovements = useCallback(async (page = 1, append = false) => {
+    const response = await apiFetch(`/products/${product.id}/inventory-movements?page=${page}`)
     if (!response.ok) throw new Error(await errorMessage(response))
-    const payload = (await response.json()) as { movements: Movement[] }
-    setMovements(payload.movements)
+    const payload = (await response.json()) as { movements: Movement[]; pagination: { hasMore: boolean } }
+    setMovements((current) => append ? [...current, ...payload.movements] : payload.movements)
+    setMovementPage(page)
+    setHasMoreMovements(payload.pagination.hasMore)
   }, [product.id])
   useEffect(() => { void loadMovements().catch((caught: unknown) => setError(caught instanceof Error ? caught.message : 'تعذر تحميل الحركات')) }, [loadMovements])
 
@@ -390,7 +394,7 @@ function MovementEditor({ onClose, onSaved, product }: { onClose: () => void; on
     setSaving(true)
     setError(null)
     try {
-      const response = await apiFetch(`/products/${product.id}/inventory-movements`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ storeId, movementType, quantityDelta, reason }) })
+      const response = await apiFetch(`/products/${product.id}/inventory-movements`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Store-Id': storeId }, body: JSON.stringify({ storeId, movementType, quantityDelta, reason }) })
       if (!response.ok) throw new Error(await errorMessage(response))
       onSaved()
     } catch (caught) {
@@ -414,6 +418,7 @@ function MovementEditor({ onClose, onSaved, product }: { onClose: () => void; on
       <div className="mt-3 max-h-72 overflow-y-auto rounded-xl border border-slate-200">
         {movements.length === 0 ? <p className="p-5 text-center text-slate-600">لا توجد حركات مسجلة.</p> : movements.map((movement) => <div className="grid gap-1 border-b border-slate-200 p-4 last:border-0 sm:grid-cols-[1fr_auto]" key={movement.id}><div><p className="font-black">{movementLabels[movement.movement_type]} · {movement.store_name}</p><p className="text-sm text-slate-500">{formatMovementDate(movement.occurred_at)}{movement.reason ? ` · ${movement.reason}` : ''}</p></div><p className={`text-lg font-black ${movement.quantity_delta.startsWith('-') ? 'text-rose-700' : 'text-emerald-700'}`} dir="ltr">{movement.quantity_delta}</p></div>)}
       </div>
+      {hasMoreMovements && <button className="mt-3 min-h-11 rounded-xl border border-slate-300 px-5 font-black" onClick={() => void loadMovements(movementPage + 1, true)} type="button">تحميل حركات أقدم</button>}
     </Modal>
   )
 }

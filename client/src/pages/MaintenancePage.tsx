@@ -61,6 +61,8 @@ export function MaintenancePage({
   const [searchParams] = useSearchParams()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [records, setRecords] = useState<MaintenanceRecord[]>([])
+  const [recordPage, setRecordPage] = useState(1)
+  const [hasMoreRecords, setHasMoreRecords] = useState(false)
   const [showForm, setShowForm] = useState(true)
   const [customerId, setCustomerId] = useState(searchParams.get('customerId') ?? '')
   const [itemDescription, setItemDescription] = useState('')
@@ -86,7 +88,7 @@ export function MaintenancePage({
     return apiFetch(path, { ...init, headers })
   }, [configuredStoreId])
 
-  const loadRecords = useCallback(async (nextSearch: string, nextDate: string) => {
+  const loadRecords = useCallback(async (nextSearch: string, nextDate: string, page = 1) => {
     if (needsStore) {
       setLoading(false)
       return
@@ -95,11 +97,14 @@ export function MaintenancePage({
     setError(null)
     try {
       const params = new URLSearchParams()
+      params.set('page', String(page))
       if (nextSearch.trim()) params.set('search', nextSearch.trim())
       if (nextDate) params.set('date', nextDate)
       const response = await scopedFetch(`/maintenance${params.size ? `?${params}` : ''}`)
       if (!response.ok) throw new Error(await errorMessage(response))
-      const payload = (await response.json()) as { maintenance: MaintenanceRecord[] }
+      const payload = (await response.json()) as { maintenance: MaintenanceRecord[]; pagination: { hasMore: boolean } }
+      setRecordPage(page)
+      setHasMoreRecords(payload.pagination.hasMore)
       setRecords(payload.maintenance.map((record) => ({
         ...record,
         amount_ils: formatDecimal(record.amount_ils),
@@ -259,6 +264,7 @@ export function MaintenancePage({
         <h2 className="text-2xl font-black" id="recent-maintenance-title">أحدث أعمال الصيانة</h2>
         <form className="mt-4 grid gap-3 rounded-2xl bg-white p-4 shadow-sm sm:grid-cols-[1fr_auto_auto]" onSubmit={(event) => { event.preventDefault(); void loadRecords(search, filterDate) }}><label><span className="sr-only">ابحث باسم العميل أو الجهاز</span><input className={inputClass} maxLength={200} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث باسم العميل أو الجهاز" value={search} /></label><label><span className="sr-only">التاريخ</span><input className={inputClass} onChange={(event) => setFilterDate(event.target.value)} type="date" value={filterDate} /></label><button className="min-h-14 rounded-xl bg-slate-900 px-7 text-lg font-black text-white" type="submit">بحث</button></form>
         {loading ? <p className="mt-4 rounded-2xl bg-white p-8 text-center text-lg font-black text-slate-600">جارٍ التحميل…</p> : records.length === 0 ? <p className="mt-4 rounded-2xl bg-white p-8 text-center text-lg font-black text-slate-600">لا توجد سجلات صيانة مطابقة.</p> : <div className="mt-4 space-y-3">{records.map((record) => <article className={`rounded-2xl border bg-white p-5 shadow-sm ${record.reversed_at ? 'border-slate-300 opacity-70' : 'border-slate-200'}`} key={record.id}><div className="flex flex-wrap items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-xl font-black">{record.item_description}</h3>{record.reversed_at && <span className="rounded-full bg-rose-100 px-3 py-1 text-sm font-black text-rose-800">معكوسة</span>}</div><p className="mt-2 font-bold text-slate-600">{record.business_date} · {record.customer_name ?? 'بدون عميل'}</p>{record.maintenance_details && <p className="mt-2 text-slate-600">{record.maintenance_details}</p>}<p className="mt-2 text-sm font-bold text-slate-500">مدفوع ₪{record.paid_total_ils} · متبقٍ ₪{record.remaining_due_ils}</p>{record.reversal_reason && <p className="mt-2 font-bold text-rose-700">سبب العكس: {record.reversal_reason}</p>}</div><div className="text-left"><p className="text-2xl font-black" dir="ltr">₪{record.amount_ils}</p>{!record.reversed_at && <button className="mt-3 min-h-11 rounded-xl px-4 font-black text-rose-700 hover:bg-rose-50" onClick={() => { setReversingId(record.id); setReversalReason('') }} type="button">عكس السجل</button>}</div></div>{reversingId === record.id && <div className="mt-4 flex flex-wrap gap-3 rounded-xl bg-rose-50 p-4"><input aria-label="سبب عكس الصيانة" className={`${inputClass} flex-1`} maxLength={1000} onChange={(event) => setReversalReason(event.target.value)} placeholder="اكتب سبب العكس بوضوح" value={reversalReason} /><button className="min-h-14 rounded-xl bg-rose-700 px-6 font-black text-white disabled:opacity-50" disabled={!reversalReason.trim() || saving} onClick={() => void submitReversal(record)} type="button">تأكيد العكس</button><button className="min-h-14 rounded-xl px-5 font-black" onClick={() => setReversingId(null)} type="button">إلغاء</button></div>}</article>)}</div>}
+        <nav aria-label="صفحات سجل الصيانة" className="mt-4 flex justify-center gap-3"><button className="min-h-11 rounded-xl border px-5 font-black disabled:opacity-40" disabled={loading || recordPage === 1} onClick={() => void loadRecords(search, filterDate, recordPage - 1)} type="button">السابق</button><span className="self-center font-black">صفحة {recordPage}</span><button className="min-h-11 rounded-xl border px-5 font-black disabled:opacity-40" disabled={loading || !hasMoreRecords} onClick={() => void loadRecords(search, filterDate, recordPage + 1)} type="button">التالي</button></nav>
       </section>
     </section>
   )

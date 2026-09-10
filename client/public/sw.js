@@ -1,4 +1,4 @@
-const CACHE_NAME = 'electricity-accountant-shell-v2'
+const CACHE_NAME = 'electricity-accountant-shell-v3'
 const APP_ROOT = new URL('./', self.registration.scope).href
 const APP_SHELL = [
   APP_ROOT,
@@ -56,9 +56,12 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
+  const apiRequest = url.pathname === '/api' || url.pathname.startsWith('/api/')
 
   // API calls, and especially financial writes, always go directly to the server.
-  if (request.method !== 'GET' || url.pathname.startsWith('/api/')) return
+  // Authorization-bearing reads are also excluded even if an API is later
+  // mounted under a different same-origin prefix.
+  if (request.method !== 'GET' || apiRequest || request.headers.has('Authorization')) return
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -96,15 +99,26 @@ self.addEventListener('push', (event) => {
   } catch {
     payload = { body: event.data?.text() ?? '' }
   }
-  const targetUrl = new URL(payload.url ?? './', self.registration.scope)
-  const safeUrl = targetUrl.origin === self.location.origin ? targetUrl.href : APP_ROOT
-  event.waitUntil(self.registration.showNotification(payload.title ?? 'تنبيه إداري', {
-    body: payload.body ?? '',
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) payload = {}
+  let safeUrl = APP_ROOT
+  try {
+    const targetUrl = new URL(typeof payload.url === 'string' ? payload.url : './', self.registration.scope)
+    if (targetUrl.origin === self.location.origin) safeUrl = targetUrl.href
+  } catch {
+    safeUrl = APP_ROOT
+  }
+  const title = typeof payload.title === 'string' ? payload.title.slice(0, 100) : 'تنبيه إداري'
+  const body = typeof payload.body === 'string' ? payload.body.slice(0, 300) : ''
+  const tag = typeof payload.tag === 'string' && /^[A-Za-z0-9:_-]{1,100}$/.test(payload.tag)
+    ? payload.tag
+    : undefined
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
     icon: new URL('./icons/app-icon-192.png', self.registration.scope).href,
     badge: new URL('./icons/app-icon-192.png', self.registration.scope).href,
     dir: 'rtl',
     lang: 'ar',
-    tag: payload.tag,
+    tag,
     data: { url: safeUrl },
   }))
 })

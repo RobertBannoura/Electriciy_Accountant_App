@@ -1,5 +1,6 @@
 import pg from 'pg'
 import { env } from '../config/env.js'
+import { logSecurityEvent, safeErrorDetails } from '../security/security-log.js'
 
 const { Pool } = pg
 
@@ -15,7 +16,10 @@ export const pool = new Pool({
 })
 
 pool.on('error', (error) => {
-  console.error('خطأ غير متوقع في اتصال PostgreSQL:', error)
+  logSecurityEvent('error', 'postgres_pool_error', {
+    ...safeErrorDetails(error),
+    outcome: 'failure',
+  })
 })
 
 export function query(text, params) {

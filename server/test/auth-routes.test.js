@@ -1,12 +1,39 @@
 import assert from 'node:assert/strict'
+import { randomBytes, scrypt as nodeScrypt } from 'node:crypto'
 import { once } from 'node:events'
 import test from 'node:test'
+import { promisify } from 'node:util'
 import express from 'express'
 import { hashPassword } from '../src/auth/password.js'
 import { createSessionToken } from '../src/auth/session-token.js'
 import { errorHandler, notFoundHandler } from '../src/middleware/error-handler.js'
 import { createRequireAuth } from '../src/middleware/require-auth.js'
-import { createAuthRouter } from '../src/routes/auth.js'
+import {
+  createAuthRouter,
+  LOGIN_ATTEMPT_LIMIT,
+  LOGIN_RATE_LIMIT_WINDOW_MS,
+} from '../src/routes/auth.js'
+
+const scrypt = promisify(nodeScrypt)
+
+async function createLegacyPasswordHash(password) {
+  const salt = randomBytes(16)
+  const key = await scrypt(password, salt, 64, {
+    N: 16_384,
+    r: 8,
+    p: 1,
+    maxmem: 64 * 1024 * 1024,
+  })
+
+  return [
+    'scrypt',
+    '16384',
+    '8',
+    '1',
+    salt.toString('base64url'),
+    key.toString('base64url'),
+  ].join('$')
+}
 
 async function withServer(configure, run) {
   const app = express()
@@ -122,7 +149,33 @@ test('unknown username and wrong password return the same public error', async (
   )
 })
 
-test('expired or revoked sessions are rejected by the authentication middleware', async () => {
+test('revoked sessions are rejected without exposing the raw token to PostgreSQL', async () => {
+  const token = createSessionToken()
+  let authenticationQuery
+  const authenticate = createRequireAuth({
+    dbQuery: async (text, params) => {
+      authenticationQuery = { text, params }
+      return { rowCount: 0, rows: [] }
+    },
+  })
+
+  await withServer(
+    (app) => app.get('/protected', authenticate, (_request, response) => response.json({ ok: true })),
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/protected`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const body = await response.json()
+
+      assert.equal(response.status, 401)
+      assert.equal(body.error.code, 'INVALID_SESSION')
+      assert.equal(authenticationQuery.params[0].length, 64)
+      assert.notEqual(authenticationQuery.params[0], token)
+    },
+  )
+})
+
+test('expired and disabled-account sessions are rejected by server-side predicates', async () => {
   const token = createSessionToken()
   let authenticationQuery
   const authenticate = createRequireAuth({
@@ -143,46 +196,75 @@ test('expired or revoked sessions are rejected by the authentication middleware'
       assert.equal(response.status, 401)
       assert.equal(body.error.code, 'INVALID_SESSION')
       assert.match(authenticationQuery.text, /sessions\.expires_at > NOW\(\)/)
-      assert.equal(authenticationQuery.params[0].length, 64)
+      assert.match(authenticationQuery.text, /users\.is_active = TRUE/)
+      assert.match(authenticationQuery.text, /INNER JOIN users/)
     },
   )
 })
 
-test('logout deletes the authenticated database session', async () => {
-  const calls = []
-  const authenticate = (request, _response, next) => {
-    request.auth = { sessionId: '44', user: { role: 'admin' } }
-    next()
+test('logout invalidates the session for subsequent authenticated requests', async () => {
+  const token = createSessionToken()
+  let sessionActive = true
+  const dbQuery = async (text) => {
+    if (text.includes('DELETE FROM auth_sessions')) {
+      sessionActive = false
+      return { rowCount: 1, rows: [] }
+    }
+
+    if (text.includes('FROM auth_sessions')) {
+      return sessionActive
+        ? {
+            rowCount: 1,
+            rows: [{
+              session_id: '44',
+              user_id: '7',
+              username: 'admin',
+              display_name: 'المدير',
+              role: 'admin',
+            }],
+          }
+        : { rowCount: 0, rows: [] }
+    }
+
+    return { rowCount: 1, rows: [] }
   }
+  const authenticate = createRequireAuth({ dbQuery })
 
   await withServer(
     (app) => app.use('/api/auth', createAuthRouter({
       authenticate,
-      dbQuery: async (text, params) => {
-        calls.push({ text, params })
-        return { rowCount: 1, rows: [] }
-      },
+      dbQuery,
     })),
     async (baseUrl) => {
-      const response = await fetch(`${baseUrl}/api/auth/logout`, { method: 'POST' })
+      const headers = { Authorization: `Bearer ${token}` }
+      const beforeLogout = await fetch(`${baseUrl}/api/auth/me`, { headers })
+      const logout = await fetch(`${baseUrl}/api/auth/logout`, { method: 'POST', headers })
+      const afterLogout = await fetch(`${baseUrl}/api/auth/me`, { headers })
+      const afterLogoutBody = await afterLogout.json()
 
-      assert.equal(response.status, 204)
-      assert.equal(calls.length, 1)
-      assert.match(calls[0].text, /DELETE FROM auth_sessions/)
-      assert.deepEqual(calls[0].params, ['44'])
+      assert.equal(beforeLogout.status, 200)
+      assert.equal(logout.status, 204)
+      assert.equal(afterLogout.status, 401)
+      assert.equal(afterLogoutBody.error.code, 'INVALID_SESSION')
     },
   )
 })
 
-test('login rate limiting blocks the eleventh failed attempt', async () => {
+test('login protection uses the required temporary 45-attempt window', () => {
+  assert.equal(LOGIN_ATTEMPT_LIMIT, 45)
+  assert.equal(LOGIN_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000)
+})
+
+test('login rate limiting applies per IP across different account identifiers', async () => {
+  const testLimit = 3
   await withServer(
-    (app) => app.use('/api/auth', createAuthRouter()),
+    (app) => app.use('/api/auth', createAuthRouter({ loginAttemptLimit: testLimit })),
     async (baseUrl) => {
-      for (let attempt = 1; attempt <= 10; attempt += 1) {
+      for (let attempt = 1; attempt <= testLimit; attempt += 1) {
         const response = await fetch(`${baseUrl}/api/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: '', password: '' }),
+          body: JSON.stringify({ username: `unknown-${attempt}`, password: '' }),
         })
         assert.equal(response.status, 401, `attempt ${attempt}`)
       }
@@ -190,7 +272,7 @@ test('login rate limiting blocks the eleventh failed attempt', async () => {
       const blocked = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: '', password: '' }),
+        body: JSON.stringify({ username: 'another-unknown', password: '' }),
       })
       const body = await blocked.json()
 
@@ -198,6 +280,224 @@ test('login rate limiting blocks the eleventh failed attempt', async () => {
       assert.equal(body.error.code, 'TOO_MANY_LOGIN_ATTEMPTS')
     },
   )
+})
+
+test('login rate limiting applies per normalized account across different IPs', async () => {
+  const testLimit = 3
+  await withServer(
+    (app) => {
+      app.set('trust proxy', (address) => (
+        address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
+      ))
+      app.use('/api/auth', createAuthRouter({ loginAttemptLimit: testLimit }))
+    },
+    async (baseUrl) => {
+      for (let attempt = 1; attempt <= testLimit; attempt += 1) {
+        const response = await fetch(`${baseUrl}/api/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Forwarded-For': `203.0.113.${attempt}`,
+          },
+          body: JSON.stringify({ username: attempt % 2 ? ' ADMIN ' : 'admin', password: '' }),
+        })
+        assert.equal(response.status, 401, `attempt ${attempt}`)
+      }
+
+      const blocked = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-For': '203.0.113.99',
+        },
+        body: JSON.stringify({ username: 'Admin', password: '' }),
+      })
+      const body = await blocked.json()
+
+      assert.equal(blocked.status, 429)
+      assert.equal(body.error.code, 'TOO_MANY_LOGIN_ATTEMPTS')
+    },
+  )
+})
+
+test('successful authentication resets temporary failed-attempt counters', async () => {
+  const testLimit = 3
+  const password = 'correct-admin-password'
+  const passwordHash = await hashPassword(password)
+  const dbQuery = async (text) => {
+    if (text.includes('FROM users')) {
+      return {
+        rowCount: 1,
+        rows: [{
+          id: '7',
+          username: 'admin',
+          password_hash: passwordHash,
+          display_name: 'المدير',
+          role: 'admin',
+        }],
+      }
+    }
+    if (text.includes('INSERT INTO auth_sessions')) {
+      return { rowCount: 1, rows: [{ expires_at: '2030-01-01T00:00:00.000Z' }] }
+    }
+    return { rowCount: 0, rows: [] }
+  }
+
+  await withServer(
+    (app) => app.use('/api/auth', createAuthRouter({ dbQuery, loginAttemptLimit: testLimit })),
+    async (baseUrl) => {
+      const attempt = (attemptedPassword) => fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'admin', password: attemptedPassword }),
+      })
+
+      assert.equal((await attempt('')).status, 401)
+      assert.equal((await attempt('')).status, 401)
+      assert.equal((await attempt(password)).status, 201)
+
+      for (let count = 1; count <= testLimit; count += 1) {
+        assert.equal((await attempt('')).status, 401, `post-success failure ${count}`)
+      }
+      assert.equal((await attempt('')).status, 429)
+    },
+  )
+})
+
+test('successful legacy-password login upgrades the KDF without storing plaintext', async () => {
+  const password = 'existing-admin-password'
+  const legacyHash = await createLegacyPasswordHash(password)
+  const calls = []
+  const dbQuery = async (text, params = []) => {
+    calls.push({ text, params })
+
+    if (text.includes('FROM users')) {
+      return {
+        rowCount: 1,
+        rows: [{
+          id: '7',
+          username: 'admin',
+          password_hash: legacyHash,
+          display_name: 'المدير',
+          role: 'admin',
+        }],
+      }
+    }
+
+    if (text.includes('INSERT INTO auth_sessions')) {
+      return { rowCount: 1, rows: [{ expires_at: '2030-01-01T00:00:00.000Z' }] }
+    }
+
+    return { rowCount: 1, rows: [] }
+  }
+
+  await withServer(
+    (app) => app.use('/api/auth', createAuthRouter({ dbQuery })),
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'admin', password }),
+      })
+
+      assert.equal(response.status, 201)
+      const upgrade = calls.find((call) => call.text.includes('UPDATE users SET password_hash'))
+      assert.ok(upgrade)
+      assert.match(upgrade.params[0], /^scrypt\$16384\$8\$5\$/)
+      assert.equal(upgrade.params.includes(password), false)
+    },
+  )
+})
+
+test('malformed authorization headers are rejected before a session lookup', async () => {
+  let queryCount = 0
+  const authenticate = createRequireAuth({
+    dbQuery: async () => {
+      queryCount += 1
+      return { rowCount: 0, rows: [] }
+    },
+  })
+
+  await withServer(
+    (app) => app.get('/protected', authenticate, (_request, response) => response.json({ ok: true })),
+    async (baseUrl) => {
+      for (const authorization of [
+        'Basic YWRtaW46cGFzc3dvcmQ=',
+        'Bearer short',
+        `bearer ${createSessionToken()}`,
+        `Bearer ${createSessionToken()} trailing`,
+      ]) {
+        const response = await fetch(`${baseUrl}/protected`, {
+          headers: { Authorization: authorization },
+        })
+        const body = await response.json()
+
+        assert.equal(response.status, 401)
+        assert.equal(body.error.code, 'AUTHENTICATION_REQUIRED')
+      }
+
+      assert.equal(queryCount, 0)
+    },
+  )
+})
+
+test('authentication does not write passwords or raw session tokens to logs', async () => {
+  const password = 'log-safety-password'
+  const passwordHash = await hashPassword(password)
+  const logEntries = []
+  const originalMethods = {
+    error: console.error,
+    log: console.log,
+    warn: console.warn,
+  }
+
+  console.error = (...values) => logEntries.push(values)
+  console.log = (...values) => logEntries.push(values)
+  console.warn = (...values) => logEntries.push(values)
+
+  let token
+  try {
+    await withServer(
+      (app) => app.use('/api/auth', createAuthRouter({
+        dbQuery: async (text) => {
+          if (text.includes('FROM users')) {
+            return {
+              rowCount: 1,
+              rows: [{
+                id: '7',
+                username: 'admin',
+                password_hash: passwordHash,
+                display_name: 'المدير',
+                role: 'admin',
+              }],
+            }
+          }
+          if (text.includes('INSERT INTO auth_sessions')) {
+            return { rowCount: 1, rows: [{ expires_at: '2030-01-01T00:00:00.000Z' }] }
+          }
+          return { rowCount: 0, rows: [] }
+        },
+      })),
+      async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: 'admin', password }),
+        })
+        const body = await response.json()
+        token = body.token
+        assert.equal(response.status, 201)
+      },
+    )
+  } finally {
+    console.error = originalMethods.error
+    console.log = originalMethods.log
+    console.warn = originalMethods.warn
+  }
+
+  const serializedLogs = JSON.stringify(logEntries)
+  assert.equal(serializedLogs.includes(password), false)
+  assert.equal(serializedLogs.includes(token), false)
 })
 
 test('the authentication router exposes no public registration endpoint', async () => {

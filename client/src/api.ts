@@ -5,6 +5,11 @@ const sessionTokenKey = 'electricity-accountant-session'
 const cachedUserKey = 'electricity-accountant-user'
 export const connectionStatusEvent = 'app:connection-status'
 let serverReachable = typeof navigator === 'undefined' ? true : navigator.onLine
+const financialRequestStoragePrefix = 'electricity-accountant-financial-request:'
+const financialRequestRetryWindowMs = 5 * 60 * 1000
+const financialRequestCompletedWindowMs = 3 * 1000
+
+type StoredFinancialRequest = { requestId: string; expiresAt: number }
 
 function announceConnection(available: boolean) {
   serverReachable = available
@@ -14,6 +19,61 @@ function announceConnection(available: boolean) {
 function isMutation(init?: RequestInit) {
   const method = (init?.method ?? 'GET').toUpperCase()
   return !['GET', 'HEAD', 'OPTIONS'].includes(method)
+}
+
+function shortHash(value: string) {
+  let first = 2166136261
+  let second = 2246822519
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    first = Math.imul(first ^ code, 16777619)
+    second = Math.imul(second ^ code, 3266489917)
+  }
+  return `${(first >>> 0).toString(36)}${(second >>> 0).toString(36)}`
+}
+
+function financialRequestIdentity(path: string, init: RequestInit | undefined, headers: Headers) {
+  const method = (init?.method ?? 'GET').toUpperCase()
+  const signature = JSON.stringify({
+    method,
+    path,
+    storeId: headers.get('X-Store-Id'),
+    body: typeof init?.body === 'string' ? init.body : null,
+  })
+  const signatureHash = shortHash(signature)
+  const storageKey = `${financialRequestStoragePrefix}${signatureHash}`
+  const now = Date.now()
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) ?? 'null') as StoredFinancialRequest | null
+    if (saved && saved.expiresAt > now) return { ...saved, storageKey }
+  } catch {
+    // Storage can be unavailable in hardened browser contexts. The request
+    // still receives a strong unique id; only cross-tab reuse is unavailable.
+  }
+
+  // The time bucket closes the tiny cross-tab race where both tabs read before
+  // either writes. A different payload with a hash collision is rejected by
+  // the server-side SHA-256 request hash and never reuses financial effects.
+  const requestId = `fin-${signatureHash}-${Math.floor(now / 5000).toString(36)}`
+  const saved = { requestId, expiresAt: now + financialRequestRetryWindowMs }
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(saved))
+  } catch {
+    // See storage note above.
+  }
+  return { ...saved, storageKey }
+}
+
+function markFinancialRequestCompleted(storageKey: string, requestId: string) {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify({
+      requestId,
+      expiresAt: Date.now() + financialRequestCompletedWindowMs,
+    }))
+  } catch {
+    // Nothing to clean up when storage is unavailable.
+  }
 }
 
 export type AuthUser = {
@@ -80,12 +140,19 @@ export function publicApiFetch(path: string, init?: RequestInit) {
 export function apiFetch(path: string, init?: RequestInit) {
   const headers = new Headers(init?.headers)
   const token = getAuthToken()
+  const mutationIdentity = isMutation(init) && !headers.has('X-Request-Id')
+    ? financialRequestIdentity(path, init, headers)
+    : null
 
   if (token) {
     headers.set('Authorization', `Bearer ${token}`)
   }
+  if (mutationIdentity) headers.set('X-Request-Id', mutationIdentity.requestId)
 
   return publicApiFetch(path, { ...init, headers }).then((response) => {
+    if (mutationIdentity) {
+      markFinancialRequestCompleted(mutationIdentity.storageKey, mutationIdentity.requestId)
+    }
     if (response.status === 401) {
       clearAuthToken()
       window.dispatchEvent(new Event('auth:expired'))

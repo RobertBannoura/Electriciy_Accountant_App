@@ -7,12 +7,14 @@
     "dev": "wait-on http://localhost:5173 && node launch.cjs --dev",
     "start": "node launch.cjs",
     "smoke": "node launch.cjs --smoke-test",
+    "package:win": "node package-windows.cjs",
     "test": "node --test",
     "lint": "eslint ."
   },
   "devDependencies": {
+    "@electron/packager": "^20.3.0",
     "@eslint/js": "^9.35.0",
-    "electron": "^44.2.0",
+    "electron": "^44.3.0",
     "eslint": "^9.35.0",
     "globals": "^16.3.0",
     "wait-on": "^8.0.4"

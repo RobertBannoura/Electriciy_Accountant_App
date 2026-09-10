@@ -12,12 +12,18 @@ import {
 } from '../maintenance/maintenance-service.js'
 import { requireStore } from '../middleware/require-store.js'
 import { normalizeOptionalText, parseId } from '../products/product-input.js'
+import { paginatedResult, parsePagination } from '../pagination/pagination.js'
+import {
+  financialOperation,
+  requireFinancialRequestId,
+} from '../financial/financial-operation.js'
 
 export const maintenanceRouter = Router()
 
 maintenanceRouter.use(requireStore)
 
 maintenanceRouter.get('/', async (request, response) => {
+  const pagination = parsePagination(request.query)
   const search = normalizeOptionalText(request.query.search, 200)
   if (request.query.search && !search) {
     throw new AppError('نص البحث غير صالح', 400, 'INVALID_MAINTENANCE_SEARCH')
@@ -52,19 +58,20 @@ maintenanceRouter.get('/', async (request, response) => {
       WHERE maintenance_records.store_id = $1::BIGINT
         AND (
           $2::TEXT IS NULL
-          OR POSITION(LOWER($2) IN LOWER(maintenance_records.item_description)) > 0
-          OR POSITION(LOWER($2) IN LOWER(COALESCE(customers.name, ''))) > 0
+          OR LOWER(maintenance_records.item_description) LIKE '%' || LOWER($2) || '%'
+          OR LOWER(customers.name) LIKE '%' || LOWER($2) || '%'
         )
         AND ($3::DATE IS NULL OR maintenance_records.business_date = $3::DATE)
       ORDER BY maintenance_records.business_date DESC, maintenance_records.id DESC
-      LIMIT 200
+      LIMIT $4::INTEGER OFFSET $5::INTEGER
     `,
-    [request.storeId, search, date],
+    [request.storeId, search, date, pagination.fetchLimit, pagination.offset],
   )
-  response.json({ maintenance: result.rows })
+  const page = paginatedResult(result.rows, pagination)
+  response.json({ maintenance: page.rows, pagination: page.pagination })
 })
 
-maintenanceRouter.post('/', async (request, response) => {
+maintenanceRouter.post('/', requireFinancialRequestId, async (request, response) => {
   const parsed = parseMaintenanceInput(request.body)
   if (parsed.error) {
     throw new AppError(parsed.error, 400, 'INVALID_MAINTENANCE')
@@ -73,11 +80,15 @@ maintenanceRouter.post('/', async (request, response) => {
     input: parsed.value,
     storeId: request.storeId,
     userId: request.auth.user.id,
+    operation: financialOperation(request, 'maintenance:create', {
+      storeId: request.storeId,
+      input: parsed.value,
+    }),
   })
   response.status(201).json({ maintenance })
 })
 
-maintenanceRouter.post('/:maintenanceId/reversal', async (request, response) => {
+maintenanceRouter.post('/:maintenanceId/reversal', requireFinancialRequestId, async (request, response) => {
   const maintenanceId = parseId(request.params.maintenanceId)
   if (!maintenanceId) {
     throw new AppError('معرّف الصيانة غير صالح', 400, 'INVALID_MAINTENANCE_ID')
@@ -91,6 +102,11 @@ maintenanceRouter.post('/:maintenanceId/reversal', async (request, response) => 
     reason: parsed.value.reason,
     storeId: request.storeId,
     userId: request.auth.user.id,
+    operation: financialOperation(request, 'maintenance:reverse', {
+      storeId: request.storeId,
+      maintenanceId,
+      reason: parsed.value.reason,
+    }),
   })
   response.status(201).json({ reversal })
 })

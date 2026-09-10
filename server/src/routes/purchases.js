@@ -5,12 +5,18 @@ import { requireStore } from '../middleware/require-store.js'
 import { createPurchase } from '../purchases/create-purchase.js'
 import { parsePurchaseInput } from '../purchases/purchase-input.js'
 import { notifyPurchaseCreated } from '../notifications/financial-notifications.js'
+import { paginatedResult, parsePagination } from '../pagination/pagination.js'
+import {
+  financialOperation,
+  requireFinancialRequestId,
+} from '../financial/financial-operation.js'
 
 export const purchasesRouter = Router()
 
 purchasesRouter.use(requireStore)
 
 purchasesRouter.get('/', async (request, response) => {
+  const pagination = parsePagination(request.query)
   const result = await query(
     `
       SELECT purchases.id::TEXT AS id, purchases.document_number,
@@ -24,20 +30,25 @@ purchasesRouter.get('/', async (request, response) => {
       INNER JOIN stores ON stores.id = purchases.store_id
       WHERE purchases.store_id = $1::BIGINT
       ORDER BY purchases.business_date DESC, purchases.id DESC
-      LIMIT 100
+      LIMIT $2::INTEGER OFFSET $3::INTEGER
     `,
-    [request.storeId],
+    [request.storeId, pagination.fetchLimit, pagination.offset],
   )
-  response.json({ purchases: result.rows })
+  const page = paginatedResult(result.rows, pagination)
+  response.json({ purchases: page.rows, pagination: page.pagination })
 })
 
-purchasesRouter.post('/', async (request, response) => {
+purchasesRouter.post('/', requireFinancialRequestId, async (request, response) => {
   const parsed = parsePurchaseInput(request.body)
   if (parsed.error) throw new AppError(parsed.error, 400, 'INVALID_PURCHASE')
   const purchase = await createPurchase({
     input: parsed.value,
     storeId: request.storeId,
     userId: request.auth.user.id,
+    operation: financialOperation(request, 'purchase:create', {
+      storeId: request.storeId,
+      input: parsed.value,
+    }),
   })
   await notifyPurchaseCreated({ purchase })
   response.status(201).json({ purchase })

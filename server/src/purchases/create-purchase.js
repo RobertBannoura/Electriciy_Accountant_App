@@ -1,6 +1,8 @@
 import Decimal from 'decimal.js'
+import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { pool } from '../db/pool.js'
 import { AppError } from '../errors/app-error.js'
+import { claimFinancialOperation } from '../financial/financial-operation.js'
 import { calculateWeightedAverageCost } from '../inventory/inventory-costing.js'
 import {
   insertInventoryCostMovement,
@@ -15,10 +17,11 @@ import { calculatePurchase } from './purchase-input.js'
 
 const PurchaseDecimal = Decimal.clone({ precision: 100, rounding: Decimal.ROUND_HALF_UP })
 
-export async function createPurchase({ databasePool = pool, input, storeId, userId }) {
+export async function createPurchase({ databasePool = pool, input, storeId, userId, operation }) {
   const client = await databasePool.connect()
   try {
     await client.query('BEGIN')
+    await claimFinancialOperation(client, { userId, operation })
     await requireStore(client, storeId)
     const prepared = await prepareSupplierPayments(client, {
       payments: input.payments,
@@ -172,6 +175,41 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
       userId,
     })
 
+    await writeAuditEntry(client, {
+      storeId,
+      userId,
+      action: 'purchase',
+      entityType: 'purchase',
+      entityId: purchase.id,
+      newValues: {
+        documentNumber: input.documentNumber,
+        supplierId: supplier.id,
+        totalIls: calculated.total,
+        paidTotalIls: prepared.total,
+        remainingDueIls: remainingDue,
+        itemCount: savedItems.length,
+      },
+    })
+    for (const payment of savedPayments) {
+      await writeAuditEntry(client, {
+        storeId,
+        userId,
+        action: 'payment',
+        entityType: payment.method?.includes('check') ? 'check' : 'payment',
+        entityId: payment.id,
+        newValues: { purchaseId: purchase.id, method: payment.method, amountIls: payment.converted_ils_amount ?? payment.amount },
+      })
+      if (payment.method === 'transferred_customer_check') {
+        await writeAuditEntry(client, {
+          storeId,
+          userId,
+          action: 'check_transfer',
+          entityType: 'check',
+          entityId: payment.id,
+          newValues: { purchaseId: purchase.id, supplierId: supplier.id },
+        })
+      }
+    }
     await client.query('COMMIT')
     return {
       ...purchase,

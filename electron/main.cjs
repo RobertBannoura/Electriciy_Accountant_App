@@ -1,8 +1,15 @@
 const path = require('node:path')
 const fs = require('node:fs/promises')
 const { pathToFileURL } = require('node:url')
-const { app, BrowserWindow, dialog, ipcMain, net, Notification, protocol, shell } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, net, Notification, protocol } = require('electron')
 const { createDeviceSettingsStore } = require('./device-settings.cjs')
+const { createBackupFileStore } = require('./backup-files.cjs')
+const {
+  assertSafePdfData,
+  assertSafeSelectedFile,
+  desktopCheckNotification,
+  safeSuggestedName,
+} = require('./platform-security.cjs')
 
 const applicationOrigin = 'app://renderer'
 
@@ -20,7 +27,7 @@ protocol.registerSchemesAsPrivileged([
 
 const developmentRendererUrl =
   process.env.ELECTRON_RENDERER_URL ?? 'http://localhost:5173'
-const isDevelopment = process.argv.includes('--dev')
+const isDevelopment = !app.isPackaged && process.argv.includes('--dev')
 const isSmokeTest = process.argv.includes('--smoke-test')
 
 function isAllowedNavigation(targetUrl) {
@@ -84,9 +91,41 @@ function createMainWindow() {
   })
 
   if (isSmokeTest) {
-    mainWindow.webContents.once('did-finish-load', () => {
-      console.log('Electron smoke test passed: renderer loaded successfully.')
-      app.quit()
+    mainWindow.webContents.once('did-finish-load', async () => {
+      try {
+        const authenticationState = await mainWindow.webContents.executeJavaScript(`
+          new Promise((resolve) => {
+            const deadline = Date.now() + 5000
+            const inspect = () => {
+              const passwordField = document.querySelector('input[type="password"]')
+              if (passwordField || Date.now() >= deadline) {
+                resolve({ hasPasswordField: Boolean(passwordField) })
+                return
+              }
+              setTimeout(inspect, 50)
+            }
+            inspect()
+          })
+        `)
+
+        if (!authenticationState.hasPasswordField) {
+          throw new Error('The production renderer did not reach the admin login screen.')
+        }
+
+        console.log('Electron authentication smoke test passed: admin login screen loaded securely.')
+      } catch (error) {
+        console.error('Electron authentication smoke test failed:', {
+          errorCode: typeof error?.code === 'string' && /^[A-Z0-9_]{1,64}$/.test(error.code)
+            ? error.code
+            : 'ELECTRON_SMOKE_FAILED',
+          errorName: typeof error?.name === 'string' && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(error.name)
+            ? error.name
+            : 'Error',
+        })
+        process.exitCode = 1
+      } finally {
+        app.quit()
+      }
     })
 
     mainWindow.webContents.once(
@@ -99,22 +138,22 @@ function createMainWindow() {
     )
   }
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('https://')) {
-      void shell.openExternal(url)
-    }
-
-    return { action: 'deny' }
-  })
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   mainWindow.webContents.session.setPermissionRequestHandler(
     (_webContents, _permission, callback) => callback(false),
   )
+  mainWindow.webContents.session.setPermissionCheckHandler(() => false)
+  mainWindow.webContents.session.setDevicePermissionHandler(() => false)
+  mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault())
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (!isAllowedNavigation(url)) {
       event.preventDefault()
     }
+  })
+  mainWindow.webContents.on('will-redirect', (event, url) => {
+    if (!isAllowedNavigation(url)) event.preventDefault()
   })
 
   if (!isDevelopment) {
@@ -136,6 +175,7 @@ app.whenReady().then(() => {
   }
 
   const deviceSettings = createDeviceSettingsStore(app.getPath('userData'))
+  const backupFiles = createBackupFileStore(deviceSettings)
 
   ipcMain.handle('app:get-versions', (event) => {
     assertTrustedIpcSender(event)
@@ -154,19 +194,58 @@ app.whenReady().then(() => {
     assertTrustedIpcSender(event)
     return deviceSettings.setStoreAssignment(storeId)
   })
+  ipcMain.handle('backup:get-status', (event) => {
+    assertTrustedIpcSender(event)
+    return backupFiles.getStatus()
+  })
+  ipcMain.handle('backup:choose-directory', async (event) => {
+    assertTrustedIpcSender(event)
+    const current = await deviceSettings.getBackupSettings()
+    const parent = BrowserWindow.fromWebContents(event.sender)
+    const selection = await dialog.showOpenDialog(parent, {
+      ...(current.directory ? { defaultPath: current.directory } : {}),
+      properties: ['openDirectory', 'createDirectory'],
+      title: 'اختيار مجلد النسخ الاحتياطي',
+    })
+    if (selection.canceled || selection.filePaths.length !== 1) {
+      return { selected: false, canceled: true }
+    }
+    const saved = await deviceSettings.setBackupDirectory(selection.filePaths[0])
+    return { selected: true, canceled: false, ...saved }
+  })
+  ipcMain.handle('backup:save', (event, options) => {
+    assertTrustedIpcSender(event)
+    return backupFiles.saveBackup(options?.backup, { automatic: options?.automatic === true })
+  })
+  ipcMain.handle('backup:select-file', async (event) => {
+    assertTrustedIpcSender(event)
+    const current = await deviceSettings.getBackupSettings()
+    const parent = BrowserWindow.fromWebContents(event.sender)
+    const selection = await dialog.showOpenDialog(parent, {
+      ...(current.directory ? { defaultPath: current.directory } : {}),
+      filters: [{ name: 'ملفات النسخ الاحتياطي', extensions: ['json'] }],
+      properties: ['openFile'],
+      title: 'اختيار نسخة احتياطية للاستعادة',
+    })
+    if (selection.canceled || selection.filePaths.length !== 1) {
+      return { selected: false, canceled: true }
+    }
+    return {
+      selected: true,
+      canceled: false,
+      ...await backupFiles.readBackup(selection.filePaths[0]),
+    }
+  })
   ipcMain.handle('app:show-notification', (event, options) => {
     assertTrustedIpcSender(event)
-    const title = typeof options?.title === 'string' ? options.title.slice(0, 100) : ''
-    const body = typeof options?.body === 'string' ? options.body.slice(0, 500) : ''
-    if (!title || !Notification.isSupported()) return { shown: false }
+    const { title, body } = desktopCheckNotification(options)
+    if (!Notification.isSupported()) return { shown: false }
     new Notification({ title, body }).show()
     return { shown: true }
   })
   ipcMain.handle('app:save-pdf', async (event, options) => {
     assertTrustedIpcSender(event)
-    const requestedName = typeof options?.fileName === 'string' ? options.fileName : 'مستند'
-    const printableName = [...requestedName].filter((character) => character.charCodeAt(0) >= 32).join('')
-    const safeName = printableName.replace(/[<>:"/\\|?*]/g, '-').slice(0, 120) || 'مستند'
+    const safeName = safeSuggestedName(options?.fileName)
     const parent = BrowserWindow.fromWebContents(event.sender)
     const selection = await dialog.showSaveDialog(parent, {
       defaultPath: path.join(app.getPath('documents'), `${safeName}.pdf`),
@@ -174,6 +253,7 @@ app.whenReady().then(() => {
       properties: ['createDirectory', 'showOverwriteConfirmation'],
     })
     if (selection.canceled || !selection.filePath) return { saved: false, canceled: true }
+    await assertSafeSelectedFile(selection.filePath, '.pdf')
     const data = await event.sender.printToPDF({
       displayHeaderFooter: false,
       generateDocumentOutline: true,
@@ -186,21 +266,8 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('app:save-pdf-data', async (event, options) => {
     assertTrustedIpcSender(event)
-    const bytes = options?.data
-    const data = Buffer.isBuffer(bytes)
-      ? bytes
-      : ArrayBuffer.isView(bytes)
-        ? Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-        : bytes instanceof ArrayBuffer
-          ? Buffer.from(bytes)
-          : null
-    if (!data || data.length < 5 || data.length > 50 * 1024 * 1024
-      || data.subarray(0, 5).toString('ascii') !== '%PDF-') {
-      throw new Error('بيانات PDF غير صالحة')
-    }
-    const requestedName = typeof options?.fileName === 'string' ? options.fileName : 'مستند'
-    const printableName = [...requestedName].filter((character) => character.charCodeAt(0) >= 32).join('')
-    const safeName = printableName.replace(/[<>:"/\\|?*]/g, '-').slice(0, 120) || 'مستند'
+    const data = assertSafePdfData(options?.data)
+    const safeName = safeSuggestedName(options?.fileName)
     const parent = BrowserWindow.fromWebContents(event.sender)
     const selection = await dialog.showSaveDialog(parent, {
       defaultPath: path.join(app.getPath('documents'), `${safeName}.pdf`),
@@ -208,6 +275,7 @@ app.whenReady().then(() => {
       properties: ['createDirectory', 'showOverwriteConfirmation'],
     })
     if (selection.canceled || !selection.filePath) return { saved: false, canceled: true }
+    await assertSafeSelectedFile(selection.filePath, '.pdf')
     await fs.writeFile(selection.filePath, data)
     return { saved: true, canceled: false, path: selection.filePath }
   })

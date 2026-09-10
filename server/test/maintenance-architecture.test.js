@@ -18,7 +18,7 @@ test('maintenance service commits records, ledgers, payment effects, and audit a
   assert.match(source, /client\.query\('BEGIN'\)/)
   assert.match(source, /insertIncomingPayment/)
   assert.match(source, /insertCustomerLedgerMovement/)
-  assert.match(source, /INSERT INTO audit_log/)
+  assert.match(source, /writeAuditEntry/)
   assert.match(source, /client\.query\('ROLLBACK'\)/)
   assert.doesNotMatch(source, /inventory_movements|sale_items|INSERT INTO sales/)
 })

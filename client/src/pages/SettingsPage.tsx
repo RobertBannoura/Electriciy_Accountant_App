@@ -1,7 +1,9 @@
 import { FormEvent, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { apiFetch } from '../api'
 import { SaveState, Store } from '../types'
 import { PushNotificationSettings } from '../components/PushNotificationSettings'
+import { BackupSettings } from '../components/BackupSettings'
 
 type SettingsPageProps = {
   assignmentError: string | null
@@ -192,6 +194,21 @@ export function SettingsPage({
       </form>
 
       <PushNotificationSettings />
+
+      <div className="mt-10 border-t border-slate-200 pt-8">
+        <h2 className="text-xl font-black">أدوات المدير</h2>
+        <p className="mt-2 leading-7 text-slate-600">
+          افحص اتساق الفواتير والدفاتر والأرصدة دون تغيير البيانات.
+        </p>
+        <Link
+          className="mt-4 inline-flex min-h-12 items-center rounded-xl bg-slate-800 px-6 font-black text-white hover:bg-slate-900"
+          to="/financial-verification"
+        >
+          فحص الحسابات
+        </Link>
+      </div>
+
+      <BackupSettings />
 
       {window.desktop && (
         <div className="mt-10 border-t border-slate-200 pt-8">

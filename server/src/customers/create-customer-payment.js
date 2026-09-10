@@ -1,6 +1,8 @@
 import Decimal from 'decimal.js'
+import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { pool } from '../db/pool.js'
 import { AppError } from '../errors/app-error.js'
+import { claimFinancialOperation } from '../financial/financial-operation.js'
 import {
   insertCustomerLedgerMovement,
   insertIncomingPayment,
@@ -17,10 +19,12 @@ export async function createCustomerPayment({
   input,
   storeId,
   userId,
+  operation,
 }) {
   const client = await databasePool.connect()
   try {
     await client.query('BEGIN')
+    await claimFinancialOperation(client, { userId, operation })
     const storeResult = await client.query(
       'SELECT id FROM stores WHERE id = $1::BIGINT AND is_active = TRUE FOR SHARE',
       [storeId],
@@ -91,6 +95,21 @@ export async function createCustomerPayment({
     }
 
     const balanceAfter = balanceBefore.minus(total)
+    for (const payment of savedPayments) {
+      await writeAuditEntry(client, {
+        storeId,
+        userId,
+        action: 'payment',
+        entityType: payment.method === 'check' ? 'check' : 'payment',
+        entityId: payment.id,
+        newValues: {
+          customerId: customer.id,
+          method: payment.method,
+          amountIls: payment.converted_ils_amount,
+          balanceAfterIls: balanceAfter.toFixed(),
+        },
+      })
+    }
     await client.query('COMMIT')
     return {
       customer_id: customer.id,

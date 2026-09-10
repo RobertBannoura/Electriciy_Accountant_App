@@ -41,8 +41,10 @@ export function normalizeOptionalText(value, maxLength) {
 }
 
 export function normalizeBarcode(value) {
-  const barcode = normalizeOptionalText(value, 100)
-  return barcode && !/\s/.test(barcode) ? barcode : barcode === null ? null : undefined
+  if (value === undefined || value === null || value === '') return null
+
+  const barcode = normalizeRequiredText(value, 100)
+  return barcode && !/\s/.test(barcode) ? barcode : undefined
 }
 
 export function normalizeDecimal(value, { optional = false, scale = 2 } = {}) {

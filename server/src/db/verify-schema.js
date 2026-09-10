@@ -1,4 +1,5 @@
 import { pool } from './pool.js'
+import { logSecurityEvent, safeErrorDetails } from '../security/security-log.js'
 
 const requiredTables = [
   'auth_sessions',
@@ -469,6 +470,9 @@ async function run() {
 }
 
 run().catch((error) => {
-  console.error('Schema verification failed:', error)
+  logSecurityEvent('error', 'database_verification_failed', {
+    ...safeErrorDetails(error),
+    outcome: 'failure',
+  })
   process.exitCode = 1
 })

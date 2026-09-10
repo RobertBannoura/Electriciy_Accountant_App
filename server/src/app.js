@@ -3,8 +3,15 @@ import express from 'express'
 import helmet from 'helmet'
 import { env } from './config/env.js'
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js'
+import { requireAdmin } from './middleware/require-admin.js'
 import { requireAuth } from './middleware/require-auth.js'
+import {
+  createJsonComplexityGuard,
+  createOriginGuard,
+  validateRequestMetadata,
+} from './middleware/request-boundaries.js'
 import { authRouter } from './routes/auth.js'
+import { backupsRouter } from './routes/backups.js'
 import { categoriesRouter } from './routes/categories.js'
 import { checksRouter } from './routes/checks.js'
 import { customersRouter } from './routes/customers.js'
@@ -19,23 +26,46 @@ import { maintenanceRouter } from './routes/maintenance.js'
 import { salesRouter } from './routes/sales.js'
 import { storesRouter } from './routes/stores.js'
 import { suppliersRouter } from './routes/suppliers.js'
+import { verificationRouter } from './routes/verification.js'
 
 export const app = express()
+const normalJsonBoundary = createJsonComplexityGuard({ maxDepth: 32, maxNodes: 20_000 })
+const backupJsonBoundary = createJsonComplexityGuard({ maxDepth: 32, maxNodes: 2_000_000 })
 
 app.disable('x-powered-by')
-app.use(helmet())
+app.use(helmet({
+  frameguard: { action: 'deny' },
+  strictTransportSecurity: false,
+}))
+app.use('/api', (_request, response, next) => {
+  response.set('Cache-Control', 'no-store')
+  response.set('Content-Security-Policy', "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+  response.set('Permissions-Policy', 'camera=(), geolocation=(), microphone=(), payment=(), usb=()')
+  next()
+})
+app.use('/api', validateRequestMetadata)
+app.use('/api', createOriginGuard([env.clientOrigin, env.electronOrigin]))
 app.use(
   cors({
     origin: [env.clientOrigin, env.electronOrigin],
+    credentials: false,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Store-Id'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Store-Id',
+      'X-Confirm-Restore',
+      'X-Request-Id',
+    ],
   }),
 )
-app.use(express.json({ limit: '1mb' }))
-
 app.use('/api/health', healthRouter)
-app.use('/api/auth', authRouter)
+app.use('/api/auth', express.json({ limit: '1mb' }), normalJsonBoundary, authRouter)
+app.use('/api/backups', requireAuth, requireAdmin, express.json({ limit: '100mb' }), backupJsonBoundary, backupsRouter)
+app.use(express.json({ limit: '1mb' }))
+app.use(normalJsonBoundary)
 app.use('/api', requireAuth)
+app.use('/api', requireAdmin)
 app.use('/api/stores', storesRouter)
 app.use('/api/categories', categoriesRouter)
 app.use('/api/checks', checksRouter)
@@ -49,6 +79,7 @@ app.use('/api/returns', returnsRouter)
 app.use('/api/maintenance', maintenanceRouter)
 app.use('/api/sales', salesRouter)
 app.use('/api/suppliers', suppliersRouter)
+app.use('/api/verification', verificationRouter)
 
 app.use(notFoundHandler)
 app.use(errorHandler)

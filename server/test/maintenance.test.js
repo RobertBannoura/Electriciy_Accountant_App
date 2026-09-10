@@ -102,7 +102,10 @@ test('maintenance creation atomically records mixed settlement and exact debt wi
     ['credit', '100'], ['credit', '100'],
   ])
   assert.equal(state.commands.some((command) => command.includes('inventory_')), false)
-  assert.equal(state.audit.length, 1)
+  assert.equal(state.audit.length, 5)
+  assert.deepEqual(state.audit.map((row) => row[2]), [
+    'maintenance', 'payment', 'payment', 'payment', 'payment',
+  ])
   assert.equal(state.commands.at(-1), 'COMMIT')
 })
 

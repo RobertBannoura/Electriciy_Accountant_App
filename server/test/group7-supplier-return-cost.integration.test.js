@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { once } from 'node:events'
 import test from 'node:test'
 import Decimal from 'decimal.js'
@@ -12,16 +13,16 @@ test(
   async (t) => {
     process.env.DATABASE_URL = databaseUrl
     process.env.NODE_ENV = 'test'
-    const [{ app }, { pool }] = await Promise.all([import('../src/app.js'), import('../src/db/pool.js')])
-    const { provisionAdmin } = await import('../src/auth/provision-admin.js')
-    const adminUsername = 'group7_return_admin'
-    const adminPassword = 'group7-return-password'
+    const [{ app }, { pool }, { provisionAdmin }] = await Promise.all([
+      import('../src/app.js'), import('../src/db/pool.js'), import('../src/auth/provision-admin.js'),
+    ])
+    const adminUsername = 'group7_return_integration_admin'
+    const adminPassword = randomBytes(32).toString('base64url')
     await provisionAdmin(pool, {
       username: adminUsername,
       password: adminPassword,
       displayName: 'Integration Test Admin',
     })
-
     const server = app.listen(0, '127.0.0.1')
     await once(server, 'listening')
     const address = server.address()
@@ -373,6 +374,7 @@ async function apiRequest(baseUrl, path, { token, storeId, method, body } = {}) 
   const headers = new Headers(body ? { 'Content-Type': 'application/json' } : undefined)
   if (token) headers.set('Authorization', `Bearer ${token}`)
   if (storeId) headers.set('X-Store-Id', storeId)
+  if (method && !['GET', 'HEAD'].includes(method.toUpperCase())) headers.set('X-Request-Id', crypto.randomUUID())
   return jsonRequest(`${baseUrl}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined })
 }
 

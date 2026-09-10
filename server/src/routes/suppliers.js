@@ -8,6 +8,10 @@ import {
 } from '../products/product-input.js'
 import { parseSupplierInput } from '../suppliers/supplier-input.js'
 import { createSupplierPayment } from '../suppliers/create-supplier-payment.js'
+import {
+  financialOperation,
+  requireFinancialRequestId,
+} from '../financial/financial-operation.js'
 import { notifySupplierPaymentCreated } from '../notifications/financial-notifications.js'
 import { parseSupplierPaymentInput } from '../suppliers/supplier-payment-input.js'
 import { getSupplierStatement } from '../statements/account-statements.js'
@@ -41,8 +45,8 @@ suppliersRouter.get('/', async (request, response) => {
       WHERE suppliers.is_active = TRUE
         AND (
           $1::TEXT IS NULL
-          OR POSITION(LOWER($1) IN LOWER(suppliers.name)) > 0
-          OR POSITION(LOWER($1) IN LOWER(COALESCE(suppliers.phone, ''))) > 0
+          OR LOWER(suppliers.name) LIKE '%' || LOWER($1) || '%'
+          OR LOWER(suppliers.phone) LIKE '%' || LOWER($1) || '%'
         )
       ORDER BY suppliers.name, suppliers.id
       LIMIT 500
@@ -76,7 +80,7 @@ suppliersRouter.post('/', async (request, response) => {
   response.status(201).json({ supplier: { ...result.rows[0], balance_ils: '0' } })
 })
 
-suppliersRouter.post('/:supplierId/payments', async (request, response) => {
+suppliersRouter.post('/:supplierId/payments', requireFinancialRequestId, async (request, response) => {
   const supplierId = requireSupplierId(request.params.supplierId)
   const parsed = parseSupplierPaymentInput(request.body)
   if (parsed.error) throw new AppError(parsed.error, 400, 'INVALID_SUPPLIER_PAYMENT')
@@ -85,6 +89,11 @@ suppliersRouter.post('/:supplierId/payments', async (request, response) => {
     input: parsed.value,
     storeId: request.storeId,
     userId: request.auth.user.id,
+    operation: financialOperation(request, 'payment:supplier', {
+      storeId: request.storeId,
+      supplierId,
+      input: parsed.value,
+    }),
   })
   await notifySupplierPaymentCreated({ payment })
   response.status(201).json({ payment })
