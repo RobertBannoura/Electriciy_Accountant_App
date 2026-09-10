@@ -29,6 +29,6 @@ electricity-accountant-automatic-*.json
 electricity-accountant-*-manual.json
 *.dump
 *.sql.gz
-backups/
+/backups/
 pgdata/
 *-pgdata/

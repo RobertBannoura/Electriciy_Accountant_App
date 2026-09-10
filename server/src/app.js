@@ -8,6 +8,7 @@ import { requireAuth } from './middleware/require-auth.js'
 import {
   createJsonComplexityGuard,
   createOriginGuard,
+  createProxyClientIpNormalizer,
   validateRequestMetadata,
 } from './middleware/request-boundaries.js'
 import { authRouter } from './routes/auth.js'
@@ -33,10 +34,15 @@ const normalJsonBoundary = createJsonComplexityGuard({ maxDepth: 32, maxNodes: 2
 const backupJsonBoundary = createJsonComplexityGuard({ maxDepth: 32, maxNodes: 2_000_000 })
 
 app.disable('x-powered-by')
+app.set(
+  'trust proxy',
+  env.trustedProxyRanges.length > 0 ? env.trustedProxyRanges : false,
+)
 app.use(helmet({
   frameguard: { action: 'deny' },
   strictTransportSecurity: false,
 }))
+app.use('/api', createProxyClientIpNormalizer(env.proxyClientIpHeader))
 app.use('/api', (_request, response, next) => {
   response.set('Cache-Control', 'no-store')
   response.set('Content-Security-Policy', "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")

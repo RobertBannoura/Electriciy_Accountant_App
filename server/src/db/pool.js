@@ -9,10 +9,8 @@ export const pool = new Pool({
   max: 10,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
-  ssl:
-    env.nodeEnv === 'production'
-      ? { rejectUnauthorized: true }
-      : false,
+  ssl: env.databaseTls,
+  enableChannelBinding: env.nodeEnv === 'production',
 })
 
 pool.on('error', (error) => {

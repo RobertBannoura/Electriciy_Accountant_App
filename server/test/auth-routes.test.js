@@ -7,6 +7,7 @@ import express from 'express'
 import { hashPassword } from '../src/auth/password.js'
 import { createSessionToken } from '../src/auth/session-token.js'
 import { errorHandler, notFoundHandler } from '../src/middleware/error-handler.js'
+import { createProxyClientIpNormalizer } from '../src/middleware/request-boundaries.js'
 import { createRequireAuth } from '../src/middleware/require-auth.js'
 import {
   createAuthRouter,
@@ -316,6 +317,78 @@ test('login rate limiting applies per normalized account across different IPs', 
 
       assert.equal(blocked.status, 429)
       assert.equal(body.error.code, 'TOO_MANY_LOGIN_ATTEMPTS')
+    },
+  )
+})
+
+test('trusted Railway-style proxy IPs produce independent limiter keys and overwrite spoofed chains', async () => {
+  const testLimit = 2
+  await withServer(
+    (app) => {
+      app.set('trust proxy', 'loopback')
+      app.use(createProxyClientIpNormalizer('x-real-ip'))
+      app.use('/api/auth', createAuthRouter({ loginAttemptLimit: testLimit }))
+    },
+    async (baseUrl) => {
+      const attempt = (clientIp, username, spoofedForwardedFor) => fetch(
+        `${baseUrl}/api/auth/login`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Real-IP': clientIp,
+            'X-Forwarded-For': spoofedForwardedFor,
+          },
+          body: JSON.stringify({ username, password: '' }),
+        },
+      )
+
+      assert.equal((await attempt('203.0.113.10', 'proxy-a-1', '192.0.2.1')).status, 401)
+      assert.equal((await attempt('203.0.113.10', 'proxy-a-2', '192.0.2.2')).status, 401)
+      assert.equal((await attempt('203.0.113.11', 'proxy-b-1', '192.0.2.1')).status, 401)
+      assert.equal((await attempt('203.0.113.11', 'proxy-b-2', '192.0.2.2')).status, 401)
+      assert.equal((await attempt('203.0.113.10', 'proxy-a-3', '198.51.100.250')).status, 429)
+      assert.equal((await attempt('203.0.113.11', 'proxy-b-3', '198.51.100.251')).status, 429)
+
+      const malformed = await attempt('not-an-ip', 'proxy-invalid', '198.51.100.252')
+      assert.equal(malformed.status, 400)
+      assert.equal((await malformed.json()).error.code, 'INVALID_PROXY_CLIENT_IP')
+    },
+  )
+})
+
+test('untrusted direct callers cannot select limiter keys with forwarding headers', async () => {
+  const testLimit = 2
+  await withServer(
+    (app) => {
+      app.set('trust proxy', false)
+      app.use(createProxyClientIpNormalizer('x-real-ip'))
+      app.use('/api/auth', createAuthRouter({ loginAttemptLimit: testLimit }))
+    },
+    async (baseUrl) => {
+      for (let attempt = 1; attempt <= testLimit; attempt += 1) {
+        const response = await fetch(`${baseUrl}/api/auth/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Real-IP': `203.0.113.${attempt}`,
+            'X-Forwarded-For': `198.51.100.${attempt}`,
+          },
+          body: JSON.stringify({ username: `direct-${attempt}`, password: '' }),
+        })
+        assert.equal(response.status, 401)
+      }
+
+      const blocked = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Real-IP': '203.0.113.99',
+          'X-Forwarded-For': '198.51.100.99',
+        },
+        body: JSON.stringify({ username: 'direct-three', password: '' }),
+      })
+      assert.equal(blocked.status, 429)
     },
   )
 })

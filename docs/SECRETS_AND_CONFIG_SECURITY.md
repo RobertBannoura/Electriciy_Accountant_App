@@ -84,8 +84,16 @@ Other outdated results were development-tool or framework updates, including ESL
 Verified controls:
 
 - The actual server entry point now refuses to start unless `NODE_ENV` is explicit. Production also refuses a missing `DATABASE_URL`; it cannot silently use the development fallback.
-- The API listens only on `127.0.0.1`. Remote browser origins must use HTTPS in production, and CORS allows only the configured exact frontend origin plus the fixed `app://renderer` origin.
-- PostgreSQL uses certificate verification in production.
+- Production requires an explicit IP listen `HOST`. Local/device-only operation
+  uses `127.0.0.1`; Railway uses `0.0.0.0` behind its trusted TLS proxy. Remote
+  browser origins must use HTTPS, and CORS allows only the configured exact
+  frontend origin plus the fixed `app://renderer` origin.
+- PostgreSQL uses certificate and hostname verification in production. URL-level
+  SSL parameters are rejected so they cannot replace the strict TLS object;
+  an optional backend-only `DATABASE_TLS_CA` supplies a private provider CA.
+- Production requires explicit trusted proxy IPs/CIDRs and rejects broad
+  booleans/hop counts. Railway-style `X-Real-IP` is accepted only from a trusted
+  socket peer and overwrites attacker-supplied forwarding chains.
 - Production responses do not include exception stacks. Development-only stacks remain available for local diagnosis.
 - No credential-free login path is shipped.
 - Packaged Electron refuses development mode, disables DevTools, denies permission requests and unexpected navigation/popups, and uses the fixed privileged origin.

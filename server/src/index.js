@@ -9,8 +9,8 @@ if (!process.env.NODE_ENV) {
 
 process.env.TZ = env.timezone
 
-const server = app.listen(env.port, '127.0.0.1', () => {
-  console.log(`الخادم يعمل على http://127.0.0.1:${env.port}`)
+const server = app.listen(env.port, env.host, () => {
+  console.log(`الخادم يعمل على http://${env.host}:${env.port}`)
   console.log(`المنطقة الزمنية: ${env.timezone}`)
 })
 const stopPushScheduler = startCheckDueNotificationScheduler()

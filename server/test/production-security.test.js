@@ -13,6 +13,9 @@ const baseEnvironment = {
   DATABASE_URL: 'postgresql://application@database.example.com:5432/application',
   CLIENT_ORIGIN: 'https://app.example.com',
   ELECTRON_ORIGIN: 'app://renderer',
+  HOST: '0.0.0.0',
+  TRUST_PROXY: 'loopback',
+  PROXY_CLIENT_IP_HEADER: 'x-real-ip',
   VAPID_PUBLIC_KEY: '',
   VAPID_PRIVATE_KEY: '',
   VAPID_SUBJECT: '',
@@ -57,6 +60,74 @@ test('production accepts an exact HTTPS origin', () => {
   const configuration = JSON.parse(result.stdout)
   assert.equal(configuration.clientOrigin, 'https://app.example.com')
   assert.equal(configuration.electronOrigin, 'app://renderer')
+  assert.equal(configuration.host, '0.0.0.0')
+  assert.deepEqual(configuration.trustedProxyRanges, ['loopback'])
+  assert.equal(configuration.proxyClientIpHeader, 'x-real-ip')
+  assert.deepEqual(configuration.databaseTls, { rejectUnauthorized: true })
+})
+
+test('production requires an explicit valid listen host', () => {
+  for (const host of ['', 'localhost', 'not a host']) {
+    const result = importEnvironment({ HOST: host })
+    assert.notEqual(result.status, 0, `unexpectedly accepted HOST=${host}`)
+    assert.match(result.stderr, /HOST/)
+  }
+
+  const loopback = importEnvironment({ HOST: '127.0.0.1' })
+  assert.equal(loopback.status, 0, loopback.stderr)
+})
+
+test('production database TLS cannot be disabled or replaced by URL parameters', () => {
+  for (const query of [
+    'ssl=0',
+    'sslmode=disable',
+    'sslmode=require',
+    'sslrootcert=attacker.crt',
+  ]) {
+    const result = importEnvironment({
+      DATABASE_URL: `postgresql://application@database.example.com:5432/application?${query}`,
+    })
+
+    assert.notEqual(result.status, 0, query)
+    assert.match(result.stderr, /must not contain SSL parameters/)
+  }
+})
+
+test('production accepts only bounded PEM database trust roots', () => {
+  const accepted = importEnvironment({
+    DATABASE_TLS_CA: '-----BEGIN CERTIFICATE-----\\nQA-only-placeholder\\n-----END CERTIFICATE-----',
+  })
+  assert.equal(accepted.status, 0, accepted.stderr)
+  assert.equal(JSON.parse(accepted.stdout).databaseTls.rejectUnauthorized, true)
+
+  const rejected = importEnvironment({ DATABASE_TLS_CA: 'not-a-certificate' })
+  assert.notEqual(rejected.status, 0)
+  assert.match(rejected.stderr, /DATABASE_TLS_CA/)
+})
+
+test('production proxy trust rejects broad or ambiguous configurations', () => {
+  for (const trustProxy of ['true', '1', '*', '10.0.0.0/99']) {
+    const result = importEnvironment({ TRUST_PROXY: trustProxy })
+
+    assert.notEqual(result.status, 0, trustProxy)
+    assert.match(result.stderr, /TRUST_PROXY/)
+  }
+
+  const missing = importEnvironment({ TRUST_PROXY: '' })
+  assert.notEqual(missing.status, 0)
+  assert.match(missing.stderr, /TRUST_PROXY/)
+})
+
+test('local disposable PostgreSQL remains plaintext-capable outside production', () => {
+  const result = importEnvironment({
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgresql://postgres@127.0.0.1:55443/disposable_qa',
+    TRUST_PROXY: '',
+    PROXY_CLIENT_IP_HEADER: 'x-forwarded-for',
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(JSON.parse(result.stdout).databaseTls, false)
 })
 
 test('the privileged Electron CORS origin cannot be redirected by configuration', () => {

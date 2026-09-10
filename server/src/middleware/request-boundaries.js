@@ -1,6 +1,47 @@
 import { AppError } from '../errors/app-error.js'
+import { isIP } from 'node:net'
 
 const requestIdPattern = /^[A-Za-z0-9._:-]{1,100}$/
+
+export function createProxyClientIpNormalizer(clientIpHeader) {
+  if (clientIpHeader === 'x-forwarded-for') {
+    return function retainStandardForwardedFor(_request, _response, next) {
+      next()
+    }
+  }
+
+  if (clientIpHeader !== 'x-real-ip') {
+    throw new Error('Unsupported proxy client IP header.')
+  }
+
+  return function normalizeTrustedProxyClientIp(request, _response, next) {
+    const trustProxy = request.app.get('trust proxy fn')
+    const socketAddress = request.socket.remoteAddress
+
+    if (typeof trustProxy !== 'function' || !trustProxy(socketAddress, 0)) {
+      next()
+      return
+    }
+
+    const realIp = request.get('x-real-ip')
+    if (realIp === undefined) {
+      delete request.headers['x-forwarded-for']
+      next()
+      return
+    }
+
+    if (!isIP(realIp)) {
+      throw new AppError(
+        'عنوان عميل الوكيل غير صالح',
+        400,
+        'INVALID_PROXY_CLIENT_IP',
+      )
+    }
+
+    request.headers['x-forwarded-for'] = realIp
+    next()
+  }
+}
 
 export function validateRequestMetadata(request, _response, next) {
   const requestId = request.get('x-request-id')

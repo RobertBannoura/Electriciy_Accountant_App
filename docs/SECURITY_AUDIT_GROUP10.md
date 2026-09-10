@@ -24,10 +24,11 @@ and the financial-integrity boundary documented in `docs/MONEY_RULES.md`.
    HTTP(S) origin without credentials, a path, query, fragment, `*`, or `null`.
    Production requires HTTPS except for loopback origins. `ELECTRON_ORIGIN` is
    fixed to the privileged `app://renderer` origin used by the desktop shell.
-5. **The development-only login implementation is reproducible source.** The
-   helper is now in the normal server source tree rather than a locally excluded
-   path. Its security gates are unchanged: it is opt-in, limited to
-   `NODE_ENV=development`, and accepts loopback requests only. Production tests
+5. **Credential-free development login was removed from shipped source.** No
+   tracked route or import can create an admin session without normal password
+   verification. A repository hook also rejects attempts to add the former
+   credential-free markers. Ignored workstation experiments are not release
+   source.
 
 No financial calculation, transaction boundary, append-only ledger rule,
 inventory rule, payment rule, check lifecycle, backup transaction, or audit-log
@@ -70,11 +71,14 @@ is still restricted as defense in depth.
 
 ## Required production deployment controls
 
-- Set `NODE_ENV=production`, a non-example `DATABASE_URL`, and one exact
-  `CLIENT_ORIGIN`. Keep `ELECTRON_ORIGIN=app://renderer`.
-- Keep the API loopback-only as currently implemented. If a future deployment
-  intentionally exposes it beyond the device, place it behind authenticated TLS
-  termination and perform a new threat review before changing the bind address.
+- Set `NODE_ENV=production`, a non-example `DATABASE_URL` without URL-level SSL
+  options, exact proxy IP/CIDR trust, and one exact `CLIENT_ORIGIN`. Keep
+  `ELECTRON_ORIGIN=app://renderer`. Production forces PostgreSQL certificate
+  verification; use backend-only `DATABASE_TLS_CA` if the provider CA is not in
+  the system trust store.
+- Set `HOST=127.0.0.1` for local/device-only deployments. Railway requires the
+  explicit `HOST=0.0.0.0` binding and injected `PORT`; expose that binding only
+  behind the configured trusted TLS proxy and exact CORS origin.
 - Run `npm run admin:provision` with a unique password of at least 15 characters,
   then remove `ADMIN_PASSWORD` from the long-lived runtime environment. Supply it
   again only for an intentional credential rotation; rotation revokes existing

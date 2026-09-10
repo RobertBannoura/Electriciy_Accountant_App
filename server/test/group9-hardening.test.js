@@ -81,6 +81,18 @@ test('security controls stay server-side and Electron IPC stays isolated', async
   assert.match(env, /nodeEnv === 'production' && !databaseUrl/)
 })
 
+test('backup implementation is included in source control packaging', async () => {
+  const [ignoreRules, backupService] = await Promise.all([
+    readFile(new URL('../../.gitignore', import.meta.url), 'utf8'),
+    readFile(new URL('../src/backups/backup-service.js', import.meta.url), 'utf8'),
+  ])
+
+  assert.doesNotMatch(ignoreRules, /^backups\/$/m)
+  assert.match(ignoreRules, /^\/backups\/$/m)
+  assert.match(backupService, /export async function createBackup/)
+  assert.match(backupService, /export async function restoreBackup/)
+})
+
 test('sale and purchase services recompute totals instead of accepting frontend totals', async () => {
   const [saleInput, saleService, purchaseInput, purchaseService] = await Promise.all([
     readFile(new URL('../src/sales/sale-input.js', import.meta.url), 'utf8'),

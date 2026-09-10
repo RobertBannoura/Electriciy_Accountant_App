@@ -56,6 +56,9 @@ opening balances, physical inventory, and cash reconciliation) also remains.
 | Medium | Backup metadata/path handling allowed noncanonical names and link substitution. | `electron/backup-files.cjs`, `electron/device-settings.cjs`, backup service | Traversal/link tricks or malicious metadata could redirect files or stress parsing. | Canonical metadata, bounded trees, real ordinary directories/files, link/junction rejection, exact columns. | Malicious filename/payload/checksum/schema/link and transactional restore tests passed. |
 | Low | Electron redirect/webview/permission denial relied partly on defaults. | `electron/main.cjs` | A future renderer compromise could seek an unnecessary privileged surface. | Explicit denial for redirects, windows, webviews, permissions, permission checks, and device permissions. | Electron boundary tests passed. |
 | Low | Automatic-backup UI logged the complete exception. | `client/src/App.tsx` | A local path or provider detail could appear in renderer logs. | Fixed non-sensitive warning only. | Source/logging review and regression tests passed. |
+| High | The backup service source was excluded by the broad `backups/` ignore rule. | `.gitignore`, `server/src/backups/backup-service.js` | A clean checkout or release built from GitHub would lack the imported backup/restore implementation. | Anchored the generated-output rule to `/backups/` and included the server source module. | Packaging regression and backup tests passed. |
+| Medium | PostgreSQL URL SSL options could replace the strict production TLS object. | `server/src/config/env.js`, `server/src/db/pool.js` | A deployment URL containing `sslmode=require`/`disable` or certificate options could weaken or bypass certificate verification. | Production rejects connection-string SSL options, always enables certificate verification/channel binding, and accepts only a bounded backend CA PEM. | Production configuration tests proved URL override rejection and preserved disposable local PostgreSQL support. |
+| Medium | Reverse-proxy client IP attribution was not explicitly configured. | `server/src/config/env.js`, `server/src/app.js`, request boundaries | A broad proxy setting could trust spoofed forwarding headers, while no trust setting could collapse all proxied users into one rate-limit bucket. | Production now requires explicit proxy IP/CIDR trust; booleans/hop counts are rejected; trusted `X-Real-IP` can overwrite forwarding chains. | Railway-style proxy and untrusted-direct-client limiter tests passed. |
 | Informational | Electron 44.2.0 was not the latest supported release in its stable major. | `electron/package.json`, lockfile | Remaining behind the supported-line update increases exposure to upstream Chromium/Electron defects over time. | Updated within the same major to Electron 44.3.0; no major upgrade. | Electron tests, packaging, ASAR scan, source-runtime smoke, and packaged-executable smoke passed. |
 
 The Electron update follows the official policy that only the latest minor in
@@ -72,8 +75,8 @@ Electron 44.3.0, the current stable 44 release at review time.
 
 - The machine-reconciled matrix contains all 62 declared method/path pairs and
   no undeclared matrix entries.
-- The four public declarations are health, readiness, normal login, and the
-  normal credential-based login.
+- The three public declarations are health, readiness, and the normal
+  credential-based login.
 - All 59 protected routes rejected direct unauthenticated requests before
   business logic. Hidden routes and protected `HEAD` requests were also denied.
 - Real admin sessions exercised intended customer, supplier, product,
@@ -255,19 +258,96 @@ to assert the intended database invariants.
 See [PRODUCTION_SECURITY_CHECKLIST.md](./PRODUCTION_SECURITY_CHECKLIST.md) for
 the required release gate and operator sign-off.
 
+## Code security blockers remaining
+
+None identified in the Prompt 10.8 code closure. The release packaging now
+includes the imported backup implementation. Production PostgreSQL TLS cannot
+be disabled/replaced through connection-string SSL parameters, and production
+startup fails without an explicit listen address and proxy IP/CIDR trust.
+Railway can use `HOST=0.0.0.0` and its injected `PORT`; local/device-only
+operation can retain loopback. Trusted Railway-style
+`X-Real-IP` overwrites any caller-supplied forwarding chain; direct untrusted
+callers cannot choose a login-limiter key.
+
+These controls follow the
+[node-postgres SSL configuration warning](https://node-postgres.com/features/ssl),
+[PostgreSQL `verify-full` model](https://www.postgresql.org/docs/current/libpq-ssl.html),
+[Express proxy guidance](https://expressjs.com/en/guide/behind-proxies.html), and
+[Railway forwarding-header contract](https://docs.railway.com/networking/public-networking/specs-and-limits).
+[Railway's bind-address requirement](https://docs.railway.com/networking/troubleshooting/application-failed-to-respond)
+is also reflected in the explicit production `HOST` gate.
+They do not substitute for the target-environment proofs below.
+
+## Operator/deployment blockers remaining
+
+- **High:** the ignored `server/.env` still contains a five-character admin
+  provisioning value. Its content was not disclosed. The exact rotate,
+  provision, login-verify, old-session-reject, and secret-removal procedure is
+  in the production checklist. Release approval is prohibited until the
+  operator confirms completion.
+- Prove production PostgreSQL TLS and certificate verification, including a
+  deliberate wrong-CA failure with no plaintext retry.
+- Prove real-domain HTTPS redirect, HSTS, all required security headers, exact
+  CORS, absence of a credential-free login route, and correct proxy client-IP
+  rate limiting. Localhost does not satisfy this gate.
+- Complete organization signing, SmartScreen/reputation, installer privilege,
+  executable/user-data/settings/backup ACL, and encrypted-storage acceptance on
+  the exact Windows package.
+- Complete real Chrome/Edge Web Push acceptance with the production VAPID pair.
+- Complete encrypted backup destination/retention/restore drill, external
+  logging, physical barcode/printer, financial verification, opening balance,
+  physical inventory, and separate ILS/USD/JOD cash/bank reconciliation.
+
+## Accepted residual risks
+
+The following Medium risks require explicit written acceptance; documenting
+them does not automatically approve them:
+
+- The web-service restore path currently needs table-owner/`TRUNCATE`/trigger/
+  constraint rights. A separate migration identity is still required, but a
+  strictly DML-only HTTP runtime cannot perform the current restore safely.
+- Backup SHA-256 detects corruption, not malicious replacement. HMAC/signature
+  enforcement is deferred pending a protected key lifecycle, versioned backward
+  compatibility, and recovery testing. Encrypted storage, restrictive ACLs,
+  audited restore, explicit confirmation, and isolated verification compensate.
+- The only admin uses password authentication without MFA. TOTP was not added
+  without a recovery-tested design. Remote exposure should remain narrow, and
+  Windows auto-lock (10 minutes maximum; 5 preferred) is required to mitigate
+  the 12-hour session's unattended-workstation risk.
+
+The login limiter is process-local. A shared limiter is mandatory before
+running multiple server replicas.
+
+## Repair/maintenance security status
+
+PASS for code and disposable-database QA. Maintenance routes require admin
+authentication and validated active-store context; inputs are allowlisted;
+money/debt/payment/check values are server-derived with exact decimals;
+creation and reversal are replay-protected, atomic, audited, and preserve the
+original; inventory, weighted cost, COGS, and gross profit are untouched.
+Financial verification reconciles maintenance/reversal effects, and backups
+include both maintenance tables.
+
+Prompt 10.8 verification passed 56 focused unit/security tests, 12 real
+PostgreSQL maintenance scenarios, and all 11 non-skippable Group 10 financial
+PostgreSQL scenarios. The full aggregate passed 262 server tests (nine opt-in
+integration declarations skipped there) and 22 Electron tests. TypeScript,
+ESLint, Vite production build, and the Electron authentication smoke passed.
+The disposable PostgreSQL cluster was loopback-only and removed afterward.
+
 ## Final metrics
 
 | Metric | Result |
 |---|---|
 | Critical vulnerabilities | 0 found; 0 remaining |
-| High vulnerabilities | 7 found; 6 fixed; 1 remaining |
-| Medium vulnerabilities | 9 found; 9 fixed; 0 remaining |
+| High vulnerabilities | 8 found; 7 fixed; 1 operator blocker remaining |
+| Medium vulnerabilities | 14 found; 11 fixed; 3 require explicit acceptance |
 | Low vulnerabilities | 11 found; 11 fixed; 0 remaining |
 | Informational findings | 1 found; 1 addressed; 0 remaining |
-| Total findings | 28 |
-| Total fixed/addressed | 27 |
-| Total remaining | 1 |
-| Total automated tests | 357 passed |
+| Total findings | 34 |
+| Total fixed/addressed | 30 |
+| Total remaining/accepted | 4 |
+| Total automated tests | 365 passed |
 | PostgreSQL security scenarios | 81/81 passed; 0 skipped in isolated runs |
 | Build results | TypeScript, ESLint, Vite build, and PWA preview passed |
 | Electron results | 22/22 tests, Electron 44.3.0 package, two smoke paths passed |
@@ -277,3 +357,7 @@ the required release gate and operator sign-off.
 ## Production recommendation
 
 NOT APPROVED FOR PRODUCTION
+
+Approval may be reconsidered only after the weak current-environment admin
+password is rotated and every mandatory target-environment gate in
+`PRODUCTION_SECURITY_CHECKLIST.md` has evidence and operator/release sign-off.
