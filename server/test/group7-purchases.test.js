@@ -35,6 +35,25 @@ test('purchase and supplier payment inputs cover all four settlement methods', (
   ] }).error, /مرتين/)
 })
 
+test('purchase input accepts invoice-only manual supplier lines with a required description', () => {
+  const parsed = parsePurchaseInput({
+    ...purchaseInput,
+    items: [{ productId: null, description: 'مواد توريد خاصة', quantity: '3', purchasePrice: '12.5' }],
+  })
+
+  assert.equal(parsed.error, undefined)
+  assert.deepEqual(parsed.value.items[0], {
+    productId: null,
+    description: 'مواد توريد خاصة',
+    quantity: '3',
+    purchasePrice: '12.5',
+  })
+  assert.match(parsePurchaseInput({
+    ...purchaseInput,
+    items: [{ productId: null, description: '   ', quantity: '1', purchasePrice: '10' }],
+  }).error, /اسم الصنف اليدوي/)
+})
+
 function fakeDatabase({ failBank = false } = {}) {
   const state = { commands: [], purchaseItems: [], inventory: [], inventoryCosts: [], productPrices: [], ledgers: [], payments: [], checks: [], cash: [], bank: [], released: false }
   const client = {
@@ -126,6 +145,34 @@ test('purchase creation commits inventory, latest cost, debt, and mixed payments
   assert.equal(state.released, true)
 })
 
+test('manual purchase lines save as supplier cost without inventory or catalog price changes', async () => {
+  const { databasePool, state } = fakeDatabase()
+  const purchase = await createPurchase({
+    databasePool,
+    storeId: '2',
+    userId: '5',
+    input: {
+      ...purchaseInput,
+      items: [{
+        productId: null,
+        description: 'مواد توريد خاصة',
+        quantity: '3',
+        purchasePrice: '10',
+      }],
+      payments: [],
+    },
+  })
+
+  assert.equal(purchase.total, '30')
+  assert.equal(purchase.remaining_due, '30')
+  assert.deepEqual(state.purchaseItems[0].slice(1, 5), [null, 'مواد توريد خاصة', '3', '10'])
+  assert.equal(purchase.items[0].weighted_average_cost_after, null)
+  assert.equal(state.productPrices.length, 0)
+  assert.equal(state.inventory.length, 0)
+  assert.equal(state.inventoryCosts.length, 0)
+  assert.equal(state.commands.at(-1), 'COMMIT')
+})
+
 test('a downstream accounting failure rolls the entire purchase back', async () => {
   const { databasePool, state } = fakeDatabase({ failBank: true })
   await assert.rejects(
@@ -162,12 +209,18 @@ test('standalone supplier payments cannot exceed locked supplier debt', async ()
 })
 
 test('purchase migration protects historical costs and links payment instruments', async () => {
-  const sql = await readFile(new URL('../db/migrations/0019_purchase_entry_and_supplier_payments.sql', import.meta.url), 'utf8')
+  const [sql, manualItemsSql] = await Promise.all([
+    readFile(new URL('../db/migrations/0019_purchase_entry_and_supplier_payments.sql', import.meta.url), 'utf8'),
+    readFile(new URL('../db/migrations/0026_manual_purchase_items.sql', import.meta.url), 'utf8'),
+  ])
   assert.match(sql, /CREATE TRIGGER purchase_items_immutable/)
   assert.match(sql, /ADD COLUMN purchase_id BIGINT/)
   assert.match(sql, /products\.current_purchase_price/)
   assert.match(sql, /purchase_payment_values_consistent/)
   assert.match(sql, /supplier_cash_payment_values_consistent/)
+  assert.match(manualItemsSql, /purchase_items_description_not_blank/)
+  assert.match(manualItemsSql, /BTRIM\(description\) <> ''/)
+  assert.match(manualItemsSql, /never create stock or cost movements/)
 })
 
 test('purchase UI supports scanner search and all supplier settlement choices', async () => {
@@ -179,6 +232,20 @@ test('purchase UI supports scanner search and all supplier settlement choices', 
   assert.match(page, /\/products\?barcode=/)
   assert.match(page, /current_purchase_price/)
   assert.match(page, /\/purchases/)
+  assert.match(page, /apiFetch\('\/categories'/)
+  assert.match(page, /query\.set\('categoryId', selectedCategoryId\)/)
+  assert.match(page, /اختيار سريع مثل نقطة البيع/)
+  assert.match(page, /onClick=\{\(\) => setShowCatalog\(true\)\}/)
+  assert.match(page, /aria-modal="true"/)
+  assert.match(page, /إغلاق اختيار الأصناف/)
+  assert.match(page, /aria-label="تصنيفات الأصناف"/)
+  assert.match(page, /aria-label="أصناف التصنيف المحدد"/)
+  assert.match(page, /onClick=\{\(\) => addProduct\(product\)\}/)
+  assert.match(page, /aria-label="سطر شراء يدوي جديد"/)
+  assert.match(page, /purchase-manual-draft-row sticky top-\[61px\]/)
+  assert.match(page, /commitManualLine/)
+  assert.match(page, /productId: null, description: line\.name\.trim\(\)/)
+  assert.match(page, /سطر جديد جاهز — لا يؤثر على المخزون/)
   for (const method of ['cash', 'bank', 'owner_check', 'transferred_customer_check']) {
     assert.match(editor, new RegExp(method))
   }

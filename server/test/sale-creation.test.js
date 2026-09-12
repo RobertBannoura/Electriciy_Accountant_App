@@ -173,6 +173,35 @@ test('failure after the sale insert rolls the whole transaction back', async () 
   assert.equal(state.released, true)
 })
 
+test('manual sale lines save as invoice-only revenue without inventory movements', async () => {
+  const { databasePool, state } = fakeDatabase()
+  const manualInput = {
+    invoiceNumber: 'MANUAL-41',
+    businessDate: '2026-09-11',
+    customerId: null,
+    customerProjectId: null,
+    invoiceDiscount: '0',
+    items: [{
+      productId: null, description: 'أجرة تركيب', quantity: '2',
+      actualPrice: '25', discount: '0',
+    }],
+    payments: [{
+      method: 'cash', currency: 'ILS', originalAmount: '50',
+      exchangeRate: null, convertedIlsAmount: '50', reference: null,
+    }],
+  }
+
+  const sale = await createSale({ databasePool, input: manualInput, storeId: '2', userId: '5' })
+
+  assert.equal(sale.total, '50')
+  assert.equal(state.itemInserts.length, 1)
+  assert.equal(state.itemInserts[0][1], null)
+  assert.equal(state.itemInserts[0][2], 'أجرة تركيب')
+  assert.deepEqual(state.itemInserts[0].slice(8, 11), ['0', '0', '50'])
+  assert.equal(state.movementInserts.length, 0)
+  assert.equal(state.costMovements.length, 0)
+})
+
 test('insufficient inventory rolls back before creating any sale records', async () => {
   const { databasePool, state } = fakeDatabase({ balanceQuantity: '3' })
 

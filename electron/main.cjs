@@ -1,7 +1,7 @@
 const path = require('node:path')
 const fs = require('node:fs/promises')
 const { pathToFileURL } = require('node:url')
-const { app, BrowserWindow, dialog, ipcMain, net, Notification, protocol } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, Menu, net, Notification, protocol } = require('electron')
 const { createDeviceSettingsStore } = require('./device-settings.cjs')
 const { createBackupFileStore } = require('./backup-files.cjs')
 const {
@@ -170,6 +170,8 @@ function assertTrustedIpcSender(event) {
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null)
+
   if (!isDevelopment) {
     registerApplicationProtocol()
   }

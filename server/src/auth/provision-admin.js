@@ -1,12 +1,18 @@
 import { hashPassword } from './password.js'
 import {
+  isValidLoginPassword,
   isValidProvisionedPassword,
   normalizeUsername,
 } from './credentials.js'
 
 export async function provisionAdmin(
   client,
-  { username, password, displayName = 'المدير' },
+  {
+    username,
+    password,
+    displayName = 'المدير',
+    allowLocalDevelopmentPassword = false,
+  },
 ) {
   const normalizedUsername = normalizeUsername(username)
   const normalizedDisplayName =
@@ -16,7 +22,10 @@ export async function provisionAdmin(
     throw new Error('ADMIN_USERNAME must contain between 1 and 64 characters.')
   }
 
-  if (!isValidProvisionedPassword(password)) {
+  const passwordIsAllowed = isValidProvisionedPassword(password)
+    || (allowLocalDevelopmentPassword && isValidLoginPassword(password))
+
+  if (!passwordIsAllowed) {
     throw new Error('ADMIN_PASSWORD must contain at least 15 characters.')
   }
 

@@ -63,7 +63,7 @@ export function MaintenancePage({
   const [records, setRecords] = useState<MaintenanceRecord[]>([])
   const [recordPage, setRecordPage] = useState(1)
   const [hasMoreRecords, setHasMoreRecords] = useState(false)
-  const [showForm, setShowForm] = useState(true)
+  const [showForm, setShowForm] = useState(Boolean(searchParams.get('customerId')))
   const [customerId, setCustomerId] = useState(searchParams.get('customerId') ?? '')
   const [itemDescription, setItemDescription] = useState('')
   const [details, setDetails] = useState('')
@@ -163,6 +163,14 @@ export function MaintenancePage({
 
   useEffect(() => onDraftStateChange(hasUnsavedDraft), [hasUnsavedDraft, onDraftStateChange])
   useEffect(() => () => onDraftStateChange(false), [onDraftStateChange])
+  useEffect(() => {
+    if (!showForm) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !hasUnsavedDraft) setShowForm(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [hasUnsavedDraft, showForm])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -235,7 +243,8 @@ export function MaintenancePage({
       <div aria-live="polite">{message && <p className="mt-5 rounded-xl bg-emerald-50 p-4 text-lg font-black text-emerald-900" role="status">{message}</p>}{error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-lg font-black text-rose-900" role="alert">{error}</p>}</div>
 
       {showForm && !needsStore && (
-        <form className="mt-7 space-y-6" onSubmit={(event) => void submit(event)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-5">
+        <form aria-label="صيانة جديدة" aria-modal="true" className="max-h-[94vh] w-full max-w-6xl space-y-5 overflow-y-auto rounded-3xl bg-slate-100 p-3 shadow-2xl sm:p-5" onSubmit={(event) => void submit(event)} role="dialog">
           <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:p-7">
             <div className="mb-5 flex items-center justify-between gap-4"><h2 className="text-2xl font-black">صيانة جديدة</h2><button className="min-h-11 rounded-xl px-4 font-black text-slate-600 hover:bg-slate-100" onClick={() => setShowForm(false)} type="button">إغلاق النموذج</button></div>
             <div className="grid gap-5 md:grid-cols-2">
@@ -258,6 +267,7 @@ export function MaintenancePage({
             <button className="mt-5 min-h-16 w-full rounded-2xl bg-amber-400 px-8 text-2xl font-black text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canSave} type="submit">{saving ? 'جارٍ الحفظ…' : 'حفظ الصيانة'}</button>
           </section>
         </form>
+        </div>
       )}
 
       <section className="mt-8" aria-labelledby="recent-maintenance-title">

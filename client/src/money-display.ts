@@ -10,6 +10,14 @@ export function formatDecimal(value: string) {
   }
 }
 
+export function formatMoney(value: string) {
+  try {
+    return new DisplayDecimal(value).toDecimalPlaces(2).toFixed()
+  } catch {
+    return value
+  }
+}
+
 export function formatIls(value: string) {
-  return `₪${formatDecimal(value)}`
+  return `₪${formatMoney(value)}`
 }

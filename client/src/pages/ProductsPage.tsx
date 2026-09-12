@@ -3,7 +3,7 @@ import { apiFetch } from '../api'
 import { isValidEan13 } from '../barcodes/ean13'
 import { BarcodePreview } from '../components/BarcodePreview'
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner'
-import { formatDecimal } from '../money-display'
+import { formatMoney } from '../money-display'
 import { Store } from '../types'
 
 type Category = { id: string; name: string }
@@ -244,7 +244,7 @@ export function ProductsPage({
                     <div className={`min-w-48 rounded-xl border p-4 ${inventory.low_stock ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50'}`} key={inventory.store_id}>
                       <p className="font-bold text-slate-600">{inventory.store_name}</p>
                       <p className="mt-1 text-2xl font-black">{inventory.quantity} <span className="text-base">{product.sale_unit}</span></p>
-                      <p className="mt-1 text-sm font-bold text-violet-800">متوسط التكلفة: ₪{formatDecimal(inventory.weighted_average_cost)}</p>
+                      <p className="mt-1 text-sm font-bold text-violet-800">متوسط التكلفة: ₪{formatMoney(inventory.weighted_average_cost)}</p>
                       {inventory.low_stock && <p className="mt-1 text-sm font-black text-amber-800">مخزون منخفض · الحد {inventory.reorder_level}</p>}
                     </div>
                   ))}
@@ -467,6 +467,15 @@ function formatMovementDate(value: string) {
 }
 
 function Modal({ children, onClose, title, wide = false }: { children: ReactNode; onClose: () => void; title: string; wide?: boolean }) {
+  useEffect(() => {
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose()
+    }
+
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [onClose])
+
   return <div className="fixed inset-0 z-30 overflow-y-auto bg-slate-950/50 p-4" role="presentation"><div aria-modal="true" className={`mx-auto my-4 rounded-3xl bg-white p-6 shadow-2xl sm:p-8 ${wide ? 'max-w-4xl' : 'max-w-xl'}`} role="dialog"><div className="flex items-center justify-between gap-4"><h2 className="text-2xl font-black">{title}</h2><button aria-label="إغلاق" className="size-11 rounded-full bg-slate-100 text-2xl font-bold" onClick={onClose} type="button">×</button></div>{children}</div></div>
 }
 

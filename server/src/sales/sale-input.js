@@ -79,12 +79,18 @@ export function parseSaleInput(body) {
 
   const items = []
   for (const item of body.items) {
-    const productId = parseId(item?.productId)
+    const productId = parseOptionalId(item?.productId)
+    const description = productId === null
+      ? normalizeRequiredText(item?.description, 500)
+      : null
     const quantity = normalizeDecimal(item?.quantity, { scale: 3 })
     const actualPrice = parseMoney(item?.actualPrice ?? item?.actualSalePrice)
     const discount = parseMoney(item?.discount, { optionalZero: true })
 
-    if (!productId) return { error: 'أحد معرّفات الأصناف غير صالح' }
+    if (productId === undefined) return { error: 'أحد معرّفات الأصناف غير صالح' }
+    if (productId === null && !description) {
+      return { error: 'اسم الصنف مطلوب لكل بند يدوي وبحد أقصى 500 حرف' }
+    }
     if (quantity === undefined || new SaleDecimal(quantity).lessThanOrEqualTo(0)) {
       return { error: 'كمية كل بند يجب أن تكون أكبر من صفر وبحد أقصى ثلاث منازل عشرية' }
     }
@@ -95,7 +101,9 @@ export function parseSaleInput(body) {
       return { error: 'خصم كل بند يجب أن يكون مبلغاً موجباً أو صفراً وبمضاعفات نصف شيكل' }
     }
 
-    items.push({ productId, quantity, actualPrice, discount })
+    items.push(productId === null
+      ? { productId: null, description, quantity, actualPrice, discount }
+      : { productId, quantity, actualPrice, discount })
   }
 
   return {

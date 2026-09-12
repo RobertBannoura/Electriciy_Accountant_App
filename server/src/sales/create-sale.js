@@ -34,25 +34,29 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
     }
     await requireCustomerAndProject(client, input.customerId, input.customerProjectId)
 
-    const productIds = [...new Set(input.items.map((item) => item.productId))]
-    const productResult = await client.query(
-      `
-        SELECT
-          products.id::TEXT AS id,
-          products.name,
-          products.unit_name AS sale_unit,
-          products.default_sale_price::TEXT AS original_price
-        FROM store_inventory AS inventory
-        INNER JOIN products ON products.id = inventory.product_id
-        WHERE inventory.store_id = $1::BIGINT
-          AND inventory.product_id = ANY($2::BIGINT[])
-          AND inventory.is_active = TRUE
-          AND products.is_active = TRUE
-        ORDER BY products.id
-        FOR UPDATE OF inventory, products
-      `,
-      [storeId, productIds],
-    )
+    const productIds = [...new Set(
+      input.items.filter((item) => item.productId !== null).map((item) => item.productId),
+    )]
+    const productResult = productIds.length === 0
+      ? { rowCount: 0, rows: [] }
+      : await client.query(
+        `
+          SELECT
+            products.id::TEXT AS id,
+            products.name,
+            products.unit_name AS sale_unit,
+            products.default_sale_price::TEXT AS original_price
+          FROM store_inventory AS inventory
+          INNER JOIN products ON products.id = inventory.product_id
+          WHERE inventory.store_id = $1::BIGINT
+            AND inventory.product_id = ANY($2::BIGINT[])
+            AND inventory.is_active = TRUE
+            AND products.is_active = TRUE
+          ORDER BY products.id
+          FOR UPDATE OF inventory, products
+        `,
+        [storeId, productIds],
+      )
     if (productResult.rowCount !== productIds.length) {
       throw new AppError(
         'أحد الأصناف غير موجود أو غير متاح في هذا المتجر',
@@ -63,6 +67,14 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
 
     const products = new Map(productResult.rows.map((product) => [product.id, product]))
     const enrichedItems = input.items.map((item) => {
+      if (item.productId === null) {
+        return {
+          ...item,
+          productName: item.description,
+          saleUnit: null,
+          originalPrice: null,
+        }
+      }
       const product = products.get(item.productId)
       return {
         ...item,
@@ -85,15 +97,17 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
     }
 
     const requestedByProduct = aggregateRequestedQuantities(calculated.value.items)
-    const balanceResult = await client.query(
-      `
-        SELECT product_id::TEXT AS product_id, quantity::TEXT AS quantity
-        FROM store_inventory_balances
-        WHERE store_id = $1::BIGINT
-          AND product_id = ANY($2::BIGINT[])
-      `,
-      [storeId, productIds],
-    )
+    const balanceResult = productIds.length === 0
+      ? { rows: [] }
+      : await client.query(
+        `
+          SELECT product_id::TEXT AS product_id, quantity::TEXT AS quantity
+          FROM store_inventory_balances
+          WHERE store_id = $1::BIGINT
+            AND product_id = ANY($2::BIGINT[])
+        `,
+        [storeId, productIds],
+      )
     const balances = new Map(
       balanceResult.rows.map((row) => [row.product_id, new InventoryDecimal(row.quantity)]),
     )
@@ -123,6 +137,14 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
     }
     let saleCostTotal = new InventoryDecimal(0)
     const costedItems = calculated.value.items.map((item) => {
+      if (item.productId === null) {
+        return {
+          ...item,
+          unitCostSnapshot: '0',
+          costTotal: '0',
+          grossProfitBeforeInvoiceDiscount: item.lineTotal,
+        }
+      }
       const unitCostSnapshot = costBalances.get(item.productId).weighted_average_cost
       const costTotal = new InventoryDecimal(item.quantity).mul(unitCostSnapshot).toDecimalPlaces(12)
       saleCostTotal = saleCostTotal.plus(costTotal)
@@ -345,6 +367,7 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
 function aggregateRequestedQuantities(items) {
   const requested = new Map()
   for (const item of items) {
+    if (item.productId === null) continue
     const current = requested.get(item.productId) ?? new InventoryDecimal(0)
     requested.set(item.productId, current.plus(item.quantity))
   }

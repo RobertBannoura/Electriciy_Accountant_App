@@ -207,11 +207,13 @@ const checks = Object.freeze([
         SELECT sales.store_id, items.product_id, 'sale'::TEXT AS source_type,
           sales.id AS source_id, -SUM(items.quantity) AS quantity
         FROM sales INNER JOIN sale_items AS items ON items.sale_id = sales.id
+        WHERE items.product_id IS NOT NULL
         GROUP BY sales.store_id, items.product_id, sales.id
         UNION ALL
         SELECT purchases.store_id, items.product_id, 'purchase', purchases.id,
           SUM(items.quantity)
         FROM purchases INNER JOIN purchase_items AS items ON items.purchase_id = purchases.id
+        WHERE items.product_id IS NOT NULL
         GROUP BY purchases.store_id, items.product_id, purchases.id
         UNION ALL
         SELECT returns.store_id, items.product_id, 'customer_return', returns.id,

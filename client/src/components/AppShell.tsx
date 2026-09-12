@@ -129,7 +129,7 @@ export function AppShell({ configuredStore, isOnline, stores, user, onBrowserSto
         </div>
       )}
 
-      <div className="mx-auto max-w-6xl px-3 py-4 sm:px-8 sm:py-10">
+      <div className={`mx-auto px-3 py-4 sm:px-8 sm:py-10 ${location.pathname === '/sale' ? 'max-w-[78rem]' : 'max-w-6xl'}`}>
         {financialRouteLocked && (
           <p className="mb-4 rounded-2xl border-2 border-rose-300 bg-rose-50 p-5 text-center text-lg font-black text-rose-900" role="alert">
             هذه العملية غير متاحة دون اتصال بالخادم.

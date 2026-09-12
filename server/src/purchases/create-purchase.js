@@ -29,21 +29,25 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
     })
     const supplier = await requireSupplier(client, input.supplierId)
 
-    const productIds = input.items.map((item) => item.productId)
-    const productResult = await client.query(
-      `
-        SELECT products.id::TEXT AS id, products.name, products.unit_name
-        FROM store_inventory AS inventory
-        INNER JOIN products ON products.id = inventory.product_id
-        WHERE inventory.store_id = $1::BIGINT
-          AND inventory.product_id = ANY($2::BIGINT[])
-          AND inventory.is_active = TRUE
-          AND products.is_active = TRUE
-        ORDER BY products.id
-        FOR UPDATE OF inventory, products
-      `,
-      [storeId, productIds],
-    )
+    const productIds = [...new Set(input.items.flatMap((item) => (
+      item.productId === null ? [] : [item.productId]
+    )))]
+    const productResult = productIds.length === 0
+      ? { rowCount: 0, rows: [] }
+      : await client.query(
+        `
+          SELECT products.id::TEXT AS id, products.name, products.unit_name
+          FROM store_inventory AS inventory
+          INNER JOIN products ON products.id = inventory.product_id
+          WHERE inventory.store_id = $1::BIGINT
+            AND inventory.product_id = ANY($2::BIGINT[])
+            AND inventory.is_active = TRUE
+            AND products.is_active = TRUE
+          ORDER BY products.id
+          FOR UPDATE OF inventory, products
+        `,
+        [storeId, productIds],
+      )
     if (productResult.rowCount !== productIds.length) {
       throw new AppError(
         'أحد الأصناف غير موجود أو غير مفعّل لاستقبال المخزون في هذا المتجر',
@@ -53,6 +57,7 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
     }
     const products = new Map(productResult.rows.map((product) => [product.id, product]))
     for (const item of input.items) {
+      if (item.productId === null) continue
       if (products.get(item.productId).unit_name === 'قطعة'
           && !new PurchaseDecimal(item.quantity).isInteger()) {
         throw new AppError(
@@ -65,10 +70,13 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
 
     const calculated = calculatePurchase(input.items.map((item) => ({
       ...item,
-      productName: products.get(item.productId).name,
+      productName: item.productId === null
+        ? item.description
+        : products.get(item.productId).name,
     })))
     const costUpdates = new Map()
     for (const item of calculated.items) {
+      if (item.productId === null) continue
       const balance = await readInventoryCostBalance(client, storeId, item.productId)
       costUpdates.set(item.productId, calculateWeightedAverageCost({
         quantityOnHand: balance.quantity,
@@ -120,10 +128,12 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
         [purchase.id, item.productId, item.productName, item.quantity, item.purchasePrice],
       )
       savedItems.push({ ...result.rows[0], line_total: item.lineTotal })
-      await client.query(
-        'UPDATE products SET current_purchase_price = $1::NUMERIC WHERE id = $2::BIGINT',
-        [item.purchasePrice, item.productId],
-      )
+      if (item.productId !== null) {
+        await client.query(
+          'UPDATE products SET current_purchase_price = $1::NUMERIC WHERE id = $2::BIGINT',
+          [item.purchasePrice, item.productId],
+        )
+      }
     }
 
     for (const [productId, quantity] of aggregateQuantities(calculated.items)) {
@@ -216,7 +226,8 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
       supplier_name: supplier.name,
       items: savedItems.map((item) => ({
         ...item,
-        weighted_average_cost_after: costUpdates.get(item.product_id).weightedAverageCost,
+        weighted_average_cost_after:
+          costUpdates.get(item.product_id)?.weightedAverageCost ?? null,
       })),
       payments: savedPayments,
     }
@@ -231,6 +242,7 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
 function aggregateQuantities(items) {
   const quantities = new Map()
   for (const item of items) {
+    if (item.productId === null) continue
     const current = quantities.get(item.productId) ?? new PurchaseDecimal(0)
     quantities.set(item.productId, current.plus(item.quantity))
   }

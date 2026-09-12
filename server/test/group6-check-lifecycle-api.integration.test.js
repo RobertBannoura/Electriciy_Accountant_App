@@ -38,8 +38,7 @@ test(
     try {
       const login = await jsonRequest(`${baseUrl}/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: adminUsername, password: adminPassword }),
+        body: { username: adminUsername, password: adminPassword },
       })
       assert.equal(login.response.status, 201)
       const token = login.body.token
@@ -381,8 +380,8 @@ function priorBusinessDate(count) {
   const date = new Date(`${currentDate()}T00:00:00Z`)
   let remaining = count
   while (remaining > 0) {
-    date.setUTCDate(date.getUTCDate() - 1)
     if (![5, 6].includes(date.getUTCDay())) remaining -= 1
+    date.setUTCDate(date.getUTCDate() - 1)
   }
   return date.toISOString().slice(0, 10)
 }

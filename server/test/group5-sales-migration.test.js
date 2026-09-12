@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const migrationUrl = new URL('../db/migrations/0011_sale_creation.sql', import.meta.url)
+const manualItemsMigrationUrl = new URL('../db/migrations/0025_manual_sale_items.sql', import.meta.url)
 
 test('sale migration stores original, actual, discount, and exact total snapshots', async () => {
   const sql = await readFile(migrationUrl, 'utf8')
@@ -34,6 +35,15 @@ test('sale quantity trigger is recreated around the precision type change', asyn
   assert.ok(dropPosition > -1)
   assert.ok(dropPosition < alterPosition)
   assert.ok(recreatePosition > alterPosition)
+})
+
+test('manual sale item migration permits invoice-only lines with required descriptions', async () => {
+  const sql = await readFile(manualItemsMigrationUrl, 'utf8')
+
+  assert.match(sql, /ALTER COLUMN product_id DROP NOT NULL/)
+  assert.match(sql, /sale_items_description_not_blank/)
+  assert.match(sql, /BTRIM\(description\) <> ''/)
+  assert.match(sql, /never create stock or cost movements/)
 })
 
 test('sales API is store-scoped and creates all records inside one transaction', async () => {

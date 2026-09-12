@@ -35,19 +35,25 @@ export function parsePurchaseInput(body) {
   const items = []
   const productIds = new Set()
   for (const row of body.items) {
-    const productId = parseId(row?.productId)
+    const productId = row?.productId == null ? null : parseId(row.productId)
+    const description = normalizeRequiredText(row?.description, 500)
     const quantity = normalizeDecimal(row?.quantity, { scale: 3 })
     const purchasePrice = normalizeDecimal(row?.purchasePrice ?? row?.unitCost, { scale: 2 })
-    if (!productId) return { error: 'أحد معرّفات الأصناف غير صالح' }
-    if (productIds.has(productId)) return { error: 'لا يمكن تكرار الصنف في فاتورة الشراء' }
+    if (row?.productId != null && !productId) return { error: 'أحد معرّفات الأصناف غير صالح' }
+    if (!productId && !description) {
+      return { error: 'اسم الصنف اليدوي مطلوب وبحد أقصى 500 حرف' }
+    }
+    if (productId && productIds.has(productId)) {
+      return { error: 'لا يمكن تكرار الصنف في فاتورة الشراء' }
+    }
     if (quantity === undefined || new PurchaseDecimal(quantity).lessThanOrEqualTo(0)) {
       return { error: 'كمية كل بند يجب أن تكون أكبر من صفر وبحد أقصى ثلاث منازل عشرية' }
     }
     if (purchasePrice === undefined || !isHalfShekelAmount(purchasePrice)) {
       return { error: 'سعر الشراء مطلوب ويجب أن يكون موجباً أو صفراً وبمضاعفات نصف شيكل' }
     }
-    productIds.add(productId)
-    items.push({ productId, quantity, purchasePrice })
+    if (productId) productIds.add(productId)
+    items.push({ productId, ...(productId ? {} : { description }), quantity, purchasePrice })
   }
 
   return {

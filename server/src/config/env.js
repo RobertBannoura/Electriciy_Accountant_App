@@ -130,6 +130,15 @@ const trustedProxyRanges = parseTrustedProxyRanges(process.env.TRUST_PROXY)
 const proxyClientIpHeader = (
   process.env.PROXY_CLIENT_IP_HEADER ?? 'x-forwarded-for'
 ).trim().toLowerCase()
+const shortDevelopmentAdminPasswordValue = (
+  process.env.DEVELOPMENT_SHORT_ADMIN_PASSWORD_ENABLED ?? 'false'
+).trim().toLowerCase()
+
+if (!['true', 'false'].includes(shortDevelopmentAdminPasswordValue)) {
+  throw new Error('DEVELOPMENT_SHORT_ADMIN_PASSWORD_ENABLED must be true or false.')
+}
+
+const shortDevelopmentAdminPasswordEnabled = shortDevelopmentAdminPasswordValue === 'true'
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error('يجب أن يكون PORT رقماً صحيحاً بين 1 و65535')
@@ -141,6 +150,18 @@ if (!host || (!isIP(host) && host !== 'localhost')) {
 
 if (nodeEnv === 'production' && host === 'localhost') {
   throw new Error('Production HOST must be an explicit IP address.')
+}
+
+if (
+  shortDevelopmentAdminPasswordEnabled
+  && (
+    nodeEnv !== 'development'
+    || !['127.0.0.1', '::1', 'localhost'].includes(host)
+  )
+) {
+  throw new Error(
+    'DEVELOPMENT_SHORT_ADMIN_PASSWORD_ENABLED is restricted to loopback development servers.',
+  )
 }
 
 if (configuredVapidValues !== 0 && configuredVapidValues !== 3) {
@@ -181,6 +202,7 @@ export const env = Object.freeze({
   adminUsername: process.env.ADMIN_USERNAME ?? 'admin',
   adminPassword: process.env.ADMIN_PASSWORD,
   adminDisplayName: process.env.ADMIN_DISPLAY_NAME ?? 'المدير',
+  shortDevelopmentAdminPasswordEnabled,
   vapidPublicKey,
   vapidPrivateKey,
   vapidSubject,

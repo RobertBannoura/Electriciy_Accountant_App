@@ -60,6 +60,32 @@ test('sale input requires a real date, invoice number, items, and matching custo
   )
 })
 
+test('sale input accepts validated invoice-only manual lines without a product ID', () => {
+  const parsed = parseSaleInput({
+    invoiceNumber: 'MANUAL-1',
+    date: '2026-09-11',
+    items: [{
+      productId: null,
+      description: '  أجرة تركيب لوحة  ',
+      quantity: '1.5',
+      actualPrice: '20',
+      discount: '0.50',
+    }],
+  })
+
+  assert.deepEqual(parsed.value.items, [{
+    productId: null,
+    description: 'أجرة تركيب لوحة',
+    quantity: '1.5',
+    actualPrice: '20',
+    discount: '0.50',
+  }])
+  assert.match(parseSaleInput({
+    invoiceNumber: 'MANUAL-2', date: '2026-09-11',
+    items: [{ productId: null, description: ' ', quantity: '1', actualPrice: '10' }],
+  }).error, /اسم الصنف مطلوب/)
+})
+
 test('server sale calculation is exact and applies line then invoice amount discounts', () => {
   const calculated = calculateSale(
     [

@@ -268,7 +268,8 @@ export function CustomerPaymentPage({
         {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-lg font-black text-rose-900" role="alert">{error}</p>}
       </div>
 
-      <div className="mt-6 rounded-3xl border-2 border-teal-200 bg-white p-5 shadow-sm sm:p-7">
+      <div className="mt-6 grid items-start gap-5 min-[1120px]:grid-cols-[20rem_minmax(0,1fr)]" dir="ltr">
+      <div className="order-1 rounded-3xl border-2 border-teal-200 bg-white p-5 shadow-sm min-[1120px]:order-2 sm:p-7" dir="rtl">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-black">تفصيل الدفعة</h2>
@@ -310,18 +311,19 @@ export function CustomerPaymentPage({
         <PaymentField label="ملاحظات (اختياري)"><textarea className={`${inputClass} mt-5 min-h-24 py-3`} maxLength={2000} onChange={(event) => setNotes(event.target.value)} value={notes} /></PaymentField>
       </div>
 
-      <div className="mt-6 grid gap-5 rounded-3xl border-2 border-slate-200 bg-white p-5 shadow-sm lg:grid-cols-[1fr_24rem] sm:p-7">
+      <aside className="order-2 rounded-3xl border-2 border-slate-200 bg-white p-5 shadow-sm min-[1120px]:sticky min-[1120px]:top-4 min-[1120px]:order-1 sm:p-6" dir="rtl" aria-label="ملخص الدفعة">
         <div className="self-center">
           {overpayment && <p className="rounded-xl bg-rose-50 p-4 text-lg font-black text-rose-800">الدفعة أكبر من دين العميل. خفّض أحد المبالغ.</p>}
           {!debt?.greaterThan(0) && <p className="rounded-xl bg-emerald-50 p-4 text-lg font-black text-emerald-900">لا يوجد دين مستحق على هذا العميل.</p>}
           <p className="mt-3 leading-7 text-slate-600">النقد يدخل صندوق عملته، والبطاقة تدخل دفتر البنك، ويخفض الشيك الدين فوراً. تُحفظ العملية كاملة أو تُلغى كاملة عند الخطأ.</p>
         </div>
-        <div className="rounded-2xl bg-slate-100 p-5">
+        <div className="mt-4 rounded-2xl bg-slate-100 p-5">
           <SummaryRow label="الدين قبل الدفعة" value={debt} />
           <SummaryRow label="مجموع الدفعة" value={paidTotal} />
           <div className="mt-4 border-t-2 border-slate-300 pt-4"><SummaryRow large label="المتبقي بعد الدفعة" value={balanceAfter} /></div>
           <button className={`mt-5 min-h-16 w-full rounded-2xl px-6 text-xl font-black ${canSave ? 'bg-teal-700 text-white hover:bg-teal-800' : 'cursor-not-allowed bg-slate-300 text-slate-600'}`} disabled={!canSave} onClick={() => void submitPayment()} type="button">{saving ? 'جارٍ التسجيل…' : 'تسجيل الدفعة'}</button>
         </div>
+      </aside>
       </div>
     </section>
   )

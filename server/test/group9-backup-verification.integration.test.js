@@ -35,7 +35,7 @@ test(
       })
       assert.equal(backup.timestamp, '2026-09-09T12:34:56.000Z')
       assert.match(backup.checksum, /^sha256:[a-f0-9]{64}$/)
-      assert.equal(backup.schemaVersion, '0024_financial_replay_and_check_reversal.sql')
+      assert.equal(backup.schemaVersion, '0026_manual_purchase_items.sql')
       const verified = await backupService.verifyBackup(backup)
       assert.equal(verified.timestamp, backup.timestamp)
       assert.equal(verified.counts.settings >= 1, true)

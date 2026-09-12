@@ -49,6 +49,46 @@ test('hashes passwords with unique salts and verifies them safely', async () => 
   assert.equal(await verifyPassword('a-secure-password', `${firstHash}$extra`), false)
 })
 
+test('allows a short admin password only through the explicit local-development provision option', async () => {
+  const calls = []
+  const client = {
+    async query(text, params) {
+      calls.push({ text, params })
+
+      if (text.startsWith('SELECT id')) {
+        return { rowCount: 0, rows: [] }
+      }
+
+      return {
+        rowCount: 1,
+        rows: [{ id: '1', username: 'admin', display_name: 'المدير', role: 'admin' }],
+      }
+    },
+  }
+
+  await assert.rejects(
+    provisionAdmin(client, {
+      username: 'admin',
+      password: 'admin',
+      displayName: 'المدير',
+    }),
+    /at least 15 characters/,
+  )
+
+  const admin = await provisionAdmin(client, {
+    username: 'admin',
+    password: 'admin',
+    displayName: 'المدير',
+    allowLocalDevelopmentPassword: true,
+  })
+
+  assert.equal(admin.username, 'admin')
+  assert.equal(calls.length, 2)
+  assert.match(calls[1].params[1], /^scrypt\$/)
+  assert.equal(calls[1].params.includes('admin'), true)
+  assert.notEqual(calls[1].params[1], 'admin')
+})
+
 test('verifies the previous scrypt profile only for a transparent upgrade', async () => {
   const password = 'existing-admin-password'
   const salt = randomBytes(16)

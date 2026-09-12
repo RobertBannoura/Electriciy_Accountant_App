@@ -36,7 +36,8 @@ returnsRouter.get('/customer/sources', async (request, response) => {
        SELECT SUM(quantity) AS quantity FROM customer_return_items
        WHERE sale_item_id = item.id
      ) AS returned ON TRUE
-     WHERE item.quantity > COALESCE(returned.quantity, 0::NUMERIC)
+     WHERE item.product_id IS NOT NULL
+       AND item.quantity > COALESCE(returned.quantity, 0::NUMERIC)
      ORDER BY sale.business_date DESC, sale.id DESC, item.id`,
     [request.storeId, pagination.fetchLimit, pagination.offset],
   )
@@ -67,7 +68,8 @@ returnsRouter.get('/supplier/sources', async (request, response) => {
        SELECT SUM(quantity) AS quantity FROM supplier_return_items
        WHERE purchase_item_id = item.id
      ) AS returned ON TRUE
-     WHERE item.quantity > COALESCE(returned.quantity, 0::NUMERIC)
+     WHERE item.product_id IS NOT NULL
+       AND item.quantity > COALESCE(returned.quantity, 0::NUMERIC)
      ORDER BY purchase.business_date DESC, purchase.id DESC, item.id`,
     [request.storeId, pagination.fetchLimit, pagination.offset],
   )

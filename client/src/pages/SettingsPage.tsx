@@ -128,12 +128,14 @@ export function SettingsPage({
   }
 
   return (
-    <section className="mx-auto max-w-3xl rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/50 sm:p-10">
-      <div className="mb-8">
-        <p className="text-sm font-bold text-teal-700">إدارة النظام</p>
+    <section className="mx-auto max-w-6xl">
+      <div className="rounded-3xl bg-slate-900 p-6 text-white shadow-xl sm:p-8">
+        <p className="text-sm font-bold text-teal-300">إدارة النظام</p>
         <h1 className="mt-2 text-3xl font-black">الإعدادات</h1>
       </div>
 
+      <div className="mt-6 grid items-start gap-6 xl:grid-cols-2">
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
       <form className="space-y-6" onSubmit={saveStoreNames}>
         <div>
           <h2 className="text-xl font-black">أسماء المتاجر</h2>
@@ -192,10 +194,13 @@ export function SettingsPage({
         {reminderSaveState === 'saved' && <p className="mt-3 font-bold text-emerald-800" role="status">تم حفظ إعداد تذكير الشيكات.</p>}
         {reminderError && <p className="mt-3 rounded-xl bg-rose-50 p-4 font-bold text-rose-800" role="alert">{reminderError}</p>}
       </form>
+      </div>
 
-      <PushNotificationSettings />
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8 [&>section]:mt-0 [&>section]:border-0 [&>section]:pt-0">
+        <PushNotificationSettings />
+      </div>
 
-      <div className="mt-10 border-t border-slate-200 pt-8">
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <h2 className="text-xl font-black">أدوات المدير</h2>
         <p className="mt-2 leading-7 text-slate-600">
           افحص اتساق الفواتير والدفاتر والأرصدة دون تغيير البيانات.
@@ -208,10 +213,12 @@ export function SettingsPage({
         </Link>
       </div>
 
-      <BackupSettings />
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8 [&>div]:mt-0 [&>div]:border-0 [&>div]:pt-0">
+        <BackupSettings />
+      </div>
 
       {window.desktop && (
-        <div className="mt-10 border-t border-slate-200 pt-8">
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <h2 className="text-xl font-black">إعداد هذا الجهاز</h2>
           <label className="mt-5 block" htmlFor="device-store">
             <span className="mb-2 block text-lg font-black">هذا الجهاز تابع إلى:</span>
@@ -250,6 +257,7 @@ export function SettingsPage({
           )}
         </div>
       )}
+      </div>
     </section>
   )
 }

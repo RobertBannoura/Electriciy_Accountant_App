@@ -33,6 +33,7 @@ async function run() {
       username: env.adminUsername,
       password: env.adminPassword,
       displayName: env.adminDisplayName,
+      allowLocalDevelopmentPassword: env.shortDevelopmentAdminPasswordEnabled,
     })
 
     await client.query('COMMIT')

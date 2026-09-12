@@ -21,6 +21,12 @@ test('packaged builds cannot be switched into developer renderer mode', async ()
   )
 })
 
+test('the client-facing Electron window removes the default English application menu', async () => {
+  const source = await fs.readFile(mainProcessPath, 'utf8')
+
+  assert.match(source, /Menu\.setApplicationMenu\(null\)/)
+})
+
 test('renderer-created windows are denied without forwarding arbitrary URLs to the OS', async () => {
   const source = await fs.readFile(mainProcessPath, 'utf8')
 
