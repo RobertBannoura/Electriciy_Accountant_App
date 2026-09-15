@@ -23,6 +23,7 @@
     "package:electron:win": "npm run package:win --workspace electron",
     "db:migrate": "npm run db:migrate --workspace server",
     "db:seed:dev": "npm run db:seed:dev --workspace server",
+    "db:seed:mock": "npm run db:seed:mock --workspace server",
     "db:setup:dev": "npm run db:setup:dev --workspace server",
     "db:verify": "npm run db:verify --workspace server",
     "db:verify:group2": "npm run db:verify:group2 --workspace server",
