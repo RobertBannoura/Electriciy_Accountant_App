@@ -73,7 +73,7 @@ function createMainWindow() {
     height: 800,
     minWidth: 960,
     minHeight: 640,
-    show: false,
+    show: !isSmokeTest,
     title: 'نظام إدارة الحسابات والمتجر',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -84,11 +84,28 @@ function createMainWindow() {
     },
   })
 
-  mainWindow.once('ready-to-show', () => {
-    if (!isSmokeTest) {
+  const showMainWindow = () => {
+    if (!isSmokeTest && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
       mainWindow.show()
     }
-  })
+  }
+
+  mainWindow.once('ready-to-show', showMainWindow)
+  mainWindow.webContents.once('did-finish-load', showMainWindow)
+
+  // Some Windows/GPU combinations never emit `ready-to-show`. Avoid leaving
+  // a successfully created desktop window hidden forever in that case.
+  const showFallback = setTimeout(showMainWindow, 3_000)
+  showFallback.unref()
+  mainWindow.once('closed', () => clearTimeout(showFallback))
+
+  mainWindow.webContents.once(
+    'did-fail-load',
+    (_event, errorCode, errorDescription) => {
+      console.error(`Electron renderer failed (${errorCode}): ${errorDescription}`)
+      showMainWindow()
+    },
+  )
 
   if (isSmokeTest) {
     mainWindow.webContents.once('did-finish-load', async () => {
@@ -128,14 +145,10 @@ function createMainWindow() {
       }
     })
 
-    mainWindow.webContents.once(
-      'did-fail-load',
-      (_event, errorCode, errorDescription) => {
-        console.error(`Electron renderer failed (${errorCode}): ${errorDescription}`)
-        process.exitCode = 1
-        app.quit()
-      },
-    )
+    mainWindow.webContents.once('did-fail-load', () => {
+      process.exitCode = 1
+      app.quit()
+    })
   }
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
