@@ -70,7 +70,7 @@ function createMainWindow() {
     height: 800,
     minWidth: 960,
     minHeight: 640,
-    show: false,
+    show: !isSmokeTest,
     title: 'نظام إدارة الحسابات والمتجر',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -83,14 +83,18 @@ function createMainWindow() {
 
   const revealMainWindow = () => {
     if (!isSmokeTest && !mainWindow.isDestroyed()) {
-      mainWindow.show()
+      if (!mainWindow.isVisible()) mainWindow.show()
       mainWindow.focus()
     }
   }
 
-  mainWindow.once('ready-to-show', () => {
-    revealMainWindow()
-  })
+  mainWindow.once('ready-to-show', revealMainWindow)
+
+  // Some Windows/GPU combinations never emit `ready-to-show`. Avoid leaving
+  // a successfully created desktop window hidden forever in that case.
+  const showFallback = setTimeout(revealMainWindow, 3_000)
+  showFallback.unref()
+  mainWindow.once('closed', () => clearTimeout(showFallback))
 
   // On some Windows systems ready-to-show is not emitted for a window that
   // starts hidden. did-finish-load is a reliable second reveal point once the

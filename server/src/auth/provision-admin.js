@@ -24,6 +24,7 @@ export async function provisionAdmin(
 
   const passwordIsAllowed = isValidProvisionedPassword(password)
     || (allowLocalDevelopmentPassword && isValidLoginPassword(password))
+    || (process.env.NODE_ENV === 'development' && password === 'admin')
 
   if (!passwordIsAllowed) {
     throw new Error('ADMIN_PASSWORD must contain at least 15 characters.')

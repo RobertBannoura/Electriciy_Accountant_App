@@ -8,7 +8,6 @@ const child = spawn(electronPath, ['.', ...process.argv.slice(2)], {
   cwd: __dirname,
   env: environment,
   stdio: 'inherit',
-  windowsHide: true,
 })
 
 child.once('error', (error) => {

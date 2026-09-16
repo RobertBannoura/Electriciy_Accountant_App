@@ -177,3 +177,39 @@ test('revokes existing sessions when the admin password is reprovisioned', async
   assert.match(calls[2].text, /DELETE FROM auth_sessions/)
   assert.deepEqual(calls[2].params, ['7'])
 })
+
+test('allows the admin testing password only in development', async () => {
+  const previousNodeEnv = process.env.NODE_ENV
+  const client = {
+    async query(text) {
+      if (text.startsWith('SELECT id')) return { rowCount: 0, rows: [] }
+      return {
+        rowCount: 1,
+        rows: [{ id: '8', username: 'admin', display_name: 'المدير', role: 'admin' }],
+      }
+    },
+  }
+
+  try {
+    process.env.NODE_ENV = 'production'
+    await assert.rejects(
+      provisionAdmin(client, {
+        username: 'admin',
+        password: 'admin',
+        displayName: 'المدير',
+      }),
+      /at least 15 characters/,
+    )
+
+    process.env.NODE_ENV = 'development'
+    const result = await provisionAdmin(client, {
+      username: 'admin',
+      password: 'admin',
+      displayName: 'المدير',
+    })
+    assert.equal(result.username, 'admin')
+  } finally {
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = previousNodeEnv
+  }
+})
