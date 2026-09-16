@@ -7,6 +7,7 @@ const {
   assertSafePdfData,
   assertSafeSelectedFile,
   desktopCheckNotification,
+  isTrustedRendererUrl,
   safeSuggestedName,
 } = require('../platform-security.cjs')
 
@@ -55,6 +56,20 @@ test('custom-protocol paths are resolved inside the packaged renderer root', asy
   assert.match(source, /const filePath = path\.resolve\(rendererRoot, relativePath\)/)
   assert.match(source, /filePath\.startsWith\(`\$\{rendererRoot\}\$\{path\.sep\}`\)/)
   assert.match(source, /return new Response\('Not found', \{ status: 404 \}\)/)
+})
+
+test('packaged IPC trusts only the exact custom renderer authority', () => {
+  const packaged = (targetUrl) => isTrustedRendererUrl({
+    isDevelopment: false,
+    developmentRendererUrl: 'http://localhost:5173',
+    targetUrl,
+  })
+  assert.equal(packaged('app://renderer/'), true)
+  assert.equal(packaged('app://renderer/settings'), true)
+  assert.equal(packaged('app://renderer.evil/settings'), false)
+  assert.equal(packaged('app://renderer@evil.example/settings'), false)
+  assert.equal(packaged('https://renderer/settings'), false)
+  assert.equal(packaged('not a URL'), false)
 })
 
 test('PDF output is size- and signature-bounded and filenames are sanitized before save dialogs', async () => {

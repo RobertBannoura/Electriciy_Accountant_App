@@ -41,6 +41,9 @@ test('home screen has exactly the eight required main actions in order', async (
     '/reports',
   ])
   assert.doesNotMatch(actionsBlock, /settings/)
+  assert.equal([...actionsBlock.matchAll(/icon: '[^']+'/g)].length, 8)
+  assert.match(source, /function HomeActionIcon/)
+  assert.match(source, /<HomeActionIcon name={action\.icon} primary={action\.primary} \/>/)
 })
 
 test('all shell routes exist and products uses the implemented Group 3 page', async () => {
@@ -75,6 +78,18 @@ test('settings and Electron store status remain small conditional header actions
   assert.match(shell, /المتجر الحالي:/)
   assert.match(settings, /هذا الجهاز تابع إلى:/)
   assert.match(settings, /window\.desktop &&/)
+})
+
+test('the shared top bar exposes clear home and back navigation actions', async () => {
+  const shell = await readFile(clientUrl('src/components/AppShell.tsx'), 'utf8')
+
+  assert.match(shell, /useNavigate/)
+  assert.match(shell, /const showBackButton = location\.pathname !== '\/'/)
+  assert.match(shell, /aria-label="الذهاب إلى القائمة الرئيسية"/)
+  assert.match(shell, /bg-teal-700[^"]+hover:bg-teal-800/)
+  assert.match(shell, /aria-label="الرجوع إلى الصفحة السابقة"/)
+  assert.match(shell, /location\.key === 'default'[\s\S]*navigate\('\/'\)[\s\S]*navigate\(-1\)/)
+  assert.match(shell, /bg-rose-50[^"]+text-rose-700[^"]+ring-rose-200[\s\S]*>\s*خروج/)
 })
 
 test('future Electron store requests attach validated local context', async () => {

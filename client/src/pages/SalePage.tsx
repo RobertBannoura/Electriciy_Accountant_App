@@ -53,6 +53,7 @@ type LineCalculation = {
 type Customer = {
   id: string
   name: string
+  phone: string | null
   balance_ils: string
 }
 
@@ -115,6 +116,10 @@ function isHalfShekel(decimal: Decimal) {
 
 function formatAmount(decimal: Decimal | null) {
   return decimal === null ? '—' : decimal.toFixed()
+}
+
+function customerOptionLabel(customer: Customer) {
+  return customer.phone ? `${customer.name} — ${customer.phone}` : customer.name
 }
 
 function calculateLine(line: SaleLine): LineCalculation {
@@ -253,10 +258,11 @@ export function SalePage({
   const [lines, setLines] = useState<SaleLine[]>([])
   const [manualDraft, setManualDraft] = useState<SaleLine>(newManualLineDraft)
   const [manualDraftAttempted, setManualDraftAttempted] = useState(false)
-  const [invoiceNumber, setInvoiceNumber] = useState('')
   const [businessDate, setBusinessDate] = useState(currentBusinessDate)
   const [customers, setCustomers] = useState<Customer[]>([])
   const [customerId, setCustomerId] = useState('')
+  const [customerSearch, setCustomerSearch] = useState('')
+  const [customerPickerOpen, setCustomerPickerOpen] = useState(false)
   const [projects, setProjects] = useState<CustomerProject[]>([])
   const [customerProjectId, setCustomerProjectId] = useState('')
   const [payments, setPayments] = useState<PaymentDraft[]>([])
@@ -490,16 +496,22 @@ export function SalePage({
   const overpayment = remainingDue?.lessThan(0) ?? false
   const customerRequired = Boolean(remainingDue?.greaterThan(0))
   const checkRequiresCustomer = !customerId && payments.some((payment) => payment.method === 'check')
+  const matchingCustomers = useMemo(() => {
+    const term = customerSearch.trim().toLocaleLowerCase('ar')
+    if (!term) return customers
+    return customers.filter((customer) => (
+      customer.name.toLocaleLowerCase('ar').includes(term)
+      || customer.phone?.toLocaleLowerCase('ar').includes(term)
+    ))
+  }, [customerSearch, customers])
   const canContinueToPayment = Boolean(
     configuredStoreId
-      && invoiceNumber.trim()
       && businessDate
       && lines.length > 0
       && finalTotal !== null,
   )
   const canSave = Boolean(
     configuredStoreId
-      && invoiceNumber.trim()
       && businessDate
       && lines.length > 0
       && finalTotal !== null
@@ -511,8 +523,7 @@ export function SalePage({
   )
 
   const hasUnsavedDraft = Boolean(
-    invoiceNumber.trim()
-    || lines.length
+    lines.length
     || manualDraftTouched
     || payments.length
     || customerId
@@ -606,7 +617,6 @@ export function SalePage({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          invoiceNumber: invoiceNumber.trim(),
           businessDate,
           customerId: customerId || null,
           customerProjectId: customerProjectId || null,
@@ -659,9 +669,10 @@ export function SalePage({
       setManualDraftAttempted(false)
       setPayments([])
       setPayLater(false)
-      setInvoiceNumber('')
       setInvoiceDiscount('0')
       setCustomerId('')
+      setCustomerSearch('')
+      setCustomerPickerOpen(false)
       setCustomerProjectId('')
       setBusinessDate(currentBusinessDate())
       setStep('items')
@@ -751,21 +762,97 @@ export function SalePage({
       {step === 'items' ? (
         <>
       <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-4">
-        <label className="block" htmlFor="sale-invoice-number">
+        <div className="block">
           <span className="mb-1 block font-black">رقم الفاتورة</span>
-          <input autoComplete="off" className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-lg font-black outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100" id="sale-invoice-number" maxLength={100} onChange={(event) => setInvoiceNumber(event.target.value)} placeholder="مثال: 1250" value={invoiceNumber} />
-        </label>
+          <div className="flex min-h-11 items-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-lg font-black text-emerald-900">
+            يُنشأ تلقائياً عند الحفظ
+          </div>
+        </div>
         <label className="block" htmlFor="sale-business-date">
           <span className="mb-1 block font-black">تاريخ الفاتورة</span>
           <input className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-lg font-black outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100" id="sale-business-date" onChange={(event) => setBusinessDate(event.target.value)} type="date" value={businessDate} />
         </label>
-        <label className="block" htmlFor="sale-customer">
-          <span className="mb-1 block font-black">العميل (اختياري)</span>
-          <select className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-lg font-black outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100" disabled={loadingCustomers} id="sale-customer" onChange={(event) => setCustomerId(event.target.value)} value={customerId}>
-            <option value="">بيع بدون عميل</option>
-            {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-          </select>
-        </label>
+        <div
+          className="relative block"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) {
+              setCustomerPickerOpen(false)
+              if (!customerId) setCustomerSearch('')
+            }
+          }}
+        >
+          <span className="mb-1 block font-black" id="sale-customer-label">العميل (اختياري)</span>
+          <input
+            aria-autocomplete="list"
+            aria-controls="sale-customer-options"
+            aria-expanded={customerPickerOpen}
+            aria-labelledby="sale-customer-label"
+            autoComplete="off"
+            className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-lg font-black outline-none placeholder:text-slate-500 focus:border-teal-600 focus:ring-4 focus:ring-teal-100"
+            disabled={loadingCustomers}
+            id="sale-customer"
+            onChange={(event) => {
+              setCustomerSearch(event.target.value)
+              setCustomerPickerOpen(true)
+              if (customerId) setCustomerId('')
+            }}
+            onFocus={() => setCustomerPickerOpen(true)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setCustomerPickerOpen(false)
+              if (event.key === 'Enter' && matchingCustomers.length === 1) {
+                event.preventDefault()
+                setCustomerId(matchingCustomers[0].id)
+                setCustomerSearch(customerOptionLabel(matchingCustomers[0]))
+                setCustomerPickerOpen(false)
+              }
+            }}
+            placeholder={loadingCustomers ? 'جارٍ تحميل العملاء…' : 'ابحث باسم العميل أو رقم الهاتف'}
+            role="combobox"
+            value={customerSearch}
+          />
+          {customerPickerOpen && !loadingCustomers && (
+            <div className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-2xl" id="sale-customer-options" role="listbox">
+              <button
+                className="block min-h-12 w-full border-b border-slate-200 px-4 text-right font-black text-slate-700 hover:bg-slate-100 focus:bg-slate-100 focus:outline-none"
+                onClick={() => {
+                  setCustomerId('')
+                  setCustomerSearch('')
+                  setCustomerPickerOpen(false)
+                }}
+                role="option"
+                type="button"
+              >
+                بيع بدون عميل
+              </button>
+              {matchingCustomers.length === 0 ? (
+                <p className="p-4 text-center font-bold text-slate-600">لا يوجد عميل مطابق</p>
+              ) : (
+                <div className="max-h-72 overflow-y-auto">
+                  {matchingCustomers.slice(0, 50).map((customer) => (
+                    <button
+                      aria-selected={customer.id === customerId}
+                      className="block min-h-12 w-full border-b border-slate-100 px-4 text-right hover:bg-teal-50 focus:bg-teal-50 focus:outline-none"
+                      key={customer.id}
+                      onClick={() => {
+                        setCustomerId(customer.id)
+                        setCustomerSearch(customerOptionLabel(customer))
+                        setCustomerPickerOpen(false)
+                      }}
+                      role="option"
+                      type="button"
+                    >
+                      <span className="block font-black text-slate-900">{customer.name}</span>
+                      {customer.phone && <span className="block text-sm font-bold text-slate-500" dir="ltr">{customer.phone}</span>}
+                    </button>
+                  ))}
+                  {matchingCustomers.length > 50 && (
+                    <p className="p-3 text-center text-sm font-bold text-slate-500">اكتب جزءاً إضافياً من الاسم أو الهاتف لتضييق النتائج.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <label className="block" htmlFor="sale-project">
           <span className="mb-1 block font-black">مشروع العميل (اختياري)</span>
           <select className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-lg font-black outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100 disabled:bg-slate-100" disabled={!customerId || projects.length === 0} id="sale-project" onChange={(event) => setCustomerProjectId(event.target.value)} value={customerProjectId}>
@@ -793,7 +880,6 @@ export function SalePage({
           {invoiceDiscountError && <p className="mt-2 font-bold text-rose-700">{invoiceDiscountError}</p>}
 
           <div className="mt-4 space-y-2">
-            {!invoiceNumber.trim() && <p className="font-bold text-slate-600">أدخل رقم الفاتورة للمتابعة.</p>}
             {lines.length === 0 && <p className="font-bold text-slate-600">أضف صنفاً واحداً على الأقل للمتابعة.</p>}
           </div>
           <button className={`mt-5 min-h-16 w-full rounded-2xl px-6 text-xl font-black ${canContinueToPayment ? 'bg-teal-700 text-white hover:bg-teal-800' : 'cursor-not-allowed bg-slate-300 text-slate-600'}`} disabled={!canContinueToPayment} onClick={continueToPayment} type="button">متابعة إلى الدفع</button>
@@ -1025,7 +1111,7 @@ export function SalePage({
           dir="rtl"
         >
           <p className="text-sm font-black text-teal-700">ملخص الدفع</p>
-          <h2 className="mt-1 text-2xl font-black">الفاتورة {invoiceNumber}</h2>
+          <h2 className="mt-1 text-2xl font-black">فاتورة بيع جديدة</h2>
           {totalsSummary}
           <div className="mt-4 space-y-2">
             {overpayment && <p className="rounded-xl bg-rose-50 p-3 font-black text-rose-800">مجموع الدفعات أكبر من إجمالي الفاتورة.</p>}
@@ -1038,7 +1124,7 @@ export function SalePage({
 
         <div className="order-1 min-w-0 min-[1150px]:order-2" dir="rtl">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="font-black text-slate-900">فاتورة {invoiceNumber} · {lines.length} {lines.length === 1 ? 'صنف' : 'أصناف'}</p>
+            <p className="font-black text-slate-900">رقم الفاتورة سيُنشأ عند الحفظ · {lines.length} {lines.length === 1 ? 'صنف' : 'أصناف'}</p>
             <p className="mt-1 text-sm font-bold text-slate-600">اختر طريقة الدفع، ثم راجع المدفوع والمتبقي قبل الحفظ النهائي.</p>
           </div>
 

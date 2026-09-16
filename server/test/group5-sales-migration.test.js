@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const migrationUrl = new URL('../db/migrations/0011_sale_creation.sql', import.meta.url)
 const manualItemsMigrationUrl = new URL('../db/migrations/0025_manual_sale_items.sql', import.meta.url)
+const automaticNumberMigrationUrl = new URL('../db/migrations/0027_automatic_sale_invoice_numbers.sql', import.meta.url)
 
 test('sale migration stores original, actual, discount, and exact total snapshots', async () => {
   const sql = await readFile(migrationUrl, 'utf8')
@@ -44,6 +45,15 @@ test('manual sale item migration permits invoice-only lines with required descri
   assert.match(sql, /sale_items_description_not_blank/)
   assert.match(sql, /BTRIM\(description\) <> ''/)
   assert.match(sql, /never create stock or cost movements/)
+})
+
+test('sale numbers are generated automatically from the database identity', async () => {
+  const sql = await readFile(automaticNumberMigrationUrl, 'utf8')
+
+  assert.match(sql, /BEFORE INSERT ON sales/)
+  assert.match(sql, /NEW\.document_number IS NOT NULL/)
+  assert.match(sql, /'S-' \|\| LPAD\(NEW\.id::TEXT, 8, '0'\)/)
+  assert.match(sql, /WHERE store_id = NEW\.store_id/)
 })
 
 test('sales API is store-scoped and creates all records inside one transaction', async () => {

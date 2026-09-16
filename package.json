@@ -8,10 +8,11 @@
     "electron"
   ],
   "scripts": {
-    "dev": "concurrently --kill-others-on-fail --names client,server,electron --prefix-colors cyan,green,magenta \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:electron\"",
+    "dev": "concurrently --kill-others-on-fail --names web,backend --prefix-colors cyan,green \"npm run dev:client\" \"npm run dev:server\"",
     "dev:client": "npm run dev --workspace client",
     "dev:server": "npm run dev --workspace server",
-    "dev:electron": "npm run dev --workspace electron",
+    "dev:electron": "concurrently --kill-others --names web,backend,electron --prefix-colors cyan,green,magenta \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:electron:app\"",
+    "dev:electron:app": "npm run dev --workspace electron",
     "build": "npm run build --workspace client",
     "typecheck": "npm run typecheck --workspace client",
     "test": "npm run test --workspace server && npm run test --workspace electron",

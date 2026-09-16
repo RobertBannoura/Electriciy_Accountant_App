@@ -4,6 +4,22 @@ const path = require('node:path')
 const maxPdfBytes = 50 * 1024 * 1024
 const forbiddenPdfAction = /\/(?:JavaScript|JS|Launch|EmbeddedFiles?|OpenAction|AA|URI|GoToR|SubmitForm|ImportData|RichMedia|XFA)(?=[^A-Za-z0-9]|$)/i
 
+function isTrustedRendererUrl({ isDevelopment, developmentRendererUrl, targetUrl }) {
+  try {
+    const parsedTarget = new URL(targetUrl)
+    if (isDevelopment) {
+      return parsedTarget.origin === new URL(developmentRendererUrl).origin
+    }
+    return parsedTarget.protocol === 'app:'
+      && parsedTarget.hostname === 'renderer'
+      && parsedTarget.username === ''
+      && parsedTarget.password === ''
+      && parsedTarget.port === ''
+  } catch {
+    return false
+  }
+}
+
 function safeSuggestedName(value, fallback = 'مستند') {
   const requested = typeof value === 'string' ? value : fallback
   const printable = [...requested]
@@ -87,6 +103,7 @@ module.exports = {
   assertSafePdfData,
   assertSafeSelectedFile,
   desktopCheckNotification,
+  isTrustedRendererUrl,
   maxPdfBytes,
   safeSuggestedName,
 }

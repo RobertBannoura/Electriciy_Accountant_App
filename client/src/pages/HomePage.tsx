@@ -41,15 +41,35 @@ type HomeSummary = {
 }
 
 const homeActions = [
-  { label: 'بيع جديد', path: '/sale', primary: true },
-  { label: 'الأصناف', path: '/products' },
-  { label: 'العملاء', path: '/customers' },
-  { label: 'الموردون', path: '/suppliers' },
-  { label: 'المشتريات', path: '/purchases' },
-  { label: 'الشيكات', path: '/checks' },
-  { label: 'المصاريف', path: '/expenses' },
-  { label: 'التقارير', path: '/reports' },
-]
+  { label: 'بيع جديد', path: '/sale', icon: 'sale', primary: true },
+  { label: 'الأصناف', path: '/products', icon: 'products', primary: false },
+  { label: 'العملاء', path: '/customers', icon: 'customers', primary: false },
+  { label: 'الموردون', path: '/suppliers', icon: 'suppliers', primary: false },
+  { label: 'المشتريات', path: '/purchases', icon: 'purchases', primary: false },
+  { label: 'الشيكات', path: '/checks', icon: 'checks', primary: false },
+  { label: 'المصاريف', path: '/expenses', icon: 'expenses', primary: false },
+  { label: 'التقارير', path: '/reports', icon: 'reports', primary: false },
+] as const
+
+function HomeActionIcon({ name, primary = false }: { name: typeof homeActions[number]['icon']; primary?: boolean }) {
+  const paths: Record<typeof name, string> = {
+    sale: 'M4 5h2l1.5 9h9.8l2-6H7m2 10.5h.01M17 18.5h.01',
+    products: 'M5 7.5 12 4l7 3.5v9L12 20l-7-3.5v-9Zm0 0 7 3.5 7-3.5M12 11v9',
+    customers: 'M15 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 3 17.5V19m6-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7-1a2.5 2.5 0 0 1 2.5 2.5V16m-1-11.5a2.5 2.5 0 0 1 0 5',
+    suppliers: 'M4 19V8l8-4 8 4v11M8 20v-7h8v7M3 20h18',
+    purchases: 'M3 6h11v9H3V6Zm11 4h3l3 3v2h-6v-5ZM7 18.5h.01M17 18.5h.01',
+    checks: 'M3 6h18v12H3V6Zm3 4h5m-5 4h8m3-5h1m-1 4h1',
+    expenses: 'M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6m-6 4h3',
+    reports: 'M4 20V10m5 10V4m6 16v-7m5 7V7M2 20h20',
+  }
+  return (
+    <span className={`grid size-14 place-items-center rounded-2xl ${primary ? 'bg-white/15 text-white ring-1 ring-white/25' : 'bg-teal-50 text-teal-700 ring-1 ring-teal-100'}`}>
+      <svg aria-hidden="true" className="size-8" fill="none" viewBox="0 0 24 24">
+        <path d={paths[name]} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      </svg>
+    </span>
+  )
+}
 
 function localDate(value: string) {
   return new Intl.DateTimeFormat('ar-PS', { dateStyle: 'medium', timeZone: 'UTC' })
@@ -216,7 +236,7 @@ export function HomePage({ isOnline, storeId }: { isOnline: boolean; storeId: st
       <div className="hidden grid-cols-2 gap-4 sm:grid sm:gap-6">
         {homeActions.map((action) => (
           <Link
-            className={`grid min-h-28 place-items-center rounded-2xl border px-4 text-center text-xl font-black shadow-md transition hover:-translate-y-0.5 hover:shadow-lg sm:min-h-32 sm:text-2xl ${
+            className={`flex min-h-28 flex-col items-center justify-center gap-3 rounded-2xl border px-4 text-center text-xl font-black shadow-md transition hover:-translate-y-0.5 hover:shadow-lg sm:min-h-32 sm:text-2xl ${
               action.primary
                 ? 'border-teal-700 bg-teal-700 text-white shadow-teal-700/20 hover:bg-teal-800'
                 : 'border-slate-200 bg-white text-slate-900 shadow-slate-200/60 hover:border-teal-300 hover:bg-teal-50'
@@ -224,7 +244,8 @@ export function HomePage({ isOnline, storeId }: { isOnline: boolean; storeId: st
             key={action.path}
             to={action.path}
           >
-            {action.label}
+            <HomeActionIcon name={action.icon} primary={action.primary} />
+            <span>{action.label}</span>
           </Link>
         ))}
       </div>

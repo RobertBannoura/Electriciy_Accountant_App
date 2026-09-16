@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AuthUser } from '../api'
 import { Store } from '../types'
 
@@ -21,7 +21,9 @@ type InstallPromptEvent = Event & {
 
 export function AppShell({ configuredStore, isOnline, stores, user, onBrowserStoreChange, onLogout }: AppShellProps) {
   const location = useLocation()
+  const navigate = useNavigate()
   const financialRouteLocked = !isOnline && financialRoutes.test(location.pathname)
+  const showBackButton = location.pathname !== '/'
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null)
 
   useEffect(() => {
@@ -50,13 +52,45 @@ export function AppShell({ configuredStore, isOnline, stores, user, onBrowserSto
     setInstallPrompt(null)
   }
 
+  function goBack() {
+    if (location.key === 'default') {
+      navigate('/')
+      return
+    }
+    navigate(-1)
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 pb-24 text-slate-900 sm:pb-0">
       <header className="border-b border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-8 sm:py-4">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4">
-          <Link className="text-base font-black text-slate-900 sm:text-xl" to="/">
-            نظام إدارة الحسابات والمتجر
-          </Link>
+          <div className="flex items-center gap-2">
+            {showBackButton && (
+              <button
+                aria-label="الرجوع إلى الصفحة السابقة"
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-3 font-black text-slate-800 ring-1 ring-inset ring-slate-300 shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-teal-100 sm:px-4"
+                onClick={goBack}
+                type="button"
+              >
+                <svg aria-hidden="true" className="size-5" fill="none" viewBox="0 0 24 24">
+                  <path d="m9 5 7 7-7 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" />
+                </svg>
+                <span>رجوع</span>
+              </button>
+            )}
+            <Link
+              aria-label="الذهاب إلى القائمة الرئيسية"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-teal-700 px-3 text-sm font-black text-white shadow-sm transition hover:bg-teal-800 focus:outline-none focus:ring-4 focus:ring-teal-200 sm:px-4 sm:text-base"
+              title="القائمة الرئيسية"
+              to="/"
+            >
+              <svg aria-hidden="true" className="size-5 shrink-0" fill="none" viewBox="0 0 24 24">
+                <path d="m4 11 8-7 8 7v9h-6v-6h-4v6H4v-9Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+              </svg>
+              <span className="sm:hidden">الرئيسية</span>
+              <span className="hidden sm:inline">نظام إدارة الحسابات والمتجر</span>
+            </Link>
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {window.desktop && (
@@ -113,7 +147,7 @@ export function AppShell({ configuredStore, isOnline, stores, user, onBrowserSto
               <span className="hidden sm:inline">الإعدادات</span>
             </Link>
             <button
-              className="min-h-11 rounded-xl px-3 font-bold text-slate-600 hover:bg-rose-50 hover:text-rose-800"
+              className="min-h-11 rounded-xl bg-rose-50 px-3 font-black text-rose-700 ring-1 ring-inset ring-rose-200 hover:bg-rose-100 hover:text-rose-900"
               onClick={onLogout}
               type="button"
             >

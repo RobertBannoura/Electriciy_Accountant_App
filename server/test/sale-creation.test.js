@@ -160,6 +160,20 @@ test('sale creation stores server totals and database original prices then deduc
   assert.equal(state.released, true)
 })
 
+test('sale creation accepts a database-generated invoice number and uses it in related records', async () => {
+  const { databasePool, state } = fakeDatabase()
+
+  await createSale({
+    databasePool,
+    input: { ...input, invoiceNumber: null },
+    storeId: '2',
+    userId: '5',
+  })
+
+  assert.equal(state.saleInsert[3], null)
+  assert.equal(state.movementInserts[0][4], 'فاتورة بيع S-41')
+})
+
 test('failure after the sale insert rolls the whole transaction back', async () => {
   const { databasePool, state } = fakeDatabase({ failOnSecondItem: true })
 

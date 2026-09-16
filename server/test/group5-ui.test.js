@@ -31,6 +31,17 @@ test('selling screen exposes barcode and name search with inline line editing', 
   assert.match(page, /manual:\$\{crypto\.randomUUID\(\)\}/)
 })
 
+test('selling screen generates invoice numbers and provides searchable customer selection', async () => {
+  const page = await readFile(clientUrl('src/pages/SalePage.tsx'), 'utf8')
+
+  assert.match(page, /يُنشأ تلقائياً عند الحفظ/)
+  assert.doesNotMatch(page, /invoiceNumber: invoiceNumber\.trim\(\)/)
+  assert.doesNotMatch(page, /id="sale-invoice-number"/)
+  assert.match(page, /placeholder=.*ابحث باسم العميل أو رقم الهاتف/)
+  assert.match(page, /aria-autocomplete="list"/)
+  assert.match(page, /customer\.phone\?\.toLocaleLowerCase\('ar'\)\.includes\(term\)/)
+})
+
 test('selling screen keeps live totals on the left and item lines in a compact scroll area', async () => {
   const page = await readFile(clientUrl('src/pages/SalePage.tsx'), 'utf8')
 

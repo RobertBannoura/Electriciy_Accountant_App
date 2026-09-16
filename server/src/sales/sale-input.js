@@ -48,14 +48,22 @@ function parseMoney(value, { optionalZero = false } = {}) {
 }
 
 export function parseSaleInput(body) {
-  const invoiceNumber = normalizeRequiredText(body?.invoiceNumber, 100)
+  const rawInvoiceNumber = body?.invoiceNumber
+  const invoiceNumber = typeof rawInvoiceNumber === 'string' && rawInvoiceNumber.trim() === ''
+    ? null
+    : rawInvoiceNumber === undefined || rawInvoiceNumber === null
+      ? null
+      : normalizeRequiredText(rawInvoiceNumber, 100)
   const businessDateValue = body?.businessDate ?? body?.date
   const customerId = parseOptionalId(body?.customerId)
   const customerProjectId = parseOptionalId(body?.customerProjectId)
   const invoiceDiscount = parseMoney(body?.invoiceDiscount, { optionalZero: true })
   const parsedPayments = parseSalePayments(body?.payments)
 
-  if (!invoiceNumber) return { error: 'رقم الفاتورة مطلوب وبحد أقصى 100 حرف' }
+  if (rawInvoiceNumber !== undefined && rawInvoiceNumber !== null && invoiceNumber === null
+    && !(typeof rawInvoiceNumber === 'string' && rawInvoiceNumber.trim() === '')) {
+    return { error: 'رقم الفاتورة المرسل يجب ألا يتجاوز 100 حرف' }
+  }
   if (!isValidBusinessDate(businessDateValue)) {
     return { error: 'تاريخ الفاتورة غير صالح ويجب أن يكون بصيغة YYYY-MM-DD' }
   }

@@ -39,14 +39,16 @@ test('sale input normalizes Arabic values and ignores client totals and store ID
   })
 })
 
-test('sale input requires a real date, invoice number, items, and matching customer project choice', () => {
+test('sale input permits automatic invoice numbering and validates the remaining fields', () => {
   const base = {
     invoiceNumber: 'S-1',
     date: '2026-09-08',
     items: [{ productId: '1', quantity: '1', actualPrice: '10', discount: '0' }],
   }
 
-  assert.match(parseSaleInput({ ...base, invoiceNumber: '' }).error, /رقم الفاتورة/)
+  assert.equal(parseSaleInput({ ...base, invoiceNumber: '' }).value.invoiceNumber, null)
+  assert.equal(parseSaleInput({ ...base, invoiceNumber: undefined }).value.invoiceNumber, null)
+  assert.match(parseSaleInput({ ...base, invoiceNumber: 'x'.repeat(101) }).error, /رقم الفاتورة/)
   assert.match(parseSaleInput({ ...base, date: '2026-02-30' }).error, /تاريخ الفاتورة/)
   assert.match(parseSaleInput({ ...base, items: [] }).error, /صنف واحد/)
   assert.match(parseSaleInput({ ...base, customerId: 0 }).error, /معرّف العميل/)

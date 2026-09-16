@@ -8,6 +8,7 @@ const {
   assertSafePdfData,
   assertSafeSelectedFile,
   desktopCheckNotification,
+  isTrustedRendererUrl,
   safeSuggestedName,
 } = require('./platform-security.cjs')
 
@@ -31,15 +32,11 @@ const isDevelopment = !app.isPackaged && process.argv.includes('--dev')
 const isSmokeTest = process.argv.includes('--smoke-test')
 
 function isAllowedNavigation(targetUrl) {
-  try {
-    const allowedOrigin = isDevelopment
-      ? new URL(developmentRendererUrl).origin
-      : applicationOrigin
-
-    return new URL(targetUrl).origin === allowedOrigin
-  } catch {
-    return false
-  }
+  return isTrustedRendererUrl({
+    isDevelopment,
+    developmentRendererUrl,
+    targetUrl,
+  })
 }
 
 function registerApplicationProtocol() {
@@ -84,11 +81,30 @@ function createMainWindow() {
     },
   })
 
-  mainWindow.once('ready-to-show', () => {
-    if (!isSmokeTest) {
+  const revealMainWindow = () => {
+    if (!isSmokeTest && !mainWindow.isDestroyed()) {
       mainWindow.show()
+      mainWindow.focus()
     }
+  }
+
+  mainWindow.once('ready-to-show', () => {
+    revealMainWindow()
   })
+
+  // On some Windows systems ready-to-show is not emitted for a window that
+  // starts hidden. did-finish-load is a reliable second reveal point once the
+  // Vite renderer (or the packaged renderer) is actually ready.
+  mainWindow.webContents.once('did-finish-load', revealMainWindow)
+
+  mainWindow.webContents.on(
+    'did-fail-load',
+    (_event, errorCode, errorDescription, _validatedUrl, isMainFrame) => {
+      if (!isMainFrame) return
+      console.error(`Electron renderer failed (${errorCode}): ${errorDescription}`)
+      revealMainWindow()
+    },
+  )
 
   if (isSmokeTest) {
     mainWindow.webContents.once('did-finish-load', async () => {
@@ -128,14 +144,10 @@ function createMainWindow() {
       }
     })
 
-    mainWindow.webContents.once(
-      'did-fail-load',
-      (_event, errorCode, errorDescription) => {
-        console.error(`Electron renderer failed (${errorCode}): ${errorDescription}`)
-        process.exitCode = 1
-        app.quit()
-      },
-    )
+    mainWindow.webContents.once('did-fail-load', () => {
+      process.exitCode = 1
+      app.quit()
+    })
   }
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
