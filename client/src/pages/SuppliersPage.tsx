@@ -9,6 +9,7 @@ import {
 } from '../business-labels'
 import { Store } from '../types'
 import { AccountStatementDialog } from '../components/AccountStatementDialog'
+import { DialogCloseButton } from '../components/DialogCloseButton'
 
 type StoreBalance = { store_id: string; store_name: string; amount_ils: string }
 type SupplierSummary = {
@@ -100,7 +101,7 @@ async function errorMessage(response: Response) {
   return 'تعذّر إكمال الطلب. حاول مرة أخرى.'
 }
 
-export function SuppliersPage({ defaultStoreId, stores }: { defaultStoreId: string | null; stores: Store[] }) {
+export function SuppliersPage({ defaultStoreId, readOnly = false, stores }: { defaultStoreId: string | null; readOnly?: boolean; stores: Store[] }) {
   const operatingStoreId = initialStoreId(defaultStoreId, stores)
   const [search, setSearch] = useState('')
   const [suppliers, setSuppliers] = useState<SupplierSummary[]>([])
@@ -145,7 +146,7 @@ export function SuppliersPage({ defaultStoreId, stores }: { defaultStoreId: stri
         <div>
           <p className="font-bold text-violet-700">المشتريات والحسابات الدائنة</p>
           <h1 className="mt-1 text-3xl font-black sm:text-4xl">الموردون</h1>
-          <p className="mt-2 text-slate-600">المبلغ المستحق محسوب من دفتر المورد ولا يُعدّل يدوياً.</p>
+          <p className="mt-2 text-slate-600">{readOnly ? 'ابحث عن المورد وافتح ملفه لعرض الرصيد وكشف الحساب.' : 'المبلغ المستحق محسوب من دفتر المورد ولا يُعدّل يدوياً.'}</p>
         </div>
         <button className="hidden min-h-12 rounded-xl bg-violet-700 px-6 font-black text-white hover:bg-violet-800 disabled:opacity-60 sm:block" disabled={!operatingStoreId} onClick={() => setEditingSupplier(null)} type="button">+ إضافة مورد</button>
       </div>
@@ -181,12 +182,12 @@ export function SuppliersPage({ defaultStoreId, stores }: { defaultStoreId: stri
         )}
       </div>
 
-      {editingSupplier !== undefined && <SupplierEditor supplier={editingSupplier} storeId={operatingStoreId} onClose={() => setEditingSupplier(undefined)} onSaved={() => { setEditingSupplier(undefined); void loadSuppliers() }} />}
+      {!readOnly && editingSupplier !== undefined && <SupplierEditor supplier={editingSupplier} storeId={operatingStoreId} onClose={() => setEditingSupplier(undefined)} onSaved={() => { setEditingSupplier(undefined); void loadSuppliers() }} />}
     </section>
   )
 }
 
-export function SupplierDetailPage({ defaultStoreId, stores }: { defaultStoreId: string | null; stores: Store[] }) {
+export function SupplierDetailPage({ defaultStoreId, readOnly = false, stores }: { defaultStoreId: string | null; readOnly?: boolean; stores: Store[] }) {
   const { supplierId = '' } = useParams()
   const operatingStoreId = initialStoreId(defaultStoreId, stores)
   const [supplier, setSupplier] = useState<SupplierDetail | null>(null)
@@ -233,7 +234,7 @@ export function SupplierDetailPage({ defaultStoreId, stores }: { defaultStoreId:
 
       <div className="mt-5 flex flex-wrap gap-3 print:hidden">
         <Link className="hidden min-h-12 items-center rounded-xl bg-violet-700 px-5 font-black text-white hover:bg-violet-800 sm:inline-flex" to={`/purchases?supplierId=${supplier.id}&storeId=${operatingStoreId}`}>شراء جديد</Link>
-        <Link className="inline-flex min-h-12 items-center rounded-xl bg-indigo-700 px-5 font-black text-white hover:bg-indigo-800" to={`/suppliers/${supplier.id}/payment?storeId=${operatingStoreId}`}>تسجيل دفعة</Link>
+        {!readOnly && <Link className="inline-flex min-h-12 items-center rounded-xl bg-indigo-700 px-5 font-black text-white hover:bg-indigo-800" to={`/suppliers/${supplier.id}/payment?storeId=${operatingStoreId}`}>تسجيل دفعة</Link>}
         <button className="min-h-12 rounded-xl border border-slate-300 bg-white px-5 font-black hover:bg-slate-100" onClick={() => setShowStatement(true)} type="button">كشف حساب مورد</button>
         <button className="hidden min-h-12 rounded-xl px-5 font-black text-slate-700 hover:bg-slate-100 sm:block" onClick={() => setEditing(true)} type="button">تعديل البيانات</button>
       </div>
@@ -254,7 +255,7 @@ export function SupplierDetailPage({ defaultStoreId, stores }: { defaultStoreId:
         <DetailSection title="أحدث الحركات"><MovementsList items={supplier.recent_movements} /></DetailSection>
       </div>
 
-      {editing && <SupplierEditor supplier={supplier} storeId={operatingStoreId} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); void loadSupplier() }} />}
+      {!readOnly && editing && <SupplierEditor supplier={supplier} storeId={operatingStoreId} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); void loadSupplier() }} />}
       {showStatement && <AccountStatementDialog initialStoreId={selectedActivityStoreId} kind="supplier" onClose={() => setShowStatement(false)} operatingStoreId={operatingStoreId} partyId={supplier.id} stores={stores} />}
     </section>
   )
@@ -302,7 +303,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [onClose])
 
-  return <div aria-label={title} aria-modal="true" className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-4" role="dialog"><div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8"><div className="mb-6 flex items-center justify-between gap-4"><h2 className="text-2xl font-black">{title}</h2><button aria-label="إغلاق" className="size-11 rounded-full bg-slate-100 text-xl font-black hover:bg-slate-200" onClick={onClose} type="button">×</button></div>{children}</div></div>
+  return <div aria-label={title} aria-modal="true" className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-4" role="dialog"><div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8"><div className="mb-6 flex items-center justify-between gap-4"><h2 className="text-2xl font-black">{title}</h2><DialogCloseButton onClick={onClose} /></div>{children}</div></div>
 }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="block"><span className="mb-2 block text-sm font-black text-slate-700">{label}</span>{children}</label> }
 function IlsBalance({ amount, dark = false }: { amount: string; dark?: boolean }) { return <span className={`inline-block rounded-xl px-3 py-2 font-black ${dark ? 'bg-white/10 text-white' : 'bg-violet-50 text-violet-900'}`} dir="ltr">₪{amount}</span> }

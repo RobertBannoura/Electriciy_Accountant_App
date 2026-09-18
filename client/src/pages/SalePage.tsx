@@ -335,18 +335,15 @@ export function SalePage({
     setLines((current) => {
       const existing = current.find((line) => line.productId === product.id)
       if (existing) {
-        return current.map((line) => {
-          if (line.productId !== product.id) return line
-          const quantity = parseDecimal(line.quantity, 3)
-          return {
-            ...line,
-            quantity: quantity ? quantity.plus(1).toFixed() : '1',
-          }
-        })
+        const quantity = parseDecimal(existing.quantity, 3)
+        const updatedLine = {
+          ...existing,
+          quantity: quantity ? quantity.plus(1).toFixed() : '1',
+        }
+        return [updatedLine, ...current.filter((line) => line.productId !== product.id)]
       }
 
       return [
-        ...current,
         {
           id: product.id,
           productId: product.id,
@@ -358,6 +355,7 @@ export function SalePage({
           actualSalePrice: product.default_sale_price ?? '',
           discount: '0',
         },
+        ...current,
       ]
     })
     setSearch('')
@@ -562,7 +560,7 @@ export function SalePage({
       actualSalePrice: normalizeDecimalInput(manualDraft.actualSalePrice, 2),
       discount: normalizeDecimalInput(manualDraft.discount || '0', 2),
     }
-    setLines((current) => [...current, line])
+    setLines((current) => [line, ...current])
     setManualDraft(newManualLineDraft())
     setManualDraftAttempted(false)
     setError(null)
@@ -960,7 +958,7 @@ export function SalePage({
 
       {savedInvoice && <InvoiceOutput invoice={savedInvoice} onClose={() => setSavedInvoice(null)} />}
 
-      <div className="mt-4 max-h-[46vh] min-h-64 overflow-y-auto overflow-x-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+      <div className="mt-4 min-h-64 rounded-3xl border border-slate-200 bg-white shadow-sm">
         <table className="sale-lines-table w-full min-w-0 table-fixed text-right">
           <thead className="sticky top-0 z-10 bg-slate-100 text-lg shadow-sm">
             <tr>

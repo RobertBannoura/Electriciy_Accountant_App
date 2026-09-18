@@ -2,6 +2,7 @@ import { FormEvent, ReactNode, useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../api'
 import { isValidEan13 } from '../barcodes/ean13'
 import { BarcodePreview } from '../components/BarcodePreview'
+import { DialogCloseButton } from '../components/DialogCloseButton'
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner'
 import { formatMoney } from '../money-display'
 import { Store } from '../types'
@@ -81,9 +82,11 @@ async function errorMessage(response: Response) {
 
 export function ProductsPage({
   defaultStoreId,
+  readOnly = false,
   stores,
 }: {
   defaultStoreId: string | null
+  readOnly?: boolean
   stores: Store[]
 }) {
   const [products, setProducts] = useState<Product[]>([])
@@ -153,6 +156,7 @@ export function ProductsPage({
 
   useBarcodeScanner({
     enabled:
+      !readOnly &&
       editingProduct === undefined &&
       movementProduct === null &&
       !showCategories &&
@@ -181,7 +185,7 @@ export function ProductsPage({
         <div>
           <p className="font-bold text-teal-700">المخزون حسب المتجر</p>
           <h1 className="mt-1 text-3xl font-black sm:text-4xl">الأصناف</h1>
-          <p className="mt-2 text-sm font-bold text-slate-500">قارئ الباركود جاهز: امسح الباركود لفتح الصنف</p>
+          <p className="mt-2 text-sm font-bold text-slate-500">{readOnly ? 'ابحث واعرض الكميات والأسعار في كل محل.' : 'قارئ الباركود جاهز: امسح الباركود لفتح الصنف'}</p>
         </div>
         <div className="hidden flex-wrap gap-3 sm:flex">
           <button className="min-h-12 rounded-xl border border-slate-300 bg-white px-5 font-black hover:bg-slate-100" onClick={() => setShowCategories(true)} type="button">إدارة التصنيفات</button>
@@ -191,14 +195,14 @@ export function ProductsPage({
 
       <div className="mt-7 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-5">
         <FilterField label="بحث بالاسم"><input className={inputClass} onChange={(event) => setNameSearch(event.target.value)} placeholder="اسم الصنف" value={nameSearch} /></FilterField>
-        <div className="hidden sm:block"><FilterField label="بحث بالباركود"><input className={`${inputClass} text-left`} dir="ltr" onChange={(event) => setBarcodeSearch(event.target.value)} placeholder="الباركود" value={barcodeSearch} /></FilterField></div>
-        <div className="hidden sm:block"><FilterField label="التصنيف">
+        <div className={readOnly ? '' : 'hidden sm:block'}><FilterField label="بحث بالباركود"><input className={`${inputClass} text-left`} dir="ltr" onChange={(event) => setBarcodeSearch(event.target.value)} placeholder="الباركود" value={barcodeSearch} /></FilterField></div>
+        <div className={readOnly ? '' : 'hidden sm:block'}><FilterField label="التصنيف">
           <select className={inputClass} onChange={(event) => setCategoryFilter(event.target.value)} value={categoryFilter}>
             <option value="">كل التصنيفات</option>
             {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
           </select>
         </FilterField></div>
-        <div className="hidden sm:block"><FilterField label="المتجر">
+        <div className={readOnly ? '' : 'hidden sm:block'}><FilterField label="المتجر">
           <select className={inputClass} onChange={(event) => setStoreFilter(event.target.value)} value={storeFilter}>
             <option value="">كل المتاجر</option>
             {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
@@ -261,7 +265,7 @@ export function ProductsPage({
         )}
       </div>
 
-      {editingProduct !== undefined && <ProductEditor categories={categories} defaultStoreId={defaultStoreId} onClose={() => setEditingProduct(undefined)} onSaved={() => { setEditingProduct(undefined); void loadProducts() }} product={editingProduct} stores={stores} />}
+      {!readOnly && editingProduct !== undefined && <ProductEditor categories={categories} defaultStoreId={defaultStoreId} onClose={() => setEditingProduct(undefined)} onSaved={() => { setEditingProduct(undefined); void loadProducts() }} product={editingProduct} stores={stores} />}
       {movementProduct && <MovementEditor onClose={() => setMovementProduct(null)} onSaved={() => { setMovementProduct(null); void loadProducts() }} product={movementProduct} />}
       {showCategories && <CategoryEditor categories={categories} onCategoriesChanged={async () => { await loadCategories(); await loadProducts() }} onClose={() => setShowCategories(false)} />}
       {barcodePreview && <BarcodeDialog barcode={barcodePreview.barcode} onClose={() => setBarcodePreview(null)} productName={barcodePreview.name} />}
@@ -447,7 +451,6 @@ function BarcodeDialog({ barcode, onClose, productName }: { barcode: string; onC
       </div>
       <div className="mt-5 flex flex-wrap gap-3 print:hidden">
         <button className="min-h-12 rounded-xl bg-teal-700 px-6 font-black text-white" onClick={() => window.print()} type="button">طباعة الباركود</button>
-        <button className="min-h-12 rounded-xl bg-slate-100 px-6 font-black" onClick={onClose} type="button">إغلاق</button>
       </div>
       <p className="mt-4 text-sm text-slate-500 print:hidden">يستخدم هذا القالب نافذة الطباعة العامة، دون إعداد طراز طابعة محدد.</p>
     </Modal>
@@ -476,7 +479,7 @@ function Modal({ children, onClose, title, wide = false }: { children: ReactNode
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [onClose])
 
-  return <div className="fixed inset-0 z-30 overflow-y-auto bg-slate-950/50 p-4" role="presentation"><div aria-modal="true" className={`mx-auto my-4 rounded-3xl bg-white p-6 shadow-2xl sm:p-8 ${wide ? 'max-w-4xl' : 'max-w-xl'}`} role="dialog"><div className="flex items-center justify-between gap-4"><h2 className="text-2xl font-black">{title}</h2><button aria-label="إغلاق" className="size-11 rounded-full bg-slate-100 text-2xl font-bold" onClick={onClose} type="button">×</button></div>{children}</div></div>
+  return <div className="fixed inset-0 z-30 overflow-y-auto bg-slate-950/50 p-4" role="presentation"><div aria-modal="true" className={`mx-auto my-4 rounded-3xl bg-white p-6 shadow-2xl sm:p-8 ${wide ? 'max-w-4xl' : 'max-w-xl'}`} role="dialog"><div className="flex items-center justify-between gap-4"><h2 className="text-2xl font-black">{title}</h2><DialogCloseButton onClick={onClose} /></div>{children}</div></div>
 }
 
 function Field({ children, extraClass = '', hint, label }: { children: ReactNode; extraClass?: string; hint?: string; label: string }) {

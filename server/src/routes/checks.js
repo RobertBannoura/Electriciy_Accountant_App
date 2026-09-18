@@ -18,6 +18,7 @@ import {
 } from '../financial/financial-operation.js'
 
 const CUSTOMER_CHECK_STATUSES = new Set(['pending', 'cleared', 'bounced'])
+const SUPPLIER_ASSIGNMENT_FILTERS = new Set(['true', 'false'])
 
 export const checksRouter = Router()
 
@@ -34,6 +35,17 @@ checksRouter.get('/', async (request, response) => {
   if (request.query.search && !search) {
     throw new AppError('نص البحث غير صالح', 400, 'INVALID_CHECK_SEARCH')
   }
+
+  const requestedSupplierAssigned = normalizeOptionalText(request.query.supplierAssigned, 5)
+  if (
+    request.query.supplierAssigned
+    && !SUPPLIER_ASSIGNMENT_FILTERS.has(requestedSupplierAssigned)
+  ) {
+    throw new AppError('مرشح تسليم الشيك إلى مورد غير صالح', 400, 'INVALID_CHECK_SUPPLIER_FILTER')
+  }
+  const supplierAssigned = requestedSupplierAssigned === null
+    ? null
+    : requestedSupplierAssigned === 'true'
 
   const result = await query(
     `
@@ -68,6 +80,7 @@ checksRouter.get('/', async (request, response) => {
           OR checks.is_owner_issued = TRUE
         )
         AND ($2::TEXT IS NULL OR checks.status = $2)
+        AND ($4::BOOLEAN IS NULL OR (checks.supplier_id IS NOT NULL) = $4)
         AND (
           $3::TEXT IS NULL
           OR LOWER(checks.check_number) LIKE '%' || LOWER($3) || '%'
@@ -77,9 +90,16 @@ checksRouter.get('/', async (request, response) => {
           OR LOWER(checks.original_owner_phone) LIKE '%' || LOWER($3) || '%'
         )
       ORDER BY checks.due_date, checks.id
-      LIMIT $4::INTEGER OFFSET $5::INTEGER
+      LIMIT $5::INTEGER OFFSET $6::INTEGER
     `,
-    [request.storeId, requestedStatus, search, pagination.fetchLimit, pagination.offset],
+    [
+      request.storeId,
+      requestedStatus,
+      search,
+      supplierAssigned,
+      pagination.fetchLimit,
+      pagination.offset,
+    ],
   )
   const page = paginatedResult(result.rows, pagination)
   response.json({ checks: page.rows, pagination: page.pagination })

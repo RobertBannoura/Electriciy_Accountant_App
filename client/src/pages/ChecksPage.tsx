@@ -6,6 +6,7 @@ import { formatDecimal } from '../money-display'
 import { Store } from '../types'
 
 type CheckStatus = 'pending' | 'cleared' | 'bounced'
+type SupplierAssignment = '' | 'true' | 'false'
 export type CheckRecord = {
   id: string
   check_number: string
@@ -57,9 +58,11 @@ async function errorMessage(response: Response) {
 
 export function ChecksPage({
   defaultStoreId,
+  readOnly = false,
   stores,
 }: {
   defaultStoreId: string | null
+  readOnly?: boolean
   stores: Store[]
 }) {
   const operatingStoreId = stores.some((store) => store.id === defaultStoreId)
@@ -70,6 +73,7 @@ export function ChecksPage({
   const [hasMore, setHasMore] = useState(false)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [status, setStatus] = useState<'' | CheckStatus>('')
+  const [supplierAssigned, setSupplierAssigned] = useState<SupplierAssignment>('')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -96,6 +100,7 @@ export function ChecksPage({
     const params = new URLSearchParams()
     params.set('page', String(page))
     if (status) params.set('status', status)
+    if (supplierAssigned) params.set('supplierAssigned', supplierAssigned)
     if (search.trim()) params.set('search', search.trim())
     try {
       const headers = new Headers({ 'X-Store-Id': operatingStoreId })
@@ -113,9 +118,9 @@ export function ChecksPage({
     } finally {
       if (!signal?.aborted) setLoading(false)
     }
-  }, [operatingStoreId, page, search, status])
+  }, [operatingStoreId, page, search, status, supplierAssigned])
 
-  useEffect(() => setPage(1), [operatingStoreId, search, status])
+  useEffect(() => setPage(1), [operatingStoreId, search, status, supplierAssigned])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -248,12 +253,12 @@ export function ChecksPage({
         <div>
         <p className="font-bold text-teal-700">شيكات العملاء وشيكات المنشأة</p>
         <h1 className="mt-1 text-3xl font-black sm:text-4xl" id="checks-title">الشيكات</h1>
-        <p className="mt-2 text-slate-600">الشيك المقبول يخفض رصيد العميل فورًا، ويبقى قيد التحصيل حتى تحديث حالته صراحةً.</p>
+        <p className="mt-2 text-slate-600">{readOnly ? 'ابحث وتابع المبالغ وتواريخ الاستحقاق والحالة.' : 'الشيك المقبول يخفض رصيد العميل فورًا، ويبقى قيد التحصيل حتى تحديث حالته صراحةً.'}</p>
         </div>
-        <button className="min-h-12 rounded-xl bg-slate-900 px-5 font-black text-white hover:bg-slate-800" onClick={() => setShowOwnerForm((shown) => !shown)} type="button">+ شيك منشأة لمورد</button>
+        {!readOnly && <button className="min-h-12 rounded-xl bg-slate-900 px-5 font-black text-white hover:bg-slate-800" onClick={() => setShowOwnerForm((shown) => !shown)} type="button">+ شيك منشأة لمورد</button>}
       </div>
 
-      {showOwnerForm && (
+      {!readOnly && showOwnerForm && (
         <form aria-label="إصدار شيك منشأة إلى مورد" className="mt-6 grid gap-4 rounded-2xl border-2 border-teal-200 bg-teal-50 p-5 md:grid-cols-2" onSubmit={(event) => void submitOwnerCheck(event)}>
           <h2 className="text-xl font-black md:col-span-2">شيك صادر من صاحب العمل إلى مورد</h2>
           <label><span className="mb-2 block font-black">رقم الشيك</span><input autoFocus className={inputClass} maxLength={100} onChange={(event) => setOwnerCheckNumber(event.target.value)} required value={ownerCheckNumber} /></label>
@@ -265,9 +270,10 @@ export function ChecksPage({
         </form>
       )}
 
-      <div className="mt-6 grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2">
+      <div className="mt-6 grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3">
         <label><span className="mb-2 block font-black">بحث بالعميل أو صاحب الشيك أو رقمه</span><input className={inputClass} onChange={(event) => setSearch(event.target.value)} value={search} /></label>
         <label><span className="mb-2 block font-black">الحالة المالية</span><select className={inputClass} onChange={(event) => setStatus(event.target.value as '' | CheckStatus)} value={status}><option value="">كل الحالات</option><option value="pending">قيد التحصيل</option><option value="cleared">تم تحصيله</option><option value="bounced">مرتجع</option></select></label>
+        <label><span className="mb-2 block font-black">التسليم إلى مورد</span><select className={inputClass} onChange={(event) => setSupplierAssigned(event.target.value as SupplierAssignment)} value={supplierAssigned}><option value="">كل الشيكات</option><option value="true">مُسلّم إلى مورد</option><option value="false">غير مُسلّم إلى مورد</option></select></label>
       </div>
 
       {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 font-bold text-rose-800" role="alert">{error}</p>}
@@ -294,13 +300,13 @@ export function ChecksPage({
                   <div><p className="text-sm font-bold text-slate-500">تاريخ الاستحقاق</p><p className="mt-1 font-black">{localDate(check.due_date)}</p>{overdue && <p className="mt-1 text-sm font-bold text-amber-700">تجاوز تاريخ الاستحقاق</p>}</div>
                   <div className="flex flex-col gap-2">
                     <span className={`inline-flex min-h-10 items-center justify-center rounded-full px-4 font-black ${check.status === 'cleared' ? 'bg-emerald-100 text-emerald-900' : check.status === 'bounced' ? 'bg-rose-100 text-rose-900' : 'bg-violet-100 text-violet-900'}`}>{customerCheckStatusLabel(check.status)}</span>
-                    {check.status === 'pending' && <button className="min-h-10 rounded-xl bg-emerald-700 px-4 font-black text-white hover:bg-emerald-800 disabled:opacity-50" disabled={actingCheckId === check.id} onClick={() => void runLifecycleAction(check, 'clear')} type="button">تم تحصيله</button>}
-                    {check.status === 'pending' && <button className="min-h-10 rounded-xl bg-rose-700 px-4 font-black text-white hover:bg-rose-800 disabled:opacity-50" disabled={actingCheckId === check.id} onClick={() => void runLifecycleAction(check, 'bounce')} type="button">مرتجع</button>}
-                    {check.status === 'pending' && check.customer_id && !check.supplier_id && <button className="min-h-10 rounded-xl bg-violet-700 px-4 font-black text-white hover:bg-violet-800" onClick={() => beginTransfer(check.id)} type="button">تحويل لمورد</button>}
-                    {check.status === 'bounced' && !check.bounced_reminder_stopped_at && <button className="min-h-10 rounded-xl border border-slate-300 px-4 font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50" disabled={actingCheckId === check.id} onClick={() => void runLifecycleAction(check, 'stop-bounced-reminder')} type="button">إيقاف تذكير المرتجع</button>}
+                    {!readOnly && check.status === 'pending' && <button className="min-h-10 rounded-xl bg-emerald-700 px-4 font-black text-white hover:bg-emerald-800 disabled:opacity-50" disabled={actingCheckId === check.id} onClick={() => void runLifecycleAction(check, 'clear')} type="button">تم تحصيله</button>}
+                    {!readOnly && check.status === 'pending' && <button className="min-h-10 rounded-xl bg-rose-700 px-4 font-black text-white hover:bg-rose-800 disabled:opacity-50" disabled={actingCheckId === check.id} onClick={() => void runLifecycleAction(check, 'bounce')} type="button">مرتجع</button>}
+                    {!readOnly && check.status === 'pending' && check.customer_id && !check.supplier_id && <button className="min-h-10 rounded-xl bg-violet-700 px-4 font-black text-white hover:bg-violet-800" onClick={() => beginTransfer(check.id)} type="button">تحويل لمورد</button>}
+                    {!readOnly && check.status === 'bounced' && !check.bounced_reminder_stopped_at && <button className="min-h-10 rounded-xl border border-slate-300 px-4 font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50" disabled={actingCheckId === check.id} onClick={() => void runLifecycleAction(check, 'stop-bounced-reminder')} type="button">إيقاف تذكير المرتجع</button>}
                     {check.status === 'bounced' && check.bounced_reminder_stopped_at && <span className="text-center text-sm font-bold text-slate-500">تم إيقاف التذكير</span>}
                   </div>
-                  {transferCheckId === check.id && (
+                  {!readOnly && transferCheckId === check.id && (
                     <form aria-label="تحويل الشيك إلى مورد" className="grid gap-3 rounded-xl bg-violet-50 p-4 md:col-span-4 md:grid-cols-[1fr_14rem_auto_auto] md:items-end" onSubmit={(event) => void submitTransfer(event)}>
                       <label><span className="mb-2 block font-black">المورد</span><select autoFocus className={inputClass} onChange={(event) => setSupplierId(event.target.value)} required value={supplierId}><option value="">اختر المورد</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} — المستحق ₪{formatDecimal(supplier.balance_ils)}</option>)}</select></label>
                       <label><span className="mb-2 block font-black">تاريخ التحويل</span><input className={inputClass} onChange={(event) => setTransferDate(event.target.value)} required type="date" value={transferDate} /></label>

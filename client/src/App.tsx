@@ -30,9 +30,11 @@ import { CustomerReturnPage, SupplierReturnPage } from './pages/ReturnsPage'
 import { SupplierPaymentPage } from './pages/SupplierPaymentPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SupplierDetailPage, SuppliersPage } from './pages/SuppliersPage'
+import { MobileMoneyPage } from './pages/MobileMoneyPage'
 import { MobileFinancePage } from './pages/MobileFinancePage'
 import { FinancialVerificationPage } from './pages/FinancialVerificationPage'
 import { SaveState, Store } from './types'
+import { usePhoneWeb } from './hooks/usePhoneWeb'
 
 type AuthState = 'checking' | 'anonymous' | 'authenticated'
 
@@ -66,6 +68,7 @@ function AuthenticatedApplication({
   const [browserStoreInitialized, setBrowserStoreInitialized] = useState(false)
   const [financialDraftActive, setFinancialDraftActive] = useState(false)
   const isOnline = useConnectionStatus()
+  const isPhoneWeb = usePhoneWeb()
 
   useEffect(() => {
     const desktop = window.desktop
@@ -205,56 +208,58 @@ function AuthenticatedApplication({
           />
         }
       >
-        <Route index element={<HomePage isOnline={isOnline} storeId={configuredStoreId} />} />
-        <Route path="finance" element={<MobileFinancePage isOnline={isOnline} />} />
+        <Route index element={<HomePage isOnline={isOnline} readOnly={isPhoneWeb} storeId={configuredStoreId} />} />
+        <Route path="money" element={<MobileMoneyPage stores={stores} />} />
+        <Route path="finance" element={isPhoneWeb ? <Navigate replace to="/money" /> : <MobileFinancePage isOnline={isOnline} />} />
         <Route
           path="sale"
-          element={<SalePage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} />}
+          element={isPhoneWeb ? <Navigate replace to="/customers" /> : <SalePage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} />}
         />
         <Route
           path="maintenance"
-          element={<MaintenancePage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} />}
+          element={isPhoneWeb ? <Navigate replace to="/customers" /> : <MaintenancePage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} />}
         />
         <Route
           path="products"
           element={
             <ProductsPage
               defaultStoreId={configuredStoreId}
+              readOnly={isPhoneWeb}
               stores={stores}
             />
           }
         />
         <Route
           path="customers"
-          element={<CustomersPage defaultStoreId={configuredStoreId} stores={stores} />}
+          element={<CustomersPage defaultStoreId={configuredStoreId} readOnly={isPhoneWeb} stores={stores} />}
         />
         <Route
           path="customers/:customerId"
-          element={<CustomerDetailPage defaultStoreId={configuredStoreId} stores={stores} />}
+          element={<CustomerDetailPage defaultStoreId={configuredStoreId} readOnly={isPhoneWeb} stores={stores} />}
         />
         <Route
           path="customers/:customerId/payment"
-          element={<CustomerPaymentPage defaultStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />}
+          element={isPhoneWeb ? <Navigate replace to="/customers" /> : <CustomerPaymentPage defaultStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />}
         />
         <Route
           path="suppliers"
-          element={<SuppliersPage defaultStoreId={configuredStoreId} stores={stores} />}
+          element={<SuppliersPage defaultStoreId={configuredStoreId} readOnly={isPhoneWeb} stores={stores} />}
         />
         <Route
           path="suppliers/:supplierId"
-          element={<SupplierDetailPage defaultStoreId={configuredStoreId} stores={stores} />}
+          element={<SupplierDetailPage defaultStoreId={configuredStoreId} readOnly={isPhoneWeb} stores={stores} />}
         />
-        <Route path="suppliers/:supplierId/payment" element={<SupplierPaymentPage defaultStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />} />
-        <Route path="purchases" element={<PurchasePage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />} />
-        <Route path="sales-returns" element={<CustomerReturnPage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} />} />
-        <Route path="purchase-returns" element={<SupplierReturnPage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} />} />
-        <Route path="checks" element={<ChecksPage defaultStoreId={configuredStoreId} stores={stores} />} />
-        <Route path="expenses" element={<ExpensesPage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />} />
+        <Route path="suppliers/:supplierId/payment" element={isPhoneWeb ? <Navigate replace to="/suppliers" /> : <SupplierPaymentPage defaultStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />} />
+        <Route path="purchases" element={isPhoneWeb ? <Navigate replace to="/suppliers" /> : <PurchasePage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />} />
+        <Route path="sales-returns" element={isPhoneWeb ? <Navigate replace to="/customers" /> : <CustomerReturnPage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} />} />
+        <Route path="purchase-returns" element={isPhoneWeb ? <Navigate replace to="/suppliers" /> : <SupplierReturnPage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} />} />
+        <Route path="checks" element={<ChecksPage defaultStoreId={configuredStoreId} readOnly={isPhoneWeb} stores={stores} />} />
+        <Route path="expenses" element={isPhoneWeb ? <Navigate replace to="/money" /> : <ExpensesPage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />} />
         <Route path="reports" element={<ReportsPage stores={stores} />} />
         <Route path="financial-verification" element={<FinancialVerificationPage />} />
         <Route
           path="settings"
-          element={
+          element={isPhoneWeb ? <Navigate replace to="/" /> : (
             <SettingsPage
               assignmentError={assignmentError}
               assignmentState={assignmentState}
@@ -264,7 +269,7 @@ function AuthenticatedApplication({
               stores={stores}
               storesError={storesError}
             />
-          }
+          )}
         />
         <Route path="*" element={<Navigate replace to="/" />} />
       </Route>

@@ -3,6 +3,7 @@ import { KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from
 import { Link, useSearchParams } from 'react-router-dom'
 import { apiFetch, storeScopedApiFetch } from '../api'
 import { SupplierPaymentEditor } from '../components/SupplierPaymentEditor'
+import { DialogCloseButton } from '../components/DialogCloseButton'
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner'
 import { formatDecimal } from '../money-display'
 import { parsePaymentDecimal } from '../payments/payment-draft'
@@ -359,7 +360,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
                   <p className="text-sm font-black text-violet-700">اختيار سريع مثل نقطة البيع</p>
                   <h3 className="text-2xl font-black text-slate-950">اختر الأصناف المعرفة</h3>
                 </div>
-                <button aria-label="إغلاق اختيار الأصناف" className="size-12 rounded-xl bg-slate-100 text-2xl font-black hover:bg-slate-200" onClick={() => setShowCatalog(false)} type="button">×</button>
+                <DialogCloseButton ariaLabel="إغلاق اختيار الأصناف" className="size-12" onClick={() => setShowCatalog(false)} />
               </div>
               <div className="mt-4 flex gap-2 overflow-x-auto pb-2" aria-label="تصنيفات الأصناف">
                 <button

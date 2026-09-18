@@ -5,6 +5,7 @@ import {
   PaymentDraft,
   PaymentEditor,
 } from '../components/PaymentEditor'
+import { DialogCloseButton } from '../components/DialogCloseButton'
 import {
   newPayment,
   paymentsTotal,
@@ -66,10 +67,8 @@ export function MaintenancePage({
   const [showForm, setShowForm] = useState(Boolean(searchParams.get('customerId')))
   const [customerId, setCustomerId] = useState(searchParams.get('customerId') ?? '')
   const [itemDescription, setItemDescription] = useState('')
-  const [details, setDetails] = useState('')
   const [amount, setAmount] = useState('')
   const [businessDate, setBusinessDate] = useState(currentBusinessDate)
-  const [notes, setNotes] = useState('')
   const [payments, setPayments] = useState<PaymentDraft[]>(() => [newPayment('cash', currentBusinessDate())])
   const [search, setSearch] = useState('')
   const [filterDate, setFilterDate] = useState('')
@@ -157,7 +156,7 @@ export function MaintenancePage({
     || payment.originalOwnerPhone.trim()
   ))
   const hasUnsavedDraft = Boolean(
-    customerId || itemDescription.trim() || details.trim() || amount.trim() || notes.trim()
+    customerId || itemDescription.trim() || amount.trim()
     || hasPaymentDraft || reversingId || reversalReason.trim(),
   )
 
@@ -185,10 +184,10 @@ export function MaintenancePage({
         body: JSON.stringify({
           customerId: customerId || null,
           itemDescription: itemDescription.trim(),
-          maintenanceDetails: details.trim() || null,
+          maintenanceDetails: null,
           amount: amountValue!.toFixed(),
           businessDate,
-          notes: notes.trim() || null,
+          notes: null,
           payments: serializePayments(payments),
         }),
       })
@@ -196,9 +195,7 @@ export function MaintenancePage({
       const payload = (await response.json()) as { maintenance: MaintenanceRecord }
       setMessage(`تم حفظ صيانة «${payload.maintenance.item_description}» بمبلغ ₪${formatDecimal(payload.maintenance.amount_ils)}.`)
       setItemDescription('')
-      setDetails('')
       setAmount('')
-      setNotes('')
       setPayments([newPayment('cash', businessDate)])
       setShowForm(false)
       await loadRecords(search, filterDate)
@@ -244,28 +241,36 @@ export function MaintenancePage({
 
       {showForm && !needsStore && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-5">
-        <form aria-label="صيانة جديدة" aria-modal="true" className="max-h-[94vh] w-full max-w-6xl space-y-5 overflow-y-auto rounded-3xl bg-slate-100 p-3 shadow-2xl sm:p-5" onSubmit={(event) => void submit(event)} role="dialog">
-          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:p-7">
-            <div className="mb-5 flex items-center justify-between gap-4"><h2 className="text-2xl font-black">صيانة جديدة</h2><button className="min-h-11 rounded-xl px-4 font-black text-slate-600 hover:bg-slate-100" onClick={() => setShowForm(false)} type="button">إغلاق النموذج</button></div>
-            <div className="grid gap-5 md:grid-cols-2">
-              <label><span className="mb-2 block text-lg font-black">الجهاز أو القطعة *</span><input autoFocus className={inputClass} maxLength={200} onChange={(event) => setItemDescription(event.target.value)} placeholder="مثال: مضخة مياه أو مثقاب" required value={itemDescription} /></label>
-              <label><span className="mb-2 block text-lg font-black">العميل (اختياري)</span><select className={inputClass} onChange={(event) => setCustomerId(event.target.value)} value={customerId}><option value="">صيانة بدون عميل — يجب دفعها كاملة</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
-              <label><span className="mb-2 block text-lg font-black">المبلغ بالشيكل *</span><input className={inputClass} inputMode="decimal" onChange={(event) => setAmount(event.target.value)} placeholder="0.00" required value={amount} />{amount && !amountValid && <span className="mt-2 block font-bold text-rose-700">أدخل مبلغاً أكبر من صفر وبمضاعفات 0.50</span>}</label>
-              <label><span className="mb-2 block text-lg font-black">التاريخ *</span><input className={inputClass} onChange={(event) => setBusinessDate(event.target.value)} required type="date" value={businessDate} /></label>
-              <label className="md:col-span-2"><span className="mb-2 block text-lg font-black">تفاصيل الصيانة (اختياري)</span><textarea className={`${inputClass} min-h-28 py-3`} maxLength={2000} onChange={(event) => setDetails(event.target.value)} placeholder="ما الذي تم إصلاحه أو استبداله؟" value={details} /></label>
-              <label className="md:col-span-2"><span className="mb-2 block text-lg font-black">ملاحظات (اختياري)</span><textarea className={`${inputClass} min-h-24 py-3`} maxLength={2000} onChange={(event) => setNotes(event.target.value)} value={notes} /></label>
-            </div>
-          </section>
+        <form aria-label="صيانة جديدة" aria-modal="true" className="max-h-[94vh] w-full max-w-7xl overflow-y-auto rounded-3xl bg-slate-100 shadow-2xl" onSubmit={(event) => void submit(event)} role="dialog">
+          <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+            <div><h2 className="text-2xl font-black">صيانة جديدة</h2><p className="text-sm font-bold text-slate-500">البيانات الأساسية والدفع فقط</p></div>
+            <DialogCloseButton onClick={() => setShowForm(false)} />
+          </header>
 
-          <PaymentEditor businessDate={businessDate} onChange={setPayments} payments={payments} />
+          <div className="space-y-3 p-3 sm:p-4">
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <label><span className="mb-1.5 block font-black">الجهاز أو القطعة *</span><input autoFocus className={inputClass} maxLength={200} onChange={(event) => setItemDescription(event.target.value)} placeholder="مثال: مضخة مياه" required value={itemDescription} /></label>
+                <label><span className="mb-1.5 block font-black">العميل (اختياري)</span><select className={inputClass} onChange={(event) => setCustomerId(event.target.value)} value={customerId}><option value="">بدون عميل — دفع كامل</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
+                <label><span className="mb-1.5 block font-black">المبلغ بالشيكل *</span><input className={inputClass} inputMode="decimal" onChange={(event) => setAmount(event.target.value)} placeholder="0.00" required value={amount} />{amount && !amountValid && <span className="mt-1.5 block text-sm font-bold text-rose-700">أدخل مبلغاً أكبر من صفر وبمضاعفات 0.50</span>}</label>
+                <label><span className="mb-1.5 block font-black">التاريخ *</span><input className={inputClass} onChange={(event) => setBusinessDate(event.target.value)} required type="date" value={businessDate} /></label>
+              </div>
+            </section>
 
-          <section className="rounded-3xl bg-slate-900 p-5 text-white shadow-lg lg:p-7">
-            <div className="grid gap-3 text-xl font-black sm:grid-cols-3"><p className="rounded-xl bg-white/10 p-4">الإجمالي <span className="float-left" dir="ltr">{amountValid ? `₪${amountValue!.toFixed()}` : '—'}</span></p><p className="rounded-xl bg-white/10 p-4">المدفوع <span className="float-left" dir="ltr">{paidTotal ? `₪${paidTotal.toFixed()}` : '—'}</span></p><p className={`rounded-xl p-4 ${remaining?.greaterThan(0) ? 'bg-amber-400 text-slate-950' : 'bg-emerald-700'}`}>المتبقي <span className="float-left" dir="ltr">{remaining && !overpaid ? `₪${remaining.toFixed()}` : '—'}</span></p></div>
-            {overpaid && <p className="mt-4 rounded-xl bg-rose-100 p-4 text-lg font-black text-rose-900">مجموع الدفعات أكبر من مبلغ الصيانة.</p>}
-            {anonymousDebt && <p className="mt-4 rounded-xl bg-amber-100 p-4 text-lg font-black text-amber-950">الصيانة بدون عميل يجب أن تكون مدفوعة بالكامل. اختر عميلاً إذا بقي دين.</p>}
-            {anonymousCheck && <p className="mt-4 rounded-xl bg-amber-100 p-4 text-lg font-black text-amber-950">اختر العميل قبل قبول الشيك.</p>}
-            <button className="mt-5 min-h-16 w-full rounded-2xl bg-amber-400 px-8 text-2xl font-black text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canSave} type="submit">{saving ? 'جارٍ الحفظ…' : 'حفظ الصيانة'}</button>
-          </section>
+            <PaymentEditor businessDate={businessDate} onChange={setPayments} payments={payments} />
+
+            <section className="sticky bottom-0 rounded-2xl bg-slate-900 p-3 text-white shadow-xl sm:p-4">
+              {overpaid && <p className="mb-3 rounded-xl bg-rose-100 p-3 font-black text-rose-900">مجموع الدفعات أكبر من مبلغ الصيانة.</p>}
+              {anonymousDebt && <p className="mb-3 rounded-xl bg-amber-100 p-3 font-black text-amber-950">الصيانة بدون عميل يجب أن تكون مدفوعة بالكامل.</p>}
+              {anonymousCheck && <p className="mb-3 rounded-xl bg-amber-100 p-3 font-black text-amber-950">اختر العميل قبل قبول الشيك.</p>}
+              <div className="grid gap-2 md:grid-cols-4">
+                <p className="rounded-xl bg-white/10 p-3 font-black">الإجمالي <span className="float-left text-lg" dir="ltr">{amountValid ? `₪${amountValue!.toFixed()}` : '—'}</span></p>
+                <p className="rounded-xl bg-white/10 p-3 font-black">المدفوع <span className="float-left text-lg" dir="ltr">{paidTotal ? `₪${paidTotal.toFixed()}` : '—'}</span></p>
+                <p className={`rounded-xl p-3 font-black ${remaining?.greaterThan(0) ? 'bg-amber-400 text-slate-950' : 'bg-emerald-700'}`}>المتبقي <span className="float-left text-lg" dir="ltr">{remaining && !overpaid ? `₪${remaining.toFixed()}` : '—'}</span></p>
+                <button className="min-h-12 rounded-xl bg-amber-400 px-6 text-xl font-black text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canSave} type="submit">{saving ? 'جارٍ الحفظ…' : 'حفظ الصيانة'}</button>
+              </div>
+            </section>
+          </div>
         </form>
         </div>
       )}

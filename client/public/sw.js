@@ -1,4 +1,4 @@
-const CACHE_NAME = 'electricity-accountant-shell-v3'
+const CACHE_NAME = 'electricity-accountant-shell-v4'
 const APP_ROOT = new URL('./', self.registration.scope).href
 const APP_SHELL = [
   APP_ROOT,
@@ -67,7 +67,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.ok) {
+          if (response.ok && response.headers.get('content-type')?.includes('text/html')) {
             const copy = response.clone()
             void caches.open(CACHE_NAME).then((cache) => cache.put(APP_ROOT, copy))
           }

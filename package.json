@@ -9,7 +9,10 @@
   ],
   "scripts": {
     "dev": "concurrently --kill-others-on-fail --names web,backend --prefix-colors cyan,green \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:lan": "node scripts/dev-lan.mjs",
+    "dev:lan:services": "concurrently --kill-others-on-fail --names web,backend --prefix-colors cyan,green \"npm run dev:client:lan\" \"npm run dev:server\"",
     "dev:client": "npm run dev --workspace client",
+    "dev:client:lan": "npm run dev --workspace client -- --host 0.0.0.0",
     "dev:server": "npm run dev --workspace server",
     "dev:electron": "concurrently --kill-others --names web,backend,electron --prefix-colors cyan,green,magenta \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:electron:app\"",
     "dev:electron:app": "npm run dev --workspace electron",

@@ -3,6 +3,7 @@ import type { RefObject } from 'react'
 import { apiFetch } from '../api'
 import { movementSourceLabel } from '../business-labels'
 import { formatDecimal } from '../money-display'
+import { DialogCloseButton } from './DialogCloseButton'
 import type { Store } from '../types'
 import { DocumentOutputActions } from './DocumentOutputActions'
 import type { PdfAccountStatement, PdfStatementEntry } from '../pdf-documents'
@@ -103,7 +104,7 @@ export function AccountStatementDialog({
       <div className="mx-auto max-w-6xl rounded-3xl bg-white p-5 shadow-2xl print:max-w-none print:rounded-none print:p-0 print:shadow-none sm:p-7">
         <div className="mb-5 flex items-center justify-between gap-4 print:hidden">
           <h2 className="text-2xl font-black">{kind === 'customer' ? 'كشف حساب عميل' : 'كشف حساب مورد'}</h2>
-          <button aria-label="إغلاق" className="size-11 rounded-full bg-slate-100 text-xl font-black" onClick={onClose} type="button">×</button>
+          <DialogCloseButton onClick={onClose} />
         </div>
         <div className="mb-5 grid gap-3 rounded-2xl bg-slate-100 p-4 print:hidden sm:grid-cols-2 lg:grid-cols-4">
           <label className="font-black">من<input className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3" max={to} onChange={(event) => setFrom(event.target.value)} type="date" value={from} /></label>

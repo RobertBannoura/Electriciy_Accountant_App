@@ -45,10 +45,10 @@ const homeActions = [
   { label: 'الأصناف', path: '/products', icon: 'products', primary: false },
   { label: 'العملاء', path: '/customers', icon: 'customers', primary: false },
   { label: 'الموردون', path: '/suppliers', icon: 'suppliers', primary: false },
-  { label: 'المشتريات', path: '/purchases', icon: 'purchases', primary: false },
   { label: 'الشيكات', path: '/checks', icon: 'checks', primary: false },
-  { label: 'المصاريف', path: '/expenses', icon: 'expenses', primary: false },
+  { label: 'المشتريات', path: '/purchases', icon: 'purchases', primary: false },
   { label: 'التقارير', path: '/reports', icon: 'reports', primary: false },
+  { label: 'المصاريف', path: '/expenses', icon: 'expenses', primary: false },
 ] as const
 
 function HomeActionIcon({ name, primary = false }: { name: typeof homeActions[number]['icon']; primary?: boolean }) {
@@ -125,7 +125,7 @@ function activityLabel(kind: HomeSummary['recent_activity'][number]['kind']) {
   }[kind]
 }
 
-export function HomePage({ isOnline, storeId }: { isOnline: boolean; storeId: string | null }) {
+export function HomePage({ isOnline, readOnly = false, storeId }: { isOnline: boolean; readOnly?: boolean; storeId: string | null }) {
   const [reminders, setReminders] = useState<CheckReminders | null>(null)
   const [reminderError, setReminderError] = useState<string | null>(null)
   const [actingId, setActingId] = useState<string | null>(null)
@@ -229,8 +229,8 @@ export function HomePage({ isOnline, storeId }: { isOnline: boolean; storeId: st
   return (
     <section>
       <div className="mb-7">
-        <p className="text-base font-bold text-teal-700">القائمة الرئيسية</p>
-        <h1 className="mt-1 text-3xl font-black sm:text-4xl">ماذا تريد أن تفعل؟</h1>
+        <p className="text-base font-bold text-teal-700">{readOnly ? 'عرض ومتابعة' : 'القائمة الرئيسية'}</p>
+        <h1 className="mt-1 text-3xl font-black sm:text-4xl">{readOnly ? 'نظرة سريعة' : 'ماذا تريد أن تفعل؟'}</h1>
       </div>
 
       <div className="hidden grid-cols-2 gap-4 sm:grid sm:gap-6">
@@ -308,7 +308,7 @@ export function HomePage({ isOnline, storeId }: { isOnline: boolean; storeId: st
                 <p className="mt-2 font-bold text-slate-700">رقم الشيك: {check.check_number}</p>
                 <p className="mt-1 font-bold text-slate-700">الاستحقاق: {localDate(check.due_date)}</p>
                 {check.status === 'bounced' && <p className="mt-2 inline-flex rounded-full bg-rose-100 px-3 py-1 font-black text-rose-900">مرتجع — تذكير يومي</p>}
-                <div className="mt-5 flex flex-wrap gap-2">
+                {!readOnly && <div className="mt-5 flex flex-wrap gap-2">
                   {check.status === 'pending' ? <>
                     <button className="min-h-11 rounded-xl bg-emerald-700 px-4 font-black text-white disabled:opacity-50" disabled={!isOnline || actingId === check.id} onClick={() => void act(check, 'clear')} type="button">تم تحصيله</button>
                     <button className="min-h-11 rounded-xl bg-rose-700 px-4 font-black text-white disabled:opacity-50" disabled={!isOnline || actingId === check.id} onClick={() => void act(check, 'bounce')} type="button">مرتجع</button>
@@ -316,7 +316,7 @@ export function HomePage({ isOnline, storeId }: { isOnline: boolean; storeId: st
                   </> : (
                     <button className="min-h-11 rounded-xl border border-slate-300 px-4 font-black text-slate-700 disabled:opacity-50" disabled={!isOnline || actingId === check.id} onClick={() => void act(check, 'stop-bounced-reminder')} type="button">إيقاف التذكير</button>
                   )}
-                </div>
+                </div>}
               </article>
             ))}
           </div>
@@ -324,6 +324,8 @@ export function HomePage({ isOnline, storeId }: { isOnline: boolean; storeId: st
       )}
 
       {reminderError && <p className="mb-5 rounded-xl bg-rose-50 p-4 font-bold text-rose-800" role="alert">{reminderError}</p>}
+
+      {readOnly && widgetChecks.length > 0 && <Link className="mb-5 flex min-h-12 items-center justify-center rounded-xl bg-slate-900 px-5 font-black text-white" to="/checks">عرض كل الشيكات</Link>}
 
     </section>
   )

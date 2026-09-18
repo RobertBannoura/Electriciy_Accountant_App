@@ -10,6 +10,7 @@ import {
 import { Store } from '../types'
 import { formatDecimal } from '../money-display'
 import { AccountStatementDialog } from '../components/AccountStatementDialog'
+import { DialogCloseButton } from '../components/DialogCloseButton'
 
 type StoreBalance = { store_id: string; store_name: string; amount_ils: string }
 type CustomerSummary = {
@@ -133,9 +134,11 @@ function initialStoreId(defaultStoreId: string | null, stores: Store[]) {
 
 export function CustomersPage({
   defaultStoreId,
+  readOnly = false,
   stores,
 }: {
   defaultStoreId: string | null
+  readOnly?: boolean
   stores: Store[]
 }) {
   const operatingStoreId = initialStoreId(defaultStoreId, stores)
@@ -189,7 +192,7 @@ export function CustomersPage({
         <div>
           <p className="font-bold text-teal-700">الحسابات وسجل التعامل</p>
           <h1 className="mt-1 text-3xl font-black sm:text-4xl">العملاء</h1>
-          <p className="mt-2 text-slate-600">الرصيد الظاهر محسوب من دفتر العميل ولا يُعدّل يدوياً.</p>
+          <p className="mt-2 text-slate-600">{readOnly ? 'ابحث عن العميل وافتح ملفه لعرض الرصيد وتصدير كشف الحساب.' : 'الرصيد الظاهر محسوب من دفتر العميل ولا يُعدّل يدوياً.'}</p>
         </div>
         <button
           className="hidden min-h-12 rounded-xl bg-teal-700 px-6 font-black text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60 sm:block"
@@ -220,15 +223,20 @@ export function CustomersPage({
         ) : (
           <div className="divide-y divide-slate-200">
             {customers.map((customer) => (
-              <article className="flex flex-wrap items-center justify-between gap-5 p-5" key={customer.id}>
+              <article className="group relative flex flex-wrap items-center justify-between gap-5 p-5 transition-colors hover:bg-teal-50/50" key={customer.id}>
+                <Link
+                  aria-label={`فتح ملف ${customer.name}`}
+                  className="absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-teal-600"
+                  to={`/customers/${customer.id}`}
+                />
                 <div className="min-w-0">
-                  <Link className="text-xl font-black text-slate-950 hover:text-teal-700" to={`/customers/${customer.id}`}>{customer.name}</Link>
+                  <p className="text-xl font-black text-slate-950 transition-colors group-hover:text-teal-700">{customer.name}</p>
                   <p className="mt-1 text-slate-600">{customer.phone ?? 'لا يوجد رقم هاتف'}{customer.address ? ` · ${customer.address}` : ''}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   <IlsBalance amount={customer.balance_ils} />
-                  <button className="hidden min-h-11 rounded-xl bg-slate-100 px-4 font-black hover:bg-slate-200 sm:block" onClick={() => setEditingCustomer(customer)} type="button">تعديل</button>
-                  <Link className="inline-flex min-h-11 items-center rounded-xl bg-teal-50 px-4 font-black text-teal-800 hover:bg-teal-100" to={`/customers/${customer.id}`}>فتح الملف</Link>
+                  <button className="relative z-10 hidden min-h-11 rounded-xl bg-slate-100 px-4 font-black hover:bg-slate-200 sm:block" onClick={() => setEditingCustomer(customer)} type="button">تعديل</button>
+                  <Link className="relative z-10 inline-flex min-h-11 items-center rounded-xl bg-teal-50 px-4 font-black text-teal-800 hover:bg-teal-100" to={`/customers/${customer.id}`}>فتح الملف</Link>
                 </div>
               </article>
             ))}
@@ -236,7 +244,7 @@ export function CustomersPage({
         )}
       </div>
 
-      {editingCustomer !== undefined && (
+      {!readOnly && editingCustomer !== undefined && (
         <CustomerEditor
           customer={editingCustomer}
           onClose={() => setEditingCustomer(undefined)}
@@ -253,9 +261,11 @@ export function CustomersPage({
 
 export function CustomerDetailPage({
   defaultStoreId,
+  readOnly = false,
   stores,
 }: {
   defaultStoreId: string | null
+  readOnly?: boolean
   stores: Store[]
 }) {
   const { customerId = '' } = useParams()
@@ -323,7 +333,7 @@ export function CustomerDetailPage({
       <div className="mt-5 flex flex-wrap gap-3 print:hidden">
         <Link className="hidden min-h-12 items-center rounded-xl bg-teal-700 px-5 font-black text-white hover:bg-teal-800 sm:inline-flex" to={`/sale?customerId=${customer.id}&storeId=${operatingStoreId}`}>بيع جديد</Link>
         <Link className="hidden min-h-12 items-center rounded-xl bg-amber-400 px-5 font-black text-slate-950 hover:bg-amber-300 sm:inline-flex" to={`/maintenance?customerId=${customer.id}`}>صيانة جديدة</Link>
-        <Link className="inline-flex min-h-12 items-center rounded-xl bg-indigo-700 px-5 font-black text-white hover:bg-indigo-800" to={`/customers/${customer.id}/payment?storeId=${operatingStoreId}`}>تسجيل دفعة</Link>
+        {!readOnly && <Link className="inline-flex min-h-12 items-center rounded-xl bg-indigo-700 px-5 font-black text-white hover:bg-indigo-800" to={`/customers/${customer.id}/payment?storeId=${operatingStoreId}`}>تسجيل دفعة</Link>}
         <button className="hidden min-h-12 rounded-xl bg-amber-500 px-5 font-black text-slate-950 hover:bg-amber-400 sm:block" onClick={() => setAddingProject(true)} type="button">مشروع جديد</button>
         <button className="min-h-12 rounded-xl border border-slate-300 bg-white px-5 font-black hover:bg-slate-100" onClick={() => setShowStatement(true)} type="button">كشف حساب عميل</button>
         <button className="hidden min-h-12 rounded-xl px-5 font-black text-slate-700 hover:bg-slate-100 sm:block" onClick={() => setEditing(true)} type="button">تعديل البيانات</button>
@@ -367,8 +377,8 @@ export function CustomerDetailPage({
         <DetailSection title={selectedProjectId ? 'حركات حساب المشروع' : 'أحدث حركات الحساب لكل المشاريع'}><MovementsList items={customer.recent_movements} /></DetailSection>
       </div>
 
-      {editing && <CustomerEditor customer={customer} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); void loadCustomer() }} storeId={operatingStoreId} />}
-      {addingProject && <ProjectEditor customerId={customer.id} onClose={() => setAddingProject(false)} onSaved={() => { setAddingProject(false); void loadCustomer() }} storeId={operatingStoreId} />}
+      {!readOnly && editing && <CustomerEditor customer={customer} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); void loadCustomer() }} storeId={operatingStoreId} />}
+      {!readOnly && addingProject && <ProjectEditor customerId={customer.id} onClose={() => setAddingProject(false)} onSaved={() => { setAddingProject(false); void loadCustomer() }} storeId={operatingStoreId} />}
       {showStatement && <AccountStatementDialog initialProjectId={selectedProjectId} initialStoreId={selectedActivityStoreId} kind="customer" onClose={() => setShowStatement(false)} operatingStoreId={operatingStoreId} partyId={customer.id} projects={customer.projects} stores={stores} />}
     </section>
   )
@@ -455,7 +465,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [onClose])
 
-  return <div aria-label={title} aria-modal="true" className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-4" role="dialog"><div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8"><div className="mb-6 flex items-center justify-between gap-4"><h2 className="text-2xl font-black">{title}</h2><button aria-label="إغلاق" className="size-11 rounded-full bg-slate-100 text-xl font-black hover:bg-slate-200" onClick={onClose} type="button">×</button></div>{children}</div></div>
+  return <div aria-label={title} aria-modal="true" className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-4" role="dialog"><div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8"><div className="mb-6 flex items-center justify-between gap-4"><h2 className="text-2xl font-black">{title}</h2><DialogCloseButton onClick={onClose} /></div>{children}</div></div>
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

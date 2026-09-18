@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { DialogCloseButton } from './DialogCloseButton'
 import { formatDecimal } from '../money-display'
 import { DocumentOutputActions } from './DocumentOutputActions'
 
@@ -29,7 +30,7 @@ export function InvoiceOutput({ invoice, onClose }: { invoice: SavedInvoice; onC
       <div className="mx-auto max-w-4xl rounded-3xl bg-white p-5 shadow-2xl print:max-w-none print:rounded-none print:p-0 print:shadow-none sm:p-7">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-4 print:hidden">
           <div><p className="font-bold text-emerald-700">تم حفظ الفاتورة</p><h2 className="text-2xl font-black">طباعة أو حفظ الفاتورة</h2></div>
-          <button aria-label="إغلاق" className="size-11 rounded-full bg-slate-100 text-xl font-black" onClick={onClose} type="button">×</button>
+          <DialogCloseButton onClick={onClose} />
         </div>
         <div className="mb-5 print:hidden">
           <DocumentOutputActions allowReceipt createPdf={async (size) => (await import('../pdf-documents')).createInvoicePdf(invoice, size)} documentRef={documentRef} fileName={`فاتورة-${invoice.invoice_number}`} />
