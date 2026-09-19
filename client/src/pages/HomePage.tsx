@@ -257,12 +257,12 @@ export function HomePage({ isOnline, readOnly = false, storeId }: { isOnline: bo
             <Link className="font-black text-teal-700 hover:text-teal-900" to="/reports">عرض التقارير</Link>
           </div>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-            <SummaryCard label="مبيعات اليوم" value={`₪${formatDecimal(summary.today_sales)}`} />
-            <SummaryCard label="ديون العملاء" value={`₪${formatDecimal(summary.customer_debt)}`} />
-            <SummaryCard label="ديون الموردين" value={`₪${formatDecimal(summary.supplier_debt)}`} />
-            <SummaryCard alert={summary.checks_needing_follow_up !== '0'} label="شيكات تحتاج متابعة" value={summary.checks_needing_follow_up} />
-            <SummaryCard label="الصندوق والبنك" note={`الصندوق ₪${formatDecimal(summary.cash_balances.find((row) => row.currency_code === 'ILS')?.balance ?? '0')} • البنك ₪${formatDecimal(summary.bank_balance_ils)}`} value={`₪${formatDecimal(summary.cash_and_bank_ils)}`} />
-            <SummaryCard alert={summary.low_stock_count !== '0'} label="المخزون المنخفض" value={summary.low_stock_count} />
+            <SummaryCard label="مبيعات اليوم" to="/reports?section=sales" value={`₪${formatDecimal(summary.today_sales)}`} />
+            <SummaryCard label="ديون العملاء" to="/customers" value={`₪${formatDecimal(summary.customer_debt)}`} />
+            <SummaryCard label="ديون الموردين" to="/suppliers" value={`₪${formatDecimal(summary.supplier_debt)}`} />
+            <SummaryCard alert={summary.checks_needing_follow_up !== '0'} label="شيكات تحتاج متابعة" to="/checks" value={summary.checks_needing_follow_up} />
+            <SummaryCard label="الصندوق والبنك" note={`الصندوق ₪${formatDecimal(summary.cash_balances.find((row) => row.currency_code === 'ILS')?.balance ?? '0')} • البنك ₪${formatDecimal(summary.bank_balance_ils)}`} to="/money" value={`₪${formatDecimal(summary.cash_and_bank_ils)}`} />
+            <SummaryCard alert={summary.low_stock_count !== '0'} label="المخزون المنخفض" to="/products" value={summary.low_stock_count} />
           </div>
         </section>
       )}
@@ -331,12 +331,15 @@ export function HomePage({ isOnline, readOnly = false, storeId }: { isOnline: bo
   )
 }
 
-function SummaryCard({ alert = false, label, note, value }: { alert?: boolean; label: string; note?: string; value: string }) {
+function SummaryCard({ alert = false, label, note, to, value }: { alert?: boolean; label: string; note?: string; to: string; value: string }) {
   return (
-    <article className={`rounded-2xl border p-4 ${alert ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'}`}>
-      <p className={`text-sm font-black ${alert ? 'text-amber-900' : 'text-slate-500'}`}>{label}</p>
+    <Link aria-label={`${label}: ${value}`} className={`group relative rounded-2xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md active:scale-[.98] ${alert ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white hover:border-teal-300'}`} to={to}>
+      <div className="flex items-start justify-between gap-2">
+        <p className={`text-sm font-black ${alert ? 'text-amber-900' : 'text-slate-500'}`}>{label}</p>
+        <svg aria-hidden="true" className={`size-4 shrink-0 transition-transform group-hover:-translate-x-0.5 ${alert ? 'text-amber-700' : 'text-teal-600'}`} fill="none" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" /></svg>
+      </div>
       <p className="mt-2 text-xl font-black" dir="ltr">{value}</p>
       {note && <p className="mt-1 text-xs font-bold text-slate-500" dir="ltr">{note}</p>}
-    </article>
+    </Link>
   )
 }

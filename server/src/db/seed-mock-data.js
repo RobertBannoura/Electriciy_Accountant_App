@@ -3,15 +3,22 @@ import { env } from '../config/env.js'
 import { pool } from './pool.js'
 import { createExpense } from '../expenses/create-expense.js'
 import { parseExpenseInput } from '../expenses/expense-input.js'
+import { createCustomerPayment } from '../customers/create-customer-payment.js'
+import { parseCustomerPaymentInput } from '../customers/customer-payment-input.js'
+import { clearCheck, bounceCheck } from '../checks/check-lifecycle.js'
 import { createMaintenance } from '../maintenance/maintenance-service.js'
 import { parseMaintenanceInput } from '../maintenance/maintenance-input.js'
 import { createPurchase } from '../purchases/create-purchase.js'
 import { parsePurchaseInput } from '../purchases/purchase-input.js'
+import { createCustomerReturn } from '../returns/create-customer-return.js'
+import { createSupplierReturn } from '../returns/create-supplier-return.js'
 import { createSale } from '../sales/create-sale.js'
 import { parseSaleInput } from '../sales/sale-input.js'
 import { logSecurityEvent, safeErrorDetails } from '../security/security-log.js'
+import { createSupplierPayment } from '../suppliers/create-supplier-payment.js'
+import { parseSupplierPaymentInput } from '../suppliers/supplier-payment-input.js'
 
-const MOCK_SEED_KEY = 'development_mock_data_v1'
+const MOCK_SEED_KEY = 'development_mock_data_v2'
 
 const categoryNames = [
   'أسلاك وكابلات',
@@ -248,6 +255,94 @@ async function createSaleUnlessPresent(context, store, invoiceNumber, body) {
   })
 }
 
+async function createCustomerPaymentUnlessPresent(context, store, customerId, marker, body) {
+  const checkNumber = body.payments.find((payment) => payment.method === 'check')?.checkNumber
+  const existing = checkNumber
+    ? await pool.query('SELECT id::TEXT AS id, status FROM checks WHERE check_number = $1 LIMIT 1', [checkNumber])
+    : await pool.query('SELECT id::TEXT AS id FROM payments WHERE reference = $1 LIMIT 1', [marker])
+  if (existing.rowCount > 0) return existing.rows[0]
+
+  const payments = body.payments.map((payment) => (
+    payment.method === 'check' ? payment : { ...payment, reference: marker }
+  ))
+  const result = await createCustomerPayment({
+    customerId,
+    input: parseValue(marker, parseCustomerPaymentInput({ ...body, payments })),
+    storeId: store.id,
+    userId: context.userId,
+  })
+  return result.payments[0]
+}
+
+async function createSupplierPaymentUnlessPresent(context, store, supplierId, marker, body) {
+  const ownerCheckNumber = body.payments.find((payment) => payment.method === 'owner_check')?.checkNumber
+  const transferredCheckId = body.payments.find((payment) => payment.method === 'transferred_customer_check')?.checkId
+  const existing = ownerCheckNumber
+    ? await pool.query('SELECT id FROM checks WHERE check_number = $1 LIMIT 1', [ownerCheckNumber])
+    : transferredCheckId
+      ? await pool.query('SELECT id FROM checks WHERE id = $1::BIGINT AND supplier_id IS NOT NULL', [transferredCheckId])
+      : await pool.query('SELECT id FROM payments WHERE reference = $1 LIMIT 1', [marker])
+  if (existing.rowCount > 0) return
+
+  const payments = body.payments.map((payment) => (
+    ['cash', 'bank', 'bank_card'].includes(payment.method)
+      ? { ...payment, reference: marker }
+      : payment
+  ))
+  await createSupplierPayment({
+    supplierId,
+    input: parseValue(marker, parseSupplierPaymentInput({ ...body, payments })),
+    storeId: store.id,
+    userId: context.userId,
+  })
+}
+
+async function createReturnExamples(context, firstStore) {
+  const sale = await pool.query(
+    `SELECT sales.id::TEXT AS document_id, sale_items.id::TEXT AS item_id
+     FROM sales INNER JOIN sale_items ON sale_items.sale_id = sales.id
+     WHERE sales.store_id = $1::BIGINT AND sales.document_number = 'MOCK-SALE-1001'
+       AND sale_items.product_id = $2::BIGINT
+     ORDER BY sale_items.id LIMIT 1`,
+    [firstStore.id, context.products.get('MOCK-LED-12W')],
+  )
+  if (sale.rowCount > 0) {
+    const existing = await pool.query(
+      'SELECT id FROM customer_returns WHERE sale_id = $1::BIGINT LIMIT 1',
+      [sale.rows[0].document_id],
+    )
+    if (existing.rowCount === 0) {
+      await createCustomerReturn({
+        input: { sourceDocumentId: sale.rows[0].document_id, items: [{ sourceItemId: sale.rows[0].item_id, quantity: '1' }] },
+        storeId: firstStore.id,
+        userId: context.userId,
+      })
+    }
+  }
+
+  const purchase = await pool.query(
+    `SELECT purchases.id::TEXT AS document_id, purchase_items.id::TEXT AS item_id
+     FROM purchases INNER JOIN purchase_items ON purchase_items.purchase_id = purchases.id
+     WHERE purchases.store_id = $1::BIGINT AND purchases.document_number = 'MOCK-PUR-1001'
+       AND purchase_items.product_id = $2::BIGINT
+     ORDER BY purchase_items.id LIMIT 1`,
+    [firstStore.id, context.products.get('MOCK-TAPE')],
+  )
+  if (purchase.rowCount > 0) {
+    const existing = await pool.query(
+      'SELECT id FROM supplier_returns WHERE purchase_id = $1::BIGINT LIMIT 1',
+      [purchase.rows[0].document_id],
+    )
+    if (existing.rowCount === 0) {
+      await createSupplierReturn({
+        input: { sourceDocumentId: purchase.rows[0].document_id, items: [{ sourceItemId: purchase.rows[0].item_id, quantity: '5' }] },
+        storeId: firstStore.id,
+        userId: context.userId,
+      })
+    }
+  }
+}
+
 async function seedTransactions(context) {
   const [firstStore, secondStore] = context.stores
   const product = (sku) => context.products.get(sku)
@@ -330,6 +425,90 @@ async function seedTransactions(context) {
     payments: [{ method: 'cash', currency: 'ILS', amount: '125.00' }],
   })
 
+  await createSaleUnlessPresent(context, firstStore, 'MOCK-SALE-1003', {
+    businessDate: businessDate(8),
+    customerId: customer('MOCK-C004'),
+    customerProjectId: context.projects.get('MOCK-C004:تجديد مختبر الحاسوب'),
+    invoiceDiscount: '0',
+    items: [
+      { productId: product('MOCK-FLOOD-50W'), quantity: '5', actualPrice: '70.00', discount: '0' },
+    ],
+    payments: [],
+  })
+
+  await createSaleUnlessPresent(context, firstStore, 'MOCK-SALE-1004', {
+    businessDate: businessDate(6),
+    customerId: customer('MOCK-C005'),
+    customerProjectId: null,
+    invoiceDiscount: '0',
+    items: [
+      { productId: product('MOCK-RCD-40A'), quantity: '5', actualPrice: '120.00', discount: '0' },
+    ],
+    payments: [{ method: 'cash', currency: 'ILS', amount: '100.00' }],
+  })
+
+  await createSaleUnlessPresent(context, secondStore, 'MOCK-SALE-2002', {
+    businessDate: businessDate(2),
+    customerId: null,
+    customerProjectId: null,
+    invoiceDiscount: '0',
+    items: [
+      { productId: product('MOCK-TAPE'), quantity: '30', actualPrice: '6.00', discount: '0' },
+    ],
+    payments: [{ method: 'cash', currency: 'ILS', amount: '180.00' }],
+  })
+
+  await createReturnExamples(context, firstStore)
+
+  await createCustomerPaymentUnlessPresent(context, firstStore, customer('MOCK-C002'), 'MOCK-CUST-PAY-001', {
+    notes: 'دفعة نقدية تجريبية من العميل',
+    payments: [{ method: 'cash', currency: 'ILS', amount: '40.00' }],
+  })
+
+  await createCustomerPaymentUnlessPresent(context, firstStore, customer('MOCK-C004'), 'MOCK-CHECK-PENDING', {
+    notes: 'شيك مستحق اليوم للعرض',
+    payments: [{ method: 'check', amount: '100.00', checkNumber: 'MOCK-CHK-PENDING', bankName: 'البنك العربي', dueDate: businessDate(0) }],
+  })
+  const bouncedCheck = await createCustomerPaymentUnlessPresent(context, firstStore, customer('MOCK-C004'), 'MOCK-CHECK-BOUNCED', {
+    notes: 'شيك مرتجع تجريبي',
+    payments: [{ method: 'check', amount: '80.00', checkNumber: 'MOCK-CHK-BOUNCED', bankName: 'بنك فلسطين', dueDate: businessDate(12) }],
+  })
+  const clearedCheck = await createCustomerPaymentUnlessPresent(context, firstStore, customer('MOCK-C004'), 'MOCK-CHECK-CLEARED', {
+    notes: 'شيك محصل تجريبي',
+    payments: [{ method: 'check', amount: '60.00', checkNumber: 'MOCK-CHK-CLEARED', bankName: 'بنك القدس', dueDate: businessDate(9) }],
+  })
+  if (bouncedCheck.status === 'pending') {
+    await bounceCheck({ checkId: bouncedCheck.id, storeId: firstStore.id, userId: context.userId })
+  }
+  if (clearedCheck.status === 'pending') {
+    await clearCheck({ checkId: clearedCheck.id, storeId: firstStore.id, userId: context.userId })
+  }
+
+  const giroCheck = await createCustomerPaymentUnlessPresent(context, firstStore, customer('MOCK-C005'), 'MOCK-CHECK-GIRO', {
+    notes: 'شيك جيرو تجريبي قابل للتحويل',
+    payments: [{
+      method: 'check', amount: '150.00', checkNumber: 'MOCK-CHK-GIRO', bankName: 'البنك الوطني',
+      dueDate: businessDate(-10), isGiro: true, originalOwnerName: 'يوسف شاهين', originalOwnerPhone: '0599555444',
+    }],
+  })
+
+  await createSupplierPaymentUnlessPresent(context, firstStore, supplier('MOCK-S002'), 'MOCK-SUP-PAY-CASH', {
+    notes: 'دفعة نقدية تجريبية للمورد',
+    payments: [{ method: 'cash', amount: '350.00' }],
+  })
+  await createSupplierPaymentUnlessPresent(context, secondStore, supplier('MOCK-S001'), 'MOCK-SUP-PAY-BANK', {
+    notes: 'حوالة بنكية تجريبية للمورد',
+    payments: [{ method: 'bank', amount: '200.00' }],
+  })
+  await createSupplierPaymentUnlessPresent(context, firstStore, supplier('MOCK-S002'), 'MOCK-SUP-OWNER-CHECK', {
+    notes: 'شيك منشأة تجريبي للمورد',
+    payments: [{ method: 'owner_check', amount: '250.00', checkNumber: 'MOCK-OWNER-CHK-1', dueDate: businessDate(-20) }],
+  })
+  await createSupplierPaymentUnlessPresent(context, firstStore, supplier('MOCK-S002'), 'MOCK-SUP-TRANSFER-CHECK', {
+    notes: 'تحويل شيك عميل إلى المورد',
+    payments: [{ method: 'transferred_customer_check', checkId: giroCheck.id }],
+  })
+
   const maintenanceExists = await pool.query(
     "SELECT id FROM maintenance_records WHERE notes = 'MOCK-MAINT-1001' LIMIT 1",
   )
@@ -374,7 +553,7 @@ async function seedTransactions(context) {
     `INSERT INTO system_settings (store_id, key, value)
      VALUES (NULL, $1, $2::JSONB)
      ON CONFLICT (store_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-    [MOCK_SEED_KEY, JSON.stringify({ seededAt: new Date().toISOString(), version: 1 })],
+    [MOCK_SEED_KEY, JSON.stringify({ seededAt: new Date().toISOString(), version: 2 })],
   )
 }
 
@@ -388,7 +567,7 @@ async function run() {
     return
   }
   await seedTransactions(context)
-  console.log('Mock data applied: 12 products, 5 customers, 3 suppliers, purchases, sales, maintenance, and expenses.')
+  console.log('Mock data applied: products, customers, suppliers, projects, sales, purchases, payments, returns, maintenance, expenses, and varied check states.')
 }
 
 run()

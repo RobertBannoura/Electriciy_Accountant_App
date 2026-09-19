@@ -194,9 +194,12 @@ test('long PostgreSQL decimal scales are normalized for older users', async () =
 
   assert.match(formatter, /new DisplayDecimal\(value\)\.toFixed\(\)/)
   assert.match(formatter, /toDecimalPlaces\(2\)\.toFixed\(\)/)
+  assert.match(formatter, /toNearest\('0\.5', DisplayDecimal\.ROUND_HALF_UP\)/)
   assert.match(formatter, /formatMoney\(value\)/)
   assert.match(sale, /formatDecimal\(payload\.sale\.total\)/)
   assert.match(maintenance, /amount_ils: formatDecimal\(record\.amount_ils\)/)
   assert.match(customerPayment, /formatDecimal\(customer\.balance_ils\)/)
   assert.match(customers, /formatDecimal\(item\.total\)/)
+  assert.match(customers, /formatHalfShekel\(amount\)/)
+  assert.match(customers, /grid-cols-\[minmax\(0,1fr\)_auto\]/)
 })

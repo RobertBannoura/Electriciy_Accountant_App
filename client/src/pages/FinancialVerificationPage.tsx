@@ -69,9 +69,9 @@ export function FinancialVerificationPage() {
   return (
     <section className="mx-auto max-w-4xl rounded-3xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/50 sm:p-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div className="hidden sm:block">
           <p className="text-sm font-bold text-teal-700">أداة المدير — قراءة فقط</p>
-          <h1 className="mt-2 text-3xl font-black">فحص الحسابات</h1>
+          <h1 className="hidden text-3xl font-black sm:mt-2 sm:block">فحص الحسابات</h1>
           <p className="mt-3 max-w-2xl leading-7 text-slate-600">
             يفحص اتساق الفواتير والدفاتر والأرصدة والحركات. يعرض المشكلات ولا يغيّر أي بيانات.
           </p>

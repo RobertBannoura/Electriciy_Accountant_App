@@ -145,13 +145,16 @@ origin. Wildcards, origin credentials, paths, and production cleartext remote
 origins are rejected by environment validation. CORS credentials are disabled.
 
 Authentication is an opaque bearer token added explicitly to the
-`Authorization` header and kept in `sessionStorage`; the server neither creates
-nor consumes authentication cookies. Conventional cookie-CSRF tokens are
-therefore not applicable. A forged ambient cookie is rejected, and an attacker
-origin cannot make an authorized browser request because it cannot attach the
-session bearer token through a simple cross-origin form. CORS and the explicit
-origin guard remain defense in depth. An XSS compromise could still use the
-current tab's bearer token, making CSP and React output encoding important.
+`Authorization` header. The default 12-hour token is kept in `sessionStorage`;
+when the user explicitly selects the private-device “Remember me” option, its
+30-day token and server expiry are stored in `localStorage`. The server neither
+creates nor consumes authentication cookies. Conventional cookie-CSRF tokens
+are therefore not applicable. A forged ambient cookie is rejected, and an
+attacker origin cannot make an authorized browser request because it cannot
+attach the bearer token through a simple cross-origin form. CORS and the
+explicit origin guard remain defense in depth. An XSS compromise could use an
+active token, including a remembered token, making CSP, React output encoding,
+logout, and the private-device warning important.
 
 ## Upload and filesystem review
 

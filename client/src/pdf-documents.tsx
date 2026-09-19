@@ -124,6 +124,16 @@ const receiptInvoiceColumns = [
   { key: 'total', label: 'الإجمالي', width: '19%' },
 ] as const
 
+const pdfCurrencyLabels: Record<string, string> = {
+  ILS: 'شيكل',
+  USD: 'دولار',
+  JOD: 'دينار',
+}
+
+export function formatPdfMoney(value: string, currencyCode = 'ILS') {
+  return `${formatDecimal(value)} ${pdfCurrencyLabels[currencyCode] ?? currencyCode}`
+}
+
 export function statementEntryLabel(entry: PdfStatementEntry, kind: PdfAccountStatement['kind']) {
   const labels: Record<string, string> = kind === 'customer' ? {
     sale: 'مبيعات', sale_payment: 'دفعة', payment: 'دفعة',
@@ -172,16 +182,16 @@ function StatementRow({ entry, kind }: { entry: PdfStatementEntry; kind: PdfAcco
       {entry.description && <Text style={styles.cellSmall}>{entry.description}</Text>}
       {entry.project_name && <Text style={styles.cellSmall}>المشروع: {entry.project_name}</Text>}
       {items.map((item, index) => <Text key={`${entry.id}:${index}`} style={styles.cellSmall}>
-        {item.product} - {formatDecimal(item.quantity)} × ₪{formatDecimal(item.unit_price)} = ₪{formatDecimal(item.line_total)}
+        {item.product} - {formatDecimal(item.quantity)} × {formatPdfMoney(item.unit_price)} = {formatPdfMoney(item.line_total)}
       </Text>)}
     </View>
     <View style={[styles.cell, { width: '19%' }]}>
       <Text style={styles.cellText}>{entry.document_number ?? `#${entry.source_id ?? entry.id}`}</Text>
       <Text style={styles.cellSmall}>{entry.store_name}</Text>
     </View>
-    <View style={[styles.cell, { width: '11%' }]}><Text style={styles.cellLtr}>{entry.debit === '0' ? '—' : `₪${formatDecimal(entry.debit)}`}</Text></View>
-    <View style={[styles.cell, { width: '11%' }]}><Text style={styles.cellLtr}>{entry.credit === '0' ? '—' : `₪${formatDecimal(entry.credit)}`}</Text></View>
-    <View style={[styles.cell, { width: '12%' }]}><Text style={[styles.cellLtr, styles.bold]}>₪{formatDecimal(entry.running_balance)}</Text></View>
+    <View style={[styles.cell, { width: '11%' }]}><Text style={styles.cellLtr}>{entry.debit === '0' ? '—' : formatPdfMoney(entry.debit)}</Text></View>
+    <View style={[styles.cell, { width: '11%' }]}><Text style={styles.cellLtr}>{entry.credit === '0' ? '—' : formatPdfMoney(entry.credit)}</Text></View>
+    <View style={[styles.cell, { width: '12%' }]}><Text style={[styles.cellLtr, styles.bold]}>{formatPdfMoney(entry.running_balance)}</Text></View>
   </View>
 }
 
@@ -207,7 +217,7 @@ function StatementPdfDocument({ statement }: { statement: PdfAccountStatement })
       <StatementHeader statement={statement} />
       {pageIndex === 0 && <View style={styles.balance}>
         <Text style={[styles.rtl, styles.bold]}>الرصيد الافتتاحي</Text>
-        <Text style={[styles.ltr, styles.bold]}>₪{formatDecimal(statement.opening_balance)}</Text>
+        <Text style={[styles.ltr, styles.bold]}>{formatPdfMoney(statement.opening_balance)}</Text>
       </View>}
       <View style={[styles.table, { marginTop: pageIndex === 0 ? 0 : 8 }]}>
         <TableHeader columns={statementColumns} />
@@ -218,7 +228,7 @@ function StatementPdfDocument({ statement }: { statement: PdfAccountStatement })
       </View>
       {pageIndex === pages.length - 1 && <View style={styles.footerBalance}>
         <Text style={styles.rtl}>الرصيد الختامي</Text>
-        <Text style={styles.ltr}>₪{formatDecimal(statement.closing_balance)}</Text>
+        <Text style={styles.ltr}>{formatPdfMoney(statement.closing_balance)}</Text>
       </View>}
       <Text fixed render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} style={styles.pageNumber} />
     </Page>)}

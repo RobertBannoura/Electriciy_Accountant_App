@@ -65,6 +65,8 @@ test('all API responses are no-store and PWA storage has no financial offline da
   assert.match(worker, /request\.headers\.has\('Authorization'\)/)
   assert.doesNotMatch(`${api}\n${worker}\n${store}\n${home}`, /indexedDB|sync\.register|addEventListener\(['"]sync['"]/i)
   assert.match(api, /sessionStorage\.setItem\(sessionTokenKey, token\)/)
+  assert.match(api, /localStorage\.setItem\(rememberedSessionTokenKey/)
+  assert.match(api, /localStorage\.removeItem\(rememberedSessionTokenKey\)/)
   assert.doesNotMatch(api, /localStorage\.setItem\(sessionTokenKey/)
 })
 

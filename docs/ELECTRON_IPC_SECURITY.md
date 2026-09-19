@@ -77,7 +77,8 @@ Persisted client values:
 
 | Storage | Value | Security treatment |
 |---|---|---|
-| `sessionStorage` | Opaque admin session token | Cleared on logout/401 and scoped to the browser tab/session; never placed in `localStorage`, Cache Storage, IndexedDB, backup, PDF, or Electron settings. Residual risk is same-origin script compromise. |
+| `sessionStorage` | Default opaque admin session token | Cleared on logout/401, scoped to the browser tab/session, and expires server-side after 12 hours. |
+| `localStorage` | Optional remembered opaque admin session token and server expiry | Written only when the user explicitly selects “Remember me for 30 days”; rejected client-side after its recorded expiry and cleared on logout/401. It is never placed in Cache Storage, IndexedDB, backup, PDF, or Electron settings. The login UI warns that this option is for a private device because same-origin script or local-profile compromise can access it. |
 | `localStorage` | Cached admin ID, username, display name, and fixed `admin` role | UI convenience only; never trusted for backend authorization. Cleared on logout. |
 | `localStorage` | Browser active store ID | Non-secret preference; validated against authenticated active stores and never overrides server store validation. |
 | `localStorage` | Short-lived financial request IDs keyed by a non-secret payload signature | Replay identity only, not authentication; server SHA-256 operation hash and database uniqueness are authoritative. |

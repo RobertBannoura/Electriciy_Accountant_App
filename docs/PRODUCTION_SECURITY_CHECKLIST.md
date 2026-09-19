@@ -146,12 +146,14 @@ isolated verification. Do not treat the checksum as proof of provenance.
 ## Session, workstation, and MFA controls
 
 - [x] Opaque sessions are stored only as SHA-256 hashes, expire server-side
-  after 12 hours, and are revoked on logout, account disable/delete, and admin
-  password reprovisioning.
+  after 12 hours by default or 30 days only after explicit “Remember me”
+  selection, and are revoked on logout, account disable/delete, and admin
+  password reprovisioning. Remembered browser tokens are permitted only on a
+  private, encrypted, screen-locked device.
 - [ ] Apply a Windows screen-lock policy of at most 10 minutes (5 minutes
   preferred), require credentials on wake/unlock, prohibit shared Windows
-  accounts, and enable full-disk encryption. The 12-hour session lifetime makes
-  unattended unlocked workstations a material physical-access risk.
+  accounts, and enable full-disk encryption. The optional 30-day remembered
+  session makes unattended unlocked workstations a higher physical-access risk.
 - [ ] Obtain explicit acceptance that MFA/TOTP is not implemented. Adding TOTP
   without tested enrollment, recovery-code custody, clock-skew handling, lost
   device recovery, and emergency access could lock out the only admin. Treat

@@ -57,10 +57,12 @@ async function errorMessage(response: Response) {
 }
 
 export function ChecksPage({
+  allowStatusChange = false,
   defaultStoreId,
   readOnly = false,
   stores,
 }: {
+  allowStatusChange?: boolean
   defaultStoreId: string | null
   readOnly?: boolean
   stores: Store[]
@@ -241,6 +243,11 @@ export function ChecksPage({
     }
   }
 
+  function changeCheckStatus(check: CheckRecord, nextStatus: CheckStatus) {
+    if (check.status !== 'pending' || nextStatus === 'pending') return
+    void runLifecycleAction(check, nextStatus === 'cleared' ? 'clear' : 'bounce')
+  }
+
   if (!operatingStoreId) {
     return <p className="rounded-2xl bg-white p-8 text-center text-lg font-black text-slate-600">يجب إعداد متجر قبل عرض الشيكات.</p>
   }
@@ -251,9 +258,9 @@ export function ChecksPage({
     <section aria-labelledby="checks-title">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-        <p className="font-bold text-teal-700">شيكات العملاء وشيكات المنشأة</p>
-        <h1 className="mt-1 text-3xl font-black sm:text-4xl" id="checks-title">الشيكات</h1>
-        <p className="mt-2 text-slate-600">{readOnly ? 'ابحث وتابع المبالغ وتواريخ الاستحقاق والحالة.' : 'الشيك المقبول يخفض رصيد العميل فورًا، ويبقى قيد التحصيل حتى تحديث حالته صراحةً.'}</p>
+        <p className="hidden font-bold text-teal-700 sm:block">شيكات العملاء وشيكات المنشأة</p>
+        <h1 className="hidden text-3xl font-black sm:mt-1 sm:block sm:text-4xl" id="checks-title">الشيكات</h1>
+        <p className="mt-2 hidden text-slate-600 sm:block">{readOnly ? 'ابحث وتابع المبالغ وتواريخ الاستحقاق والحالة.' : 'الشيك المقبول يخفض رصيد العميل فورًا، ويبقى قيد التحصيل حتى تحديث حالته صراحةً.'}</p>
         </div>
         {!readOnly && <button className="min-h-12 rounded-xl bg-slate-900 px-5 font-black text-white hover:bg-slate-800" onClick={() => setShowOwnerForm((shown) => !shown)} type="button">+ شيك منشأة لمورد</button>}
       </div>
@@ -270,7 +277,27 @@ export function ChecksPage({
         </form>
       )}
 
-      <div className="mt-6 grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3">
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:hidden">
+        <label>
+          <span className="sr-only">بحث بالعميل أو صاحب الشيك أو رقمه</span>
+          <input className={inputClass} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث بالاسم أو رقم الشيك" value={search} />
+        </label>
+        <details className="group mt-2">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-xl bg-slate-100 px-4 font-black text-slate-700 [&::-webkit-details-marker]:hidden">
+            <span>خيارات التصفية</span>
+            <span className="flex items-center gap-2">
+              {(status || supplierAssigned) && <span className="grid size-6 place-items-center rounded-full bg-teal-700 text-xs text-white">{[status, supplierAssigned].filter(Boolean).length}</span>}
+              <svg aria-hidden="true" className="size-4 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>
+            </span>
+          </summary>
+          <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+            <label><span className="mb-2 block text-sm font-black">الحالة</span><select className={inputClass} onChange={(event) => setStatus(event.target.value as '' | CheckStatus)} value={status}><option value="">الكل</option><option value="pending">قيد التحصيل</option><option value="cleared">تم تحصيله</option><option value="bounced">مرتجع</option></select></label>
+            <label><span className="mb-2 block text-sm font-black">التسليم لمورد</span><select className={inputClass} onChange={(event) => setSupplierAssigned(event.target.value as SupplierAssignment)} value={supplierAssigned}><option value="">الكل</option><option value="true">مُسلّم</option><option value="false">غير مُسلّم</option></select></label>
+          </div>
+        </details>
+      </div>
+
+      <div className="mt-6 hidden gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid md:grid-cols-3">
         <label><span className="mb-2 block font-black">بحث بالعميل أو صاحب الشيك أو رقمه</span><input className={inputClass} onChange={(event) => setSearch(event.target.value)} value={search} /></label>
         <label><span className="mb-2 block font-black">الحالة المالية</span><select className={inputClass} onChange={(event) => setStatus(event.target.value as '' | CheckStatus)} value={status}><option value="">كل الحالات</option><option value="pending">قيد التحصيل</option><option value="cleared">تم تحصيله</option><option value="bounced">مرتجع</option></select></label>
         <label><span className="mb-2 block font-black">التسليم إلى مورد</span><select className={inputClass} onChange={(event) => setSupplierAssigned(event.target.value as SupplierAssignment)} value={supplierAssigned}><option value="">كل الشيكات</option><option value="true">مُسلّم إلى مورد</option><option value="false">غير مُسلّم إلى مورد</option></select></label>
@@ -290,18 +317,41 @@ export function ChecksPage({
               return (
                 <article className="grid gap-4 p-5 md:grid-cols-[minmax(0,1.5fr)_1fr_1fr_auto] md:items-center" key={check.id}>
                   <div className="min-w-0">
-                    {check.customer_id ? <Link className="text-lg font-black text-slate-950 hover:text-teal-700" to={`/customers/${check.customer_id}`}>{check.customer_name}</Link> : <p className="text-lg font-black text-slate-950">شيك المنشأة إلى {check.supplier_name}</p>}
+                    {check.customer_id ? (
+                      <Link className="text-lg font-black text-slate-950 hover:text-teal-700" to={`/customers/${check.customer_id}`}>{check.customer_name}</Link>
+                    ) : (
+                      <p className="text-lg font-black text-slate-950">
+                        شيك المنشأة إلى{' '}
+                        {check.supplier_id ? <Link className="hover:text-violet-700" to={`/suppliers/${check.supplier_id}`}>{check.supplier_name}</Link> : check.supplier_name}
+                      </p>
+                    )}
                     <p className="mt-1 font-bold text-slate-600">{check.is_owner_issued ? 'شيك صادر' : check.is_giro ? 'شيك جيرو' : 'شيك'} رقم {check.check_number}</p>
                     {check.is_giro && <p className="mt-1 text-sm font-bold text-fuchsia-800">صاحب الشيك الأصلي: {check.original_owner_name} · {check.original_owner_phone}</p>}
-                    {check.customer_id && check.supplier_id && <p className="mt-1 text-sm font-bold text-violet-800">حُوّل إلى المورد {check.supplier_name} بتاريخ {localDate(check.transferred_at!)}</p>}
+                    {check.customer_id && check.supplier_id && <p className="mt-1 text-sm font-bold text-violet-800">حُوّل إلى المورد <Link className="underline decoration-violet-300 underline-offset-2 hover:text-violet-950" to={`/suppliers/${check.supplier_id}`}>{check.supplier_name}</Link> بتاريخ {localDate(check.transferred_at!)}</p>}
                     {check.notes && <p className="mt-1 truncate text-sm text-slate-500">{check.notes}</p>}
                   </div>
                   <div><p className="text-sm font-bold text-slate-500">المبلغ</p><p className="mt-1 text-xl font-black" dir="ltr">₪{formatDecimal(check.amount)}</p></div>
                   <div><p className="text-sm font-bold text-slate-500">تاريخ الاستحقاق</p><p className="mt-1 font-black">{localDate(check.due_date)}</p>{overdue && <p className="mt-1 text-sm font-bold text-amber-700">تجاوز تاريخ الاستحقاق</p>}</div>
                   <div className="flex flex-col gap-2">
-                    <span className={`inline-flex min-h-10 items-center justify-center rounded-full px-4 font-black ${check.status === 'cleared' ? 'bg-emerald-100 text-emerald-900' : check.status === 'bounced' ? 'bg-rose-100 text-rose-900' : 'bg-violet-100 text-violet-900'}`}>{customerCheckStatusLabel(check.status)}</span>
-                    {!readOnly && check.status === 'pending' && <button className="min-h-10 rounded-xl bg-emerald-700 px-4 font-black text-white hover:bg-emerald-800 disabled:opacity-50" disabled={actingCheckId === check.id} onClick={() => void runLifecycleAction(check, 'clear')} type="button">تم تحصيله</button>}
-                    {!readOnly && check.status === 'pending' && <button className="min-h-10 rounded-xl bg-rose-700 px-4 font-black text-white hover:bg-rose-800 disabled:opacity-50" disabled={actingCheckId === check.id} onClick={() => void runLifecycleAction(check, 'bounce')} type="button">مرتجع</button>}
+                    {allowStatusChange ? (
+                      <label className="relative">
+                        <span className="sr-only">تغيير حالة الشيك رقم {check.check_number}</span>
+                        <select
+                          aria-label={`حالة الشيك رقم ${check.check_number}`}
+                          className={`min-h-11 w-full cursor-pointer appearance-none rounded-xl border-0 px-4 pl-9 text-center font-black outline-none ring-1 ring-inset focus:ring-2 disabled:cursor-default ${check.status === 'cleared' ? 'bg-emerald-100 text-emerald-900 ring-emerald-200' : check.status === 'bounced' ? 'bg-rose-100 text-rose-900 ring-rose-200' : 'bg-violet-100 text-violet-900 ring-violet-200'}`}
+                          disabled={actingCheckId === check.id || check.status !== 'pending'}
+                          onChange={(event) => changeCheckStatus(check, event.target.value as CheckStatus)}
+                          value={check.status}
+                        >
+                          <option value="pending">قيد التحصيل</option>
+                          <option value="cleared">تم تحصيله</option>
+                          <option value="bounced">مرتجع</option>
+                        </select>
+                        {check.status === 'pending' && <svg aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-violet-700" fill="none" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>}
+                      </label>
+                    ) : (
+                      <span className={`inline-flex min-h-10 items-center justify-center rounded-full px-4 font-black ${check.status === 'cleared' ? 'bg-emerald-100 text-emerald-900' : check.status === 'bounced' ? 'bg-rose-100 text-rose-900' : 'bg-violet-100 text-violet-900'}`}>{customerCheckStatusLabel(check.status)}</span>
+                    )}
                     {!readOnly && check.status === 'pending' && check.customer_id && !check.supplier_id && <button className="min-h-10 rounded-xl bg-violet-700 px-4 font-black text-white hover:bg-violet-800" onClick={() => beginTransfer(check.id)} type="button">تحويل لمورد</button>}
                     {!readOnly && check.status === 'bounced' && !check.bounced_reminder_stopped_at && <button className="min-h-10 rounded-xl border border-slate-300 px-4 font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50" disabled={actingCheckId === check.id} onClick={() => void runLifecycleAction(check, 'stop-bounced-reminder')} type="button">إيقاف تذكير المرتجع</button>}
                     {check.status === 'bounced' && check.bounced_reminder_stopped_at && <span className="text-center text-sm font-bold text-slate-500">تم إيقاف التذكير</span>}

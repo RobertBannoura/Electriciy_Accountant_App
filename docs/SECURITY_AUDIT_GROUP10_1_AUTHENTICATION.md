@@ -64,14 +64,16 @@ when the sole admin is provisioned or rotated.
   joined, active `admin` user. Deleted, disabled, expired, and revoked sessions
   therefore fail with HTTP 401.
 - Session creation and its login audit entry are one PostgreSQL statement.
-  Sessions expire after 12 hours. Logout deletes exactly the authenticated
-  session.
+  Sessions expire after 12 hours by default or after 30 days when the login
+  request explicitly opts into a remembered session. Logout deletes exactly
+  the authenticated session.
 - Re-running admin provisioning replaces the password hash and deletes all
   prior sessions in the provisioning transaction. There is no separate
   password-change HTTP endpoint.
 - Authentication and all other API responses carry `Cache-Control: no-store`.
-- The browser stores the bearer token in `sessionStorage`, not `localStorage`.
-  Only non-secret display metadata is cached in local storage.
+- The browser stores the default bearer token in `sessionStorage`. When the user
+  explicitly selects “Remember me for 30 days,” the token and its server expiry
+  are stored in `localStorage`; the UI warns that this is for a private device.
 - Cookies and JWTs are not used. Cookie flags, cookie CSRF protection, JWT
   algorithms, issuer, and audience checks are therefore not applicable. The
   existing opaque-session design was retained.
@@ -81,14 +83,16 @@ when the sole admin is provisioned or rotated.
 ## Bearer-token threat model
 
 The raw token must exist in the renderer while a session is active so the client
-can send the `Authorization: Bearer` header. `sessionStorage` limits persistence
-to the current browsing session and prevents ordinary cross-site requests from
-attaching the credential automatically, so conventional cookie CSRF is not the
-primary risk.
+can send the `Authorization: Bearer` header. `sessionStorage` limits default
+persistence to the current browsing session. An explicitly remembered token
+persists for up to 30 days in `localStorage`. Neither storage mechanism attaches
+the credential automatically to cross-site requests, so conventional cookie
+CSRF is not the primary risk.
 
 A script executing in the trusted renderer origin could read the token and act
-as the admin until logout, revocation, or the 12-hour expiry. The corresponding
-controls are the renderer CSP, React's escaped rendering, Electron navigation
+as the admin until logout, revocation, or its 12-hour/30-day expiry. The
+corresponding controls are the private-device warning, renderer CSP, React's
+escaped rendering, Electron navigation
 and popup restrictions, context isolation, the narrow preload bridge, exact
 CORS origins, loopback API binding, and server-side validation for every use.
 The token is never written to logs or PostgreSQL in raw form.
