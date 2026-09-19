@@ -20,6 +20,8 @@ import {
 const invalidCredentialsHash = hashPassword('timing-normalization-only')
 export const LOGIN_ATTEMPT_LIMIT = 45
 export const LOGIN_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000
+export const STANDARD_SESSION_DURATION = '12 hours'
+export const REMEMBERED_SESSION_DURATION = '30 days'
 
 const rateLimitMessage = Object.freeze({
   error: {
@@ -90,6 +92,7 @@ export function createAuthRouter({
   router.post('/login', loginIpRateLimiter, loginAccountRateLimiter, async (request, response) => {
     const username = normalizeUsername(request.body?.username)
     const password = request.body?.password
+    const rememberMe = request.body?.rememberMe === true
 
     if (!username || !isValidLoginPassword(password)) {
       logSecurityEvent('warn', 'login_failed', {
@@ -151,13 +154,16 @@ export function createAuthRouter({
 
     const token = createSessionToken()
     const tokenHash = hashSessionToken(token)
+    const sessionDuration = rememberMe
+      ? REMEMBERED_SESSION_DURATION
+      : STANDARD_SESSION_DURATION
 
     await dbQuery('DELETE FROM auth_sessions WHERE expires_at <= NOW()')
     const sessionResult = await dbQuery(
       `
         WITH new_session AS (
           INSERT INTO auth_sessions (user_id, token_hash, expires_at)
-          VALUES ($1::BIGINT, $2, NOW() + INTERVAL '12 hours')
+          VALUES ($1::BIGINT, $2, NOW() + $6::INTERVAL)
           RETURNING expires_at
         ), audit AS (
           INSERT INTO audit_log (
@@ -165,7 +171,7 @@ export function createAuthRouter({
             new_values, request_id, ip_address
           )
           SELECT $1::BIGINT, 'login', 'user', $1::BIGINT,
-            jsonb_build_object('username', $3::TEXT), $4, $5::INET
+            jsonb_build_object('username', $3::TEXT, 'remembered', $7::BOOLEAN), $4, $5::INET
           FROM new_session
           RETURNING 1
         )
@@ -177,6 +183,8 @@ export function createAuthRouter({
         user.username,
         request.requestId ?? null,
         request.ip,
+        sessionDuration,
+        rememberMe,
       ],
     )
 

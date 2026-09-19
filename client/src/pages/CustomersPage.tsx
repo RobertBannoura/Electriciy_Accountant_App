@@ -8,7 +8,7 @@ import {
   statusLabel,
 } from '../business-labels'
 import { Store } from '../types'
-import { formatDecimal } from '../money-display'
+import { formatDecimal, formatHalfShekel } from '../money-display'
 import { AccountStatementDialog } from '../components/AccountStatementDialog'
 import { DialogCloseButton } from '../components/DialogCloseButton'
 
@@ -190,9 +190,9 @@ export function CustomersPage({
     <section>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-bold text-teal-700">الحسابات وسجل التعامل</p>
-          <h1 className="mt-1 text-3xl font-black sm:text-4xl">العملاء</h1>
-          <p className="mt-2 text-slate-600">{readOnly ? 'ابحث عن العميل وافتح ملفه لعرض الرصيد وتصدير كشف الحساب.' : 'الرصيد الظاهر محسوب من دفتر العميل ولا يُعدّل يدوياً.'}</p>
+          <p className="hidden font-bold text-teal-700 sm:block">الحسابات وسجل التعامل</p>
+          <h1 className="hidden text-3xl font-black sm:mt-1 sm:block sm:text-4xl">العملاء</h1>
+          <p className="mt-2 hidden text-slate-600 sm:block">{readOnly ? 'ابحث عن العميل وافتح ملفه لعرض الرصيد وتصدير كشف الحساب.' : 'الرصيد الظاهر محسوب من دفتر العميل ولا يُعدّل يدوياً.'}</p>
         </div>
         <button
           className="hidden min-h-12 rounded-xl bg-teal-700 px-6 font-black text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60 sm:block"
@@ -223,20 +223,21 @@ export function CustomersPage({
         ) : (
           <div className="divide-y divide-slate-200">
             {customers.map((customer) => (
-              <article className="group relative flex flex-wrap items-center justify-between gap-5 p-5 transition-colors hover:bg-teal-50/50" key={customer.id}>
+              <article className="group relative grid min-h-[4.75rem] cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 p-4 transition-colors hover:bg-teal-50/50 active:bg-teal-50 sm:flex sm:min-h-0 sm:flex-wrap sm:justify-between sm:gap-5 sm:p-5" key={customer.id}>
                 <Link
                   aria-label={`فتح ملف ${customer.name}`}
                   className="absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-teal-600"
                   to={`/customers/${customer.id}`}
                 />
-                <div className="min-w-0">
-                  <p className="text-xl font-black text-slate-950 transition-colors group-hover:text-teal-700">{customer.name}</p>
-                  <p className="mt-1 text-slate-600">{customer.phone ?? 'لا يوجد رقم هاتف'}{customer.address ? ` · ${customer.address}` : ''}</p>
+                <div className="min-w-0 overflow-hidden">
+                  <p className="truncate text-lg font-black text-slate-950 transition-colors group-hover:text-teal-700 sm:text-xl" title={customer.name}>{customer.name}</p>
+                  <p className="mt-1 truncate text-sm text-slate-600 sm:text-base">{customer.phone ?? 'لا يوجد رقم هاتف'}{customer.address ? ` · ${customer.address}` : ''}</p>
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex shrink-0 items-center gap-2 sm:flex-wrap sm:gap-3">
                   <IlsBalance amount={customer.balance_ils} />
                   <button className="relative z-10 hidden min-h-11 rounded-xl bg-slate-100 px-4 font-black hover:bg-slate-200 sm:block" onClick={() => setEditingCustomer(customer)} type="button">تعديل</button>
-                  <Link className="relative z-10 inline-flex min-h-11 items-center rounded-xl bg-teal-50 px-4 font-black text-teal-800 hover:bg-teal-100" to={`/customers/${customer.id}`}>فتح الملف</Link>
+                  <span aria-hidden="true" className="pointer-events-none grid size-9 place-items-center rounded-full bg-teal-50 text-xl font-black text-teal-700 sm:hidden">‹</span>
+                  <Link className="relative z-10 hidden min-h-11 items-center rounded-xl bg-teal-50 px-4 font-black text-teal-800 hover:bg-teal-100 sm:inline-flex" to={`/customers/${customer.id}`}>فتح الملف</Link>
                 </div>
               </article>
             ))}
@@ -314,36 +315,36 @@ export function CustomerDetailPage({
       <div className="mb-5 print:hidden">
         <Link className="font-black text-teal-700 hover:text-teal-900" to="/customers">← العودة إلى العملاء</Link>
       </div>
-      <header className="rounded-3xl bg-slate-900 p-6 text-white shadow-lg sm:p-8">
+      <header className="rounded-3xl border border-teal-200 bg-white p-6 text-slate-900 shadow-sm sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div>
-            <p className="font-bold text-teal-300">ملف العميل</p>
+            <p className="font-bold text-teal-700">ملف العميل</p>
             <h1 className="mt-1 text-3xl font-black sm:text-4xl">{customer.name}</h1>
-            <p className="mt-3 text-slate-300">{customer.phone ?? 'لا يوجد رقم هاتف'}{customer.address ? ` · ${customer.address}` : ''}</p>
+            <p className="mt-3 text-slate-600">{customer.phone ?? 'لا يوجد رقم هاتف'}{customer.address ? ` · ${customer.address}` : ''}</p>
           </div>
           <div>
-            <p className="text-sm font-bold text-slate-300">الرصيد الحالي</p>
-            <div className="mt-2"><IlsBalance amount={customer.balance_ils} dark /></div>
+            <p className="text-sm font-bold text-slate-600">الرصيد الحالي</p>
+            <div className="mt-2"><IlsBalance amount={customer.balance_ils} /></div>
             {customer.store_balances.length > 1 && <StoreBreakdown balances={customer.store_balances} />}
           </div>
         </div>
-        {customer.notes && <p className="mt-5 border-t border-slate-700 pt-4 text-slate-300">{customer.notes}</p>}
+        {customer.notes && <p className="mt-5 border-t border-slate-200 pt-4 text-slate-600">{customer.notes}</p>}
       </header>
 
       <div className="mt-5 flex flex-wrap gap-3 print:hidden">
         <Link className="hidden min-h-12 items-center rounded-xl bg-teal-700 px-5 font-black text-white hover:bg-teal-800 sm:inline-flex" to={`/sale?customerId=${customer.id}&storeId=${operatingStoreId}`}>بيع جديد</Link>
         <Link className="hidden min-h-12 items-center rounded-xl bg-amber-400 px-5 font-black text-slate-950 hover:bg-amber-300 sm:inline-flex" to={`/maintenance?customerId=${customer.id}`}>صيانة جديدة</Link>
-        {!readOnly && <Link className="inline-flex min-h-12 items-center rounded-xl bg-indigo-700 px-5 font-black text-white hover:bg-indigo-800" to={`/customers/${customer.id}/payment?storeId=${operatingStoreId}`}>تسجيل دفعة</Link>}
+        {!readOnly && <Link className="inline-flex min-h-12 items-center rounded-xl bg-teal-700 px-5 font-black text-white hover:bg-teal-800" to={`/customers/${customer.id}/payment?storeId=${operatingStoreId}`}>تسجيل دفعة</Link>}
         <button className="hidden min-h-12 rounded-xl bg-amber-500 px-5 font-black text-slate-950 hover:bg-amber-400 sm:block" onClick={() => setAddingProject(true)} type="button">مشروع جديد</button>
         <button className="min-h-12 rounded-xl border border-slate-300 bg-white px-5 font-black hover:bg-slate-100" onClick={() => setShowStatement(true)} type="button">كشف حساب عميل</button>
         <button className="hidden min-h-12 rounded-xl px-5 font-black text-slate-700 hover:bg-slate-100 sm:block" onClick={() => setEditing(true)} type="button">تعديل البيانات</button>
       </div>
 
-      <section className="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50 p-5 print:hidden">
+      <section className="mt-6 rounded-2xl border border-teal-200 bg-teal-50 p-5 print:hidden">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 className="text-xl font-black text-indigo-950">نطاق النشاط</h2>
-            <p className="mt-1 text-sm font-bold text-indigo-800">
+            <h2 className="text-xl font-black text-teal-950">نطاق النشاط</h2>
+            <p className="mt-1 text-sm font-bold text-teal-800">
               {selectedProjectId
                 ? 'يعرض نشاط المشروع المحدد، بينما يبقى الرصيد الإجمالي للعميل كما هو.'
                 : 'يعرض نشاط العميل في كل المشاريع، بما فيه النشاط غير المرتبط بمشروع.'}
@@ -472,12 +473,12 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block"><span className="mb-2 block text-sm font-black text-slate-700">{label}</span>{children}</label>
 }
 
-function IlsBalance({ amount, dark = false }: { amount: string; dark?: boolean }) {
-  return <span className={`inline-block rounded-xl px-3 py-2 font-black ${dark ? 'bg-white/10 text-white' : 'bg-amber-50 text-amber-900'}`} dir="ltr">₪{formatDecimal(amount)}</span>
+function IlsBalance({ amount }: { amount: string }) {
+  return <span className="inline-block whitespace-nowrap rounded-xl bg-teal-50 px-2.5 py-2 font-black text-teal-900 ring-1 ring-inset ring-teal-100 sm:px-3" dir="ltr">₪{formatHalfShekel(amount)}</span>
 }
 
 function StoreBreakdown({ balances }: { balances: StoreBalance[] }) {
-  return <div className="mt-3 space-y-1 text-sm text-slate-300">{balances.map((balance) => <p className="flex justify-between gap-4" key={balance.store_id}><span>{balance.store_name}</span><span dir="ltr">₪{formatDecimal(balance.amount_ils)}</span></p>)}</div>
+  return <div className="mt-3 space-y-1 text-sm text-slate-600">{balances.map((balance) => <p className="flex justify-between gap-4" key={balance.store_id}><span>{balance.store_name}</span><span dir="ltr">₪{formatHalfShekel(balance.amount_ils)}</span></p>)}</div>
 }
 
 function DetailSection({ title, children }: { title: string; children: ReactNode }) {
@@ -498,7 +499,14 @@ function PaymentsList({ items }: { items: Payment[] }) {
 }
 function ChecksList({ items }: { items: CustomerCheck[] }) {
   if (!items.length) return <NoRecords />
-  return <>{items.map((item) => <RecordRow key={item.id} primary={`${item.direction === 'outflow' ? 'عكس ' : ''}${item.is_giro ? 'شيك جيرو' : 'شيك'} ${item.check_number}`} secondary={`${item.is_giro ? `صاحب الشيك الأصلي: ${item.original_owner_name} · ${item.original_owner_phone} · ` : ''}${item.supplier_id ? `حُوّل إلى المورد ${item.supplier_name} بتاريخ ${localDate(item.transferred_at!)} · ` : ''}${item.store_name} · ${localDate(item.due_date)} · ${customerCheckStatusLabel(item.status)}${item.notes ? ` · ${item.notes}` : ''}`} value={`${item.direction === 'outflow' ? '-' : ''}${formatDecimal(item.amount)} ${item.currency_code ?? ''}`} />)}</>
+  return <>{items.map((item) => (
+    <RecordRow
+      key={item.id}
+      primary={`${item.direction === 'outflow' ? 'عكس ' : ''}${item.is_giro ? 'شيك جيرو' : 'شيك'} ${item.check_number}`}
+      secondary={<>{item.is_giro && <>صاحب الشيك الأصلي: {item.original_owner_name} · {item.original_owner_phone} · </>}{item.supplier_id && <>حُوّل إلى المورد <Link className="font-bold text-teal-700 hover:text-teal-950 hover:underline" to={`/suppliers/${item.supplier_id}`}>{item.supplier_name}</Link> بتاريخ {localDate(item.transferred_at!)} · </>}{item.store_name} · {localDate(item.due_date)} · {customerCheckStatusLabel(item.status)}{item.notes && ` · ${item.notes}`}</>}
+      value={`${item.direction === 'outflow' ? '-' : ''}${formatDecimal(item.amount)} ${item.currency_code ?? ''}`}
+    />
+  ))}</>
 }
 function ProjectsList({ items }: { items: Project[] }) {
   if (!items.length) return <NoRecords />
@@ -509,7 +517,7 @@ function MovementsList({ items }: { items: Movement[] }) {
   return <>{items.map((item) => <RecordRow key={item.id} primary={item.notes ?? movementSourceLabel(item.source_type)} secondary={`${localDate(item.occurred_at)} · ${item.store_name} · ${item.direction === 'debit' ? 'مدين' : 'دائن'}${item.project_name ? ` · ${item.project_name}` : ''}`} value={`${item.direction === 'debit' ? '+' : '-'}₪${formatDecimal(item.amount_ils)}`} />)}</>
 }
 
-function RecordRow({ primary, secondary, value }: { primary: string; secondary: string; value?: string }) {
+function RecordRow({ primary, secondary, value }: { primary: ReactNode; secondary: ReactNode; value?: string }) {
   return <div className="flex items-start justify-between gap-4 p-4"><div><p className="font-black">{primary}</p><p className="mt-1 text-sm text-slate-500">{secondary}</p></div>{value && <p className="whitespace-nowrap font-black" dir="ltr">{value}</p>}</div>
 }
 function NoRecords() { return <p className="p-5 text-slate-500">لا توجد سجلات.</p> }

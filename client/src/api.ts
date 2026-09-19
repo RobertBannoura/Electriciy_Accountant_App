@@ -2,6 +2,7 @@ export const apiUrl =
   import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api'
 
 const sessionTokenKey = 'electricity-accountant-session'
+const rememberedSessionTokenKey = 'electricity-accountant-remembered-session'
 const cachedUserKey = 'electricity-accountant-user'
 export const connectionStatusEvent = 'app:connection-status'
 let serverReachable = typeof navigator === 'undefined' ? true : navigator.onLine
@@ -83,16 +84,74 @@ export type AuthUser = {
   role: 'admin'
 }
 
-export function getAuthToken() {
-  return sessionStorage.getItem(sessionTokenKey)
+type AuthTokenOptions = {
+  remember?: boolean
+  expiresAt?: string
 }
 
-export function setAuthToken(token: string) {
+type RememberedSession = {
+  token: string
+  expiresAt: string
+}
+
+const sessionTokenPattern = /^[A-Za-z0-9_-]{43}$/
+
+function readRememberedSession() {
+  try {
+    const value = localStorage.getItem(rememberedSessionTokenKey)
+    if (!value) return null
+    const session = JSON.parse(value) as Partial<RememberedSession>
+    const expiresAt = typeof session.expiresAt === 'string'
+      ? Date.parse(session.expiresAt)
+      : Number.NaN
+    if (
+      typeof session.token !== 'string'
+      || !sessionTokenPattern.test(session.token)
+      || !Number.isFinite(expiresAt)
+      || expiresAt <= Date.now()
+    ) {
+      localStorage.removeItem(rememberedSessionTokenKey)
+      return null
+    }
+    return session as RememberedSession
+  } catch {
+    try { localStorage.removeItem(rememberedSessionTokenKey) } catch { /* Storage is optional. */ }
+    return null
+  }
+}
+
+export function getAuthToken() {
+  try {
+    const token = sessionStorage.getItem(sessionTokenKey)
+    if (token) return token
+  } catch {
+    // Fall through to the explicit remembered-session store.
+  }
+  return readRememberedSession()?.token ?? null
+}
+
+export function setAuthToken(token: string, options: AuthTokenOptions = {}) {
+  clearAuthToken()
+  if (options.remember && options.expiresAt) {
+    const expiresAt = Date.parse(options.expiresAt)
+    if (Number.isFinite(expiresAt) && expiresAt > Date.now()) {
+      try {
+        localStorage.setItem(rememberedSessionTokenKey, JSON.stringify({
+          token,
+          expiresAt: options.expiresAt,
+        } satisfies RememberedSession))
+        return
+      } catch {
+        // Fall back to a tab-only session when persistent storage is unavailable.
+      }
+    }
+  }
   sessionStorage.setItem(sessionTokenKey, token)
 }
 
 export function clearAuthToken() {
-  sessionStorage.removeItem(sessionTokenKey)
+  try { sessionStorage.removeItem(sessionTokenKey) } catch { /* Storage is optional. */ }
+  try { localStorage.removeItem(rememberedSessionTokenKey) } catch { /* Storage is optional. */ }
 }
 
 export function readCachedAuthUser(): AuthUser | null {

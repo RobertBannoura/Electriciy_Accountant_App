@@ -183,9 +183,9 @@ export function ProductsPage({
     <section>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-bold text-teal-700">المخزون حسب المتجر</p>
-          <h1 className="mt-1 text-3xl font-black sm:text-4xl">الأصناف</h1>
-          <p className="mt-2 text-sm font-bold text-slate-500">{readOnly ? 'ابحث واعرض الكميات والأسعار في كل محل.' : 'قارئ الباركود جاهز: امسح الباركود لفتح الصنف'}</p>
+          <p className="hidden font-bold text-teal-700 sm:block">المخزون حسب المتجر</p>
+          <h1 className="hidden text-3xl font-black sm:mt-1 sm:block sm:text-4xl">الأصناف</h1>
+          <p className="mt-2 hidden text-sm font-bold text-slate-500 sm:block">{readOnly ? 'ابحث واعرض الكميات والأسعار في كل محل.' : 'قارئ الباركود جاهز: امسح الباركود لفتح الصنف'}</p>
         </div>
         <div className="hidden flex-wrap gap-3 sm:flex">
           <button className="min-h-12 rounded-xl border border-slate-300 bg-white px-5 font-black hover:bg-slate-100" onClick={() => setShowCategories(true)} type="button">إدارة التصنيفات</button>
@@ -193,7 +193,42 @@ export function ProductsPage({
         </div>
       </div>
 
-      <div className="mt-7 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:hidden">
+        <label>
+          <span className="sr-only">بحث بالاسم</span>
+          <input className={inputClass} onChange={(event) => setNameSearch(event.target.value)} placeholder="ابحث باسم الصنف" value={nameSearch} />
+        </label>
+        <details className="group mt-2">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-xl bg-slate-100 px-4 font-black text-slate-700 [&::-webkit-details-marker]:hidden">
+            <span>خيارات التصفية</span>
+            <span className="flex items-center gap-2">
+              {(barcodeSearch || categoryFilter || storeFilter || lowStockOnly) && <span className="grid size-6 place-items-center rounded-full bg-teal-700 text-xs text-white">{[barcodeSearch, categoryFilter, storeFilter, lowStockOnly].filter(Boolean).length}</span>}
+              <svg aria-hidden="true" className="size-4 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>
+            </span>
+          </summary>
+          <div className="mt-3 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+            <div className="col-span-2"><FilterField label="الباركود"><input className={`${inputClass} text-left`} dir="ltr" onChange={(event) => setBarcodeSearch(event.target.value)} placeholder="رقم الباركود" value={barcodeSearch} /></FilterField></div>
+            <FilterField label="التصنيف">
+              <select className={inputClass} onChange={(event) => setCategoryFilter(event.target.value)} value={categoryFilter}>
+                <option value="">الكل</option>
+                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            </FilterField>
+            <FilterField label="المتجر">
+              <select className={inputClass} onChange={(event) => setStoreFilter(event.target.value)} value={storeFilter}>
+                <option value="">الكل</option>
+                {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+              </select>
+            </FilterField>
+            <label className="col-span-2 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 font-black text-amber-900">
+              <input checked={lowStockOnly} className="size-5 accent-amber-700" onChange={(event) => setLowStockOnly(event.target.checked)} type="checkbox" />
+              مخزون منخفض فقط
+            </label>
+          </div>
+        </details>
+      </div>
+
+      <div className="mt-7 hidden gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid sm:grid-cols-2 lg:grid-cols-5">
         <FilterField label="بحث بالاسم"><input className={inputClass} onChange={(event) => setNameSearch(event.target.value)} placeholder="اسم الصنف" value={nameSearch} /></FilterField>
         <div className={readOnly ? '' : 'hidden sm:block'}><FilterField label="بحث بالباركود"><input className={`${inputClass} text-left`} dir="ltr" onChange={(event) => setBarcodeSearch(event.target.value)} placeholder="الباركود" value={barcodeSearch} /></FilterField></div>
         <div className={readOnly ? '' : 'hidden sm:block'}><FilterField label="التصنيف">
@@ -222,8 +257,48 @@ export function ProductsPage({
           <div className="p-10 text-center"><p className="text-xl font-black">لا توجد أصناف مطابقة</p><p className="mt-2 text-slate-600">أضف صنفاً أو غيّر خيارات البحث.</p></div>
         ) : (
           <div className="divide-y divide-slate-200">
-            {products.map((product) => (
-              <article className="p-5" key={product.id}>
+            {products.map((product) => {
+              const visibleInventories = product.inventories
+                .filter((inventory) => !storeFilter || inventory.store_id === storeFilter)
+              const displayedQuantity = storeFilter
+                ? visibleInventories[0]?.quantity ?? '0'
+                : product.total_quantity
+              const hasLowStock = visibleInventories.some((inventory) => inventory.low_stock)
+
+              return <div key={product.id}>
+                <details className="group sm:hidden">
+                  <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h2 className="truncate font-black">{product.name}</h2>
+                        {hasLowStock && <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black text-amber-800">منخفض</span>}
+                      </div>
+                      <p className="mt-0.5 truncate text-xs font-bold text-slate-500">{product.category_name}{product.default_sale_price ? ` · بيع ₪${formatMoney(product.default_sale_price)}` : ''}</p>
+                    </div>
+                    <div className="shrink-0 text-left">
+                      <p className="font-black text-teal-800" dir="ltr">{displayedQuantity} <span className="text-xs">{product.sale_unit}</span></p>
+                      <p className="text-[10px] font-bold text-slate-400">{storeFilter ? 'المحل' : 'الإجمالي'}</p>
+                    </div>
+                    <svg aria-hidden="true" className="size-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>
+                  </summary>
+                  <div className="border-t border-slate-100 bg-slate-50/70 px-4 py-2">
+                    {visibleInventories.map((inventory) => (
+                      <div className="flex items-center justify-between gap-3 border-b border-slate-200 py-2 last:border-0" key={inventory.store_id}>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black">{inventory.store_name}</p>
+                          <p className="text-xs font-bold text-violet-700">متوسط التكلفة ₪{formatMoney(inventory.weighted_average_cost)}</p>
+                        </div>
+                        <div className="shrink-0 text-left">
+                          <p className={`font-black ${inventory.low_stock ? 'text-amber-800' : 'text-slate-900'}`} dir="ltr">{inventory.quantity} {product.sale_unit}</p>
+                          {inventory.low_stock && <p className="text-[10px] font-bold text-amber-700">الحد {inventory.reorder_level}</p>}
+                        </div>
+                      </div>
+                    ))}
+                    {product.barcode && <p className="border-t border-slate-200 pt-2 text-center font-mono text-[11px] text-slate-500" dir="ltr">{product.barcode}</p>}
+                  </div>
+                </details>
+
+              <article className="hidden p-5 sm:block">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0">
                     <h2 className="text-xl font-black">{product.name}</h2>
@@ -260,7 +335,8 @@ export function ProductsPage({
                   )}
                 </div>
               </article>
-            ))}
+              </div>
+            })}
           </div>
         )}
       </div>

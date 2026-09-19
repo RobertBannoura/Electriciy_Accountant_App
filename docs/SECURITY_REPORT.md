@@ -247,8 +247,9 @@ to assert the intended database invariants.
   or externally exposed API without a shared limiter/proxy review.
 - The sole password-only admin has no MFA or recovery path by current product
   design; none was added.
-- `sessionStorage` limits persistence but a same-origin script compromise could
-  act as the admin until revocation/expiry.
+- The default `sessionStorage` session limits persistence, while the explicit
+  30-day remembered `localStorage` option increases exposure to same-origin
+  script and local-profile compromise until logout, revocation, or expiry.
 - Direct PostgreSQL credentials remain a high-trust boundary because row-level
   security is not used.
 - Windows binaries remain unsigned until the external signing step.
@@ -313,7 +314,7 @@ them does not automatically approve them:
 - The only admin uses password authentication without MFA. TOTP was not added
   without a recovery-tested design. Remote exposure should remain narrow, and
   Windows auto-lock (10 minutes maximum; 5 preferred) is required to mitigate
-  the 12-hour session's unattended-workstation risk.
+  the remembered session's unattended-workstation risk.
 
 The login limiter is process-local. A shared limiter is mandatory before
 running multiple server replicas.

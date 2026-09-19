@@ -126,13 +126,15 @@ test('creates opaque session tokens and stores only deterministic hashes', () =>
   assert.equal(hashSessionToken('invalid'), null)
 })
 
-test('the browser keeps the bearer token in sessionStorage rather than localStorage', async () => {
+test('the browser persists bearer tokens only for explicitly remembered sessions', async () => {
   const clientApi = await readFile(
     new URL('../../client/src/api.ts', import.meta.url),
     'utf8',
   )
 
   assert.match(clientApi, /sessionStorage\.setItem\(sessionTokenKey, token\)/)
+  assert.match(clientApi, /localStorage\.setItem\(rememberedSessionTokenKey/)
+  assert.match(clientApi, /expiresAt <= Date\.now\(\)/)
   assert.doesNotMatch(clientApi, /localStorage\.setItem\(sessionTokenKey/)
   assert.match(clientApi, /headers\.set\('Authorization', `Bearer \$\{token\}`\)/)
 })

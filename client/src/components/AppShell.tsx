@@ -49,6 +49,10 @@ export function AppShell({ configuredStore, isOnline, stores, user, onBrowserSto
   useEffect(() => setDrawerOpen(false), [location.pathname, location.search])
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  }, [location.pathname])
+
+  useEffect(() => {
     if (!drawerOpen) return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -78,9 +82,9 @@ export function AppShell({ configuredStore, isOnline, stores, user, onBrowserSto
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-24 text-slate-900 sm:pb-0">
+    <main className="pwa-shell min-h-dvh pb-[calc(6rem+env(safe-area-inset-bottom))] text-slate-900 sm:pb-0">
       {!window.desktop && (
-        <MobileHeader configuredStore={configuredStore} onBack={goBack} onOpenDrawer={() => setDrawerOpen(true)} pathname={location.pathname} showBackButton={showBackButton} />
+        <MobileHeader configuredStore={configuredStore} onBrowserStoreChange={onBrowserStoreChange} onOpenDrawer={() => setDrawerOpen(true)} pathname={location.pathname} stores={stores} />
       )}
 
       <header className={`border-b border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-8 sm:py-4 ${!window.desktop ? 'hidden sm:block' : ''}`}>
@@ -116,27 +120,29 @@ export function AppShell({ configuredStore, isOnline, stores, user, onBrowserSto
 
       {!isOnline && <div className="border-b border-rose-300 bg-rose-50 px-4 py-3 text-center font-black text-rose-900" role="alert">لا يوجد اتصال بالخادم. العمليات المالية متوقفة حتى عودة الاتصال.</div>}
 
-      <div className={`mx-auto px-3 py-4 sm:px-8 sm:py-10 ${location.pathname === '/sale' ? 'max-w-[78rem]' : 'max-w-6xl'}`}>
+      <div className={`mx-auto px-4 py-5 sm:px-8 sm:py-10 ${location.pathname === '/sale' ? 'max-w-[78rem]' : 'max-w-6xl'}`}>
         {financialRouteLocked && <p className="mb-4 rounded-2xl border-2 border-rose-300 bg-rose-50 p-5 text-center text-lg font-black text-rose-900" role="alert">هذه العملية غير متاحة دون اتصال بالخادم.</p>}
         <div aria-disabled={financialRouteLocked} className={financialRouteLocked ? 'select-none opacity-45' : undefined} inert={financialRouteLocked}><Outlet /></div>
       </div>
 
       {!window.desktop && <>
         <MobileBottomNavigation pathname={location.pathname} />
-        <MobileDrawer configuredStore={configuredStore} installPromptAvailable={Boolean(installPrompt)} onClose={() => setDrawerOpen(false)} onInstall={() => void installPwa()} onLogout={onLogout} onStoreChange={onBrowserStoreChange} open={drawerOpen} stores={stores} user={user} />
+        <MobileDrawer installPromptAvailable={Boolean(installPrompt)} onClose={() => setDrawerOpen(false)} onInstall={() => void installPwa()} onLogout={onLogout} open={drawerOpen} user={user} />
       </>}
     </main>
   )
 }
 
-function MobileHeader({ configuredStore, onBack, onOpenDrawer, pathname, showBackButton }: { configuredStore: Store | null; onBack: () => void; onOpenDrawer: () => void; pathname: string; showBackButton: boolean }) {
+function MobileHeader({ configuredStore, onBrowserStoreChange, onOpenDrawer, pathname, stores }: { configuredStore: Store | null; onBrowserStoreChange: (storeId: string) => void; onOpenDrawer: () => void; pathname: string; stores: Store[] }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:hidden">
+    <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 px-3 pb-2 pt-[max(.5rem,env(safe-area-inset-top))] shadow-sm backdrop-blur sm:hidden">
       <div className="flex h-11 flex-nowrap items-center gap-1.5 min-[360px]:gap-2">
-        <button aria-label="فتح القائمة" className="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-900 text-white min-[360px]:size-11" onClick={onOpenDrawer} type="button"><svg aria-hidden="true" className="size-6" fill="none" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg></button>
-        {showBackButton && <button aria-label="الرجوع إلى الصفحة السابقة" className="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-800 min-[360px]:size-11" onClick={onBack} type="button"><svg aria-hidden="true" className="size-5" fill="none" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" /></svg></button>}
-        <div className="min-w-0 flex-1"><p className="truncate text-base font-black">{mobilePageTitle(pathname)}</p><p className="truncate text-[11px] font-bold text-teal-700">{configuredStore?.name ?? 'اختر المحل من القائمة'}</p></div>
-        <Link aria-label="الصفحة الرئيسية" className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-800 max-[359px]:hidden min-[360px]:size-11" to="/"><MobileNavIcon name="home" /></Link>
+        <button aria-label="فتح القائمة" className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-700 text-white shadow-sm shadow-teal-900/15 transition hover:bg-teal-800 active:scale-95 min-[360px]:size-11" onClick={onOpenDrawer} type="button"><svg aria-hidden="true" className="size-6" fill="none" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg></button>
+        <h1 className="min-w-0 flex-1 truncate text-base font-black">{mobilePageTitle(pathname)}</h1>
+        <label className="flex min-h-10 w-[8.5rem] max-w-[42vw] shrink-0 items-center gap-1 rounded-xl bg-teal-50 px-2 text-teal-950 ring-1 ring-inset ring-teal-200">
+          <svg aria-hidden="true" className="size-4 shrink-0 text-teal-700 max-[359px]:hidden" fill="none" viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M8 20v-7h8v7M3 20h18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
+          <select aria-label="تغيير المحل الحالي" className="min-h-9 min-w-0 flex-1 bg-transparent text-xs font-black outline-none focus-visible:ring-2 focus-visible:ring-teal-600" onChange={(event) => onBrowserStoreChange(event.target.value)} value={configuredStore?.id ?? ''}><option disabled value="">اختر المحل</option>{stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}</select>
+        </label>
       </div>
     </header>
   )
@@ -152,25 +158,23 @@ function StoreSelector({ configuredStore, onChange, stores }: { configuredStore:
 }
 
 const drawerLinks = [
-  { label: 'الرئيسية والملخص', path: '/', icon: 'home' },
   { label: 'الأصناف والمخزون', path: '/products', icon: 'products' },
   { label: 'العملاء وكشوف الحساب', path: '/customers', icon: 'customers' },
   { label: 'الموردون', path: '/suppliers', icon: 'suppliers' },
-  { label: 'حركة الأموال', path: '/money', icon: 'money' },
+  { label: 'الحسابات', path: '/money', icon: 'money' },
   { label: 'الشيكات', path: '/checks', icon: 'checks' },
   { label: 'كل التقارير', path: '/reports', icon: 'reports' },
 ] as const
 
-function MobileDrawer({ configuredStore, installPromptAvailable, onClose, onInstall, onLogout, onStoreChange, open, stores, user }: { configuredStore: Store | null; installPromptAvailable: boolean; onClose: () => void; onInstall: () => void; onLogout: () => void; onStoreChange: (storeId: string) => void; open: boolean; stores: Store[]; user: AuthUser }) {
+function MobileDrawer({ installPromptAvailable, onClose, onInstall, onLogout, open, user }: { installPromptAvailable: boolean; onClose: () => void; onInstall: () => void; onLogout: () => void; open: boolean; user: AuthUser }) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 sm:hidden" role="presentation">
       <button aria-label="إغلاق القائمة" className="absolute inset-0 bg-slate-950/50" onClick={onClose} type="button" />
-      <aside aria-label="القائمة الجانبية" aria-modal="true" className="absolute inset-y-0 right-0 flex w-[min(86vw,22rem)] flex-col overflow-y-auto bg-white p-4 shadow-2xl" role="dialog">
+      <aside aria-label="القائمة الجانبية" aria-modal="true" className="mobile-drawer absolute inset-y-0 right-0 flex w-[min(88vw,22rem)] flex-col overflow-y-auto bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] shadow-2xl" role="dialog">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-4"><div className="min-w-0"><p className="truncate text-lg font-black">نظام الحسابات</p><p className="truncate text-sm font-bold text-slate-500">{user.displayName}</p></div><button aria-label="إغلاق القائمة" className="grid size-11 shrink-0 place-items-center rounded-xl bg-slate-100" onClick={onClose} type="button"><svg aria-hidden="true" className="size-5" fill="none" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg></button></div>
-        <div className="py-4"><StoreSelector configuredStore={configuredStore} onChange={onStoreChange} stores={stores} /></div>
-        <nav aria-label="صفحات التطبيق" className="space-y-1">
-          {drawerLinks.map((item) => <NavLink className={({ isActive }) => `flex min-h-12 items-center gap-3 rounded-xl px-3 font-black ${isActive ? 'bg-teal-700 text-white' : 'text-slate-700 hover:bg-slate-100'}`} end={item.path === '/'} key={item.path} to={item.path}><MobileNavIcon name={item.icon} /><span>{item.label}</span></NavLink>)}
+        <nav aria-label="صفحات التطبيق" className="mt-4 space-y-1">
+          {drawerLinks.map((item) => <NavLink className={({ isActive }) => `flex min-h-12 items-center gap-3 rounded-xl px-3 font-black ${isActive ? 'bg-teal-700 text-white' : 'text-slate-700 hover:bg-slate-100'}`} key={item.path} to={item.path}><MobileNavIcon name={item.icon} /><span>{item.label}</span></NavLink>)}
         </nav>
         <div className="mt-auto space-y-2 border-t border-slate-200 pt-4">
           {installPromptAvailable && <button className="flex min-h-12 w-full items-center justify-center rounded-xl bg-teal-700 px-4 font-black text-white" onClick={onInstall} type="button">تثبيت التطبيق</button>}
@@ -184,7 +188,7 @@ function MobileDrawer({ configuredStore, installPromptAvailable, onClose, onInst
 const mobileNavigation = [
   { label: 'الأصناف', path: '/products', key: 'products' },
   { label: 'العملاء', path: '/customers', key: 'customers' },
-  { label: 'الأموال', path: '/money', key: 'money', emphasized: true },
+  { label: 'الحسابات', path: '/money', key: 'money' },
   { label: 'الموردون', path: '/suppliers', key: 'suppliers' },
   { label: 'الشيكات', path: '/checks', key: 'checks' },
 ] as const
@@ -207,7 +211,7 @@ function MobileBottomNavigation({ pathname }: { pathname: string }) {
       <div className="mx-auto grid max-w-lg grid-cols-5 items-end gap-1">
         {mobileNavigation.map((item) => {
           const selected = active === item.key
-          return <NavLink aria-current={selected ? 'page' : undefined} className={`flex min-h-14 flex-col items-center justify-center rounded-2xl px-1 text-[11px] font-black transition ${'emphasized' in item && item.emphasized ? '-mt-5 min-h-18 bg-teal-700 text-white shadow-lg shadow-teal-900/25' : selected ? 'bg-teal-50 text-teal-800' : 'text-slate-600'}`} dir="rtl" key={item.key} to={item.path}><MobileNavIcon name={item.key} /><span className="mt-1">{item.label}</span></NavLink>
+          return <NavLink aria-current={selected ? 'page' : undefined} className={`flex min-h-14 flex-col items-center justify-center rounded-2xl px-1 text-[11px] font-black transition active:scale-95 ${selected ? 'bg-teal-50 text-teal-800 ring-1 ring-inset ring-teal-100' : 'text-slate-600 hover:bg-slate-50'}`} dir="rtl" key={item.key} to={item.path}><MobileNavIcon name={item.key} /><span className="mt-1">{item.label}</span></NavLink>
         })}
       </div>
     </nav>
@@ -215,13 +219,21 @@ function MobileBottomNavigation({ pathname }: { pathname: string }) {
 }
 
 function mobilePageTitle(pathname: string) {
+  if (pathname.startsWith('/financial-verification')) return 'فحص الحسابات'
+  if (pathname.startsWith('/sales-returns')) return 'مرتجع مبيعات'
+  if (pathname.startsWith('/purchase-returns')) return 'مرتجع مشتريات'
+  if (pathname.startsWith('/maintenance')) return 'الصيانة'
+  if (pathname.startsWith('/purchases')) return 'المشتريات'
+  if (pathname.startsWith('/expenses')) return 'المصاريف'
+  if (pathname.startsWith('/sale')) return 'بيع جديد'
   if (pathname.startsWith('/customers/')) return 'ملف العميل'
   if (pathname.startsWith('/customers')) return 'العملاء'
   if (pathname.startsWith('/suppliers/')) return 'ملف المورد'
   if (pathname.startsWith('/suppliers')) return 'الموردون'
   if (pathname.startsWith('/products')) return 'الأصناف والمخزون'
   if (pathname.startsWith('/checks')) return 'الشيكات'
-  if (pathname === '/money') return 'حركة الأموال'
+  if (pathname === '/money') return 'الحسابات'
+  if (pathname === '/finance') return 'المالية'
   if (pathname.startsWith('/reports')) return 'التقارير'
   if (pathname.startsWith('/settings')) return 'الإعدادات'
   return 'الملخص'

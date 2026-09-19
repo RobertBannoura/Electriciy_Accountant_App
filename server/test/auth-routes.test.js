@@ -56,7 +56,7 @@ async function withServer(configure, run) {
   }
 }
 
-test('successful login returns a no-store opaque token and persists only its hash', async () => {
+test('successful login returns a no-store opaque token and supports explicit 30-day sessions', async () => {
   const password = 'correct horse battery staple'
   const passwordHash = await hashPassword(password)
   const calls = []
@@ -101,7 +101,19 @@ test('successful login returns a no-store opaque token and persists only its has
       const insert = calls.find((call) => call.text.includes('INSERT INTO auth_sessions'))
       assert.match(insert.params[1], /^[a-f0-9]{64}$/)
       assert.notEqual(insert.params[1], body.token)
+      assert.equal(insert.params[5], '12 hours')
+      assert.equal(insert.params[6], false)
       assert.equal(calls.some((call) => call.params.includes(password)), false)
+
+      const rememberedResponse = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'admin', password, rememberMe: true }),
+      })
+      assert.equal(rememberedResponse.status, 201)
+      const inserts = calls.filter((call) => call.text.includes('INSERT INTO auth_sessions'))
+      assert.equal(inserts.at(-1).params[5], '30 days')
+      assert.equal(inserts.at(-1).params[6], true)
     },
   )
 })

@@ -208,7 +208,12 @@ function AuthenticatedApplication({
           />
         }
       >
-        <Route index element={<HomePage isOnline={isOnline} readOnly={isPhoneWeb} storeId={configuredStoreId} />} />
+        <Route
+          index
+          element={isPhoneWeb
+            ? <Navigate replace to="/products" />
+            : <HomePage isOnline={isOnline} storeId={configuredStoreId} />}
+        />
         <Route path="money" element={<MobileMoneyPage stores={stores} />} />
         <Route path="finance" element={isPhoneWeb ? <Navigate replace to="/money" /> : <MobileFinancePage isOnline={isOnline} />} />
         <Route
@@ -253,13 +258,13 @@ function AuthenticatedApplication({
         <Route path="purchases" element={isPhoneWeb ? <Navigate replace to="/suppliers" /> : <PurchasePage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />} />
         <Route path="sales-returns" element={isPhoneWeb ? <Navigate replace to="/customers" /> : <CustomerReturnPage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} />} />
         <Route path="purchase-returns" element={isPhoneWeb ? <Navigate replace to="/suppliers" /> : <SupplierReturnPage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} />} />
-        <Route path="checks" element={<ChecksPage defaultStoreId={configuredStoreId} readOnly={isPhoneWeb} stores={stores} />} />
+        <Route path="checks" element={<ChecksPage allowStatusChange defaultStoreId={configuredStoreId} readOnly={isPhoneWeb} stores={stores} />} />
         <Route path="expenses" element={isPhoneWeb ? <Navigate replace to="/money" /> : <ExpensesPage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />} />
         <Route path="reports" element={<ReportsPage stores={stores} />} />
         <Route path="financial-verification" element={<FinancialVerificationPage />} />
         <Route
           path="settings"
-          element={isPhoneWeb ? <Navigate replace to="/" /> : (
+          element={isPhoneWeb ? <Navigate replace to="/products" /> : (
             <SettingsPage
               assignmentError={assignmentError}
               assignmentState={assignmentState}

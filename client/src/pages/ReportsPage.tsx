@@ -7,6 +7,7 @@ import { Store } from '../types'
 type ReportKey = 'sales' | 'purchases' | 'profit' | 'expenses' | 'customerDebt'
   | 'supplierDebt' | 'inventory' | 'money' | 'checks' | 'comparison'
 type PeriodKey = 'today' | 'week' | 'month' | 'custom'
+const reportKeys: ReportKey[] = ['sales', 'purchases', 'profit', 'expenses', 'customerDebt', 'supplierDebt', 'inventory', 'money', 'checks', 'comparison']
 
 type CashMovement = { currency_code: string; inflow: string; outflow: string; net: string }
 type CheckSummary = { status: string; count: string; amount: string }
@@ -100,7 +101,7 @@ export function ReportsPage({ stores }: { stores: Store[] }) {
 
   useEffect(() => {
     const section = searchParams.get('section')
-    if (section === 'profit' || section === 'money') setSelected(section)
+    if (section && reportKeys.includes(section as ReportKey)) setSelected(section as ReportKey)
   }, [searchParams])
 
   useEffect(() => {
@@ -154,9 +155,9 @@ export function ReportsPage({ stores }: { stores: Store[] }) {
   return (
     <section aria-labelledby="reports-title">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
+        <div className="hidden sm:block">
           <p className="font-bold text-teal-700">ملخصات واضحة لاتخاذ القرار</p>
-          <h1 className="mt-1 text-3xl font-black sm:text-4xl" id="reports-title">التقارير</h1>
+          <h1 className="hidden text-3xl font-black sm:mt-1 sm:block sm:text-4xl" id="reports-title">التقارير</h1>
         </div>
         <p className="rounded-xl bg-slate-100 px-4 py-2 font-bold text-slate-600">القيم المحاسبية بالشيكل</p>
       </div>
@@ -201,7 +202,7 @@ export function ReportsPage({ stores }: { stores: Store[] }) {
             {cards.map((card) => (
               <button
                 aria-pressed={selected === card.key}
-                className={`min-h-28 rounded-2xl border p-4 text-right shadow-sm transition hover:-translate-y-0.5 ${selected === card.key ? 'border-teal-700 bg-teal-700 text-white' : 'border-slate-200 bg-white hover:border-teal-300'}`}
+                className={`min-h-24 rounded-2xl border p-3 text-right shadow-sm transition hover:-translate-y-0.5 active:scale-[.98] sm:min-h-28 sm:p-4 ${selected === card.key ? 'border-teal-700 bg-teal-700 text-white shadow-teal-900/15' : 'border-slate-200 bg-white hover:border-teal-300'}`}
                 key={card.key}
                 onClick={() => setSelected(card.key)}
                 type="button"

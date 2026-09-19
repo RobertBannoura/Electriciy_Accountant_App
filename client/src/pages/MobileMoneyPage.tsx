@@ -67,10 +67,10 @@ export function MobileMoneyPage({ stores }: { stores: Store[] }) {
 
   return (
     <section aria-labelledby="money-title">
-      <div className="rounded-3xl bg-slate-900 p-5 text-white shadow-lg">
-        <p className="text-sm font-black text-teal-300">عرض مالي فقط</p>
-        <h1 className="mt-1 text-3xl font-black" id="money-title">حركة الأموال</h1>
-        <p className="mt-2 text-sm font-bold text-slate-300">تابع الداخل والخارج وصافي الحركة دون إدخال عمليات من الهاتف.</p>
+      <div className="hidden rounded-3xl bg-gradient-to-br from-teal-700 to-emerald-600 p-5 text-white shadow-lg shadow-teal-900/15 sm:block">
+        <p className="text-sm font-black text-teal-100">عرض مالي فقط</p>
+        <h1 className="hidden text-3xl font-black sm:mt-1 sm:block" id="money-title">الحسابات</h1>
+        <p className="mt-2 text-sm font-bold text-teal-50/85">تابع الداخل والخارج وصافي الحركة دون إدخال عمليات من الهاتف.</p>
       </div>
 
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -89,7 +89,7 @@ export function MobileMoneyPage({ stores }: { stores: Store[] }) {
         <div className="mt-4 grid grid-cols-2 gap-3">
           <MoneyCard label="الأموال الداخلة" tone="in" value={formatIls(report.summary.inflow_ils)} />
           <MoneyCard label="الأموال الخارجة" tone="out" value={formatIls(report.summary.outflow_ils)} />
-          <article className="col-span-2 rounded-2xl border border-slate-800 bg-slate-900 p-5 text-white shadow-sm"><p className="text-sm font-black text-slate-300">صافي الحركة</p><p className="mt-2 text-3xl font-black" dir="ltr">{formatIls(report.summary.net_ils)}</p><p className="mt-2 text-xs font-bold text-slate-400">من {report.filters.from} إلى {report.filters.to}</p></article>
+          <article className="col-span-2 rounded-2xl border border-teal-600 bg-teal-700 p-5 text-white shadow-sm shadow-teal-900/10"><p className="text-sm font-black text-teal-100">صافي الحركة</p><p className="mt-2 text-3xl font-black" dir="ltr">{formatIls(report.summary.net_ils)}</p><p className="mt-2 text-xs font-bold text-teal-100/80">من {report.filters.from} إلى {report.filters.to}</p></article>
         </div>
         {report.summary.cash_movements.length > 0 && <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><h2 className="border-b border-slate-200 bg-slate-50 p-4 text-lg font-black">الحركة حسب العملة</h2>{report.summary.cash_movements.map((row) => <div className="grid grid-cols-3 gap-2 border-b border-slate-100 p-4 text-center last:border-0" key={row.currency_code}><div><p className="text-xs font-bold text-slate-500">داخل</p><p className="mt-1 font-black" dir="ltr">{row.inflow} {row.currency_code}</p></div><div><p className="text-xs font-bold text-slate-500">خارج</p><p className="mt-1 font-black" dir="ltr">{row.outflow} {row.currency_code}</p></div><div><p className="text-xs font-bold text-slate-500">الصافي</p><p className="mt-1 font-black" dir="ltr">{row.net} {row.currency_code}</p></div></div>)}</section>}
       </>}

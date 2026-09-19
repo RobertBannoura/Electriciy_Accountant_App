@@ -27,11 +27,53 @@ body {
   margin: 0;
 }
 
+#root {
+  min-height: 100dvh;
+}
+
+.pwa-shell {
+  background:
+    radial-gradient(circle at 100% 0%, rgb(204 251 241 / 42%), transparent 24rem),
+    #f8fafc;
+}
+
 button,
 input,
 textarea,
 select {
   font: inherit;
+}
+
+a,
+button,
+select {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+:where(a, button):focus-visible {
+  outline: 3px solid #14b8a6;
+  outline-offset: 2px;
+}
+
+.mobile-drawer {
+  animation: drawer-in 180ms ease-out;
+}
+
+@keyframes drawer-in {
+  from { transform: translateX(1.5rem); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 
 html[data-connection='offline'] a[href^='/sale'],

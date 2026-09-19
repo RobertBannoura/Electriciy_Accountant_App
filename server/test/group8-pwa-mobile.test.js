@@ -59,24 +59,39 @@ test('offline financial requests are rejected in the client and never queued for
   assert.doesNotMatch(serviceWorker, /cache\.put\([^\n]*(POST|request\.method)/i)
 })
 
-test('mobile bottom navigation has the required visual order and emphasized finance center', async () => {
-  const shell = await readFile(clientFile('src/components/AppShell.tsx'), 'utf8')
+test('mobile bottom navigation has the required visual order and equal item styling', async () => {
+  const [app, shell] = await Promise.all([
+    readFile(clientFile('src/App.tsx'), 'utf8'),
+    readFile(clientFile('src/components/AppShell.tsx'), 'utf8'),
+  ])
   const navigation = shell.slice(shell.indexOf('const mobileNavigation'), shell.indexOf('function activeSection'))
-  const labels = ['المنتجات', 'العملاء', 'المالية', 'الموردون', 'الرئيسية']
+  const mobileHeader = shell.slice(shell.indexOf('function MobileHeader'), shell.indexOf('function StoreSelector'))
+  const mobileDrawerLinks = shell.slice(shell.indexOf('const drawerLinks'), shell.indexOf('function MobileDrawer'))
+  const labels = ['الأصناف', 'العملاء', 'الحسابات', 'الموردون', 'الشيكات']
   for (let index = 1; index < labels.length; index += 1) {
     assert.ok(navigation.indexOf(labels[index - 1]) < navigation.indexOf(labels[index]))
   }
   assert.match(shell, /className="mobile-bottom-nav[^\n]+sm:hidden" dir="ltr"/)
-  assert.match(navigation, /label: 'المالية'.+emphasized: true/)
-  assert.match(shell, /-mt-5 min-h-18 bg-teal-700/)
+  assert.match(navigation, /label: 'الحسابات'.+key: 'money'/)
+  assert.doesNotMatch(navigation, /emphasized/)
+  assert.doesNotMatch(shell, /-mt-5|min-h-18/)
+  assert.doesNotMatch(mobileHeader, /onBack|الرجوع إلى الصفحة السابقة/)
+  assert.doesNotMatch(mobileHeader, /الصفحة الرئيسية|to="\/"/)
+  assert.match(mobileHeader, /<h1[^>]+>\{mobilePageTitle\(pathname\)\}<\/h1>/)
+  assert.match(mobileHeader, /aria-label="تغيير المحل الحالي"/)
+  assert.match(mobileHeader, /onBrowserStoreChange\(event\.target\.value\)/)
+  assert.doesNotMatch(mobileDrawerLinks, /الرئيسية والملخص|path: '\/'/)
+  assert.match(app, /isPhoneWeb\s*\? <Navigate replace to="\/products" \/>\s*: <HomePage/)
+  assert.match(app, /<ChecksPage allowStatusChange defaultStoreId=/)
 })
 
 test('mobile sections stay focused while desktop home actions remain available', async () => {
-  const [finance, products, customers, suppliers, home] = await Promise.all([
+  const [finance, products, customers, suppliers, checks, home] = await Promise.all([
     readFile(clientFile('src/pages/MobileFinancePage.tsx'), 'utf8'),
     readFile(clientFile('src/pages/ProductsPage.tsx'), 'utf8'),
     readFile(clientFile('src/pages/CustomersPage.tsx'), 'utf8'),
     readFile(clientFile('src/pages/SuppliersPage.tsx'), 'utf8'),
+    readFile(clientFile('src/pages/ChecksPage.tsx'), 'utf8'),
     readFile(clientFile('src/pages/HomePage.tsx'), 'utf8'),
   ])
   for (const label of ['المبيعات', 'المشتريات', 'الشيكات', 'المصاريف', 'الأرباح', 'حركة الأموال']) {
@@ -84,6 +99,24 @@ test('mobile sections stay focused while desktop home actions remain available',
   }
   assert.match(products, /بحث بالاسم/)
   assert.match(products, /مخزون منخفض/)
+  assert.match(products, /<details className="group mt-2">/)
+  assert.match(products, /خيارات التصفية/)
+  assert.match(products, /<h1 className="hidden[^>]+>الأصناف<\/h1>/)
+  assert.match(products, /<details className="group sm:hidden">/)
+  assert.match(products, /className="hidden p-5 sm:block"/)
+  assert.match(products, /visibleInventories\.some\(\(inventory\) => inventory\.low_stock\)/)
+  assert.match(checks, /<details className="group mt-2">/)
+  assert.match(checks, /<h1 className="hidden[^>]+>الشيكات<\/h1>/)
+  assert.match(checks, /allowStatusChange \? \(/)
+  assert.match(checks, /onChange=\{\(event\) => changeCheckStatus\(check, event\.target\.value as CheckStatus\)\}/)
+  assert.match(checks, /check\.status !== 'pending'/)
+  assert.doesNotMatch(checks, /onClick=\{\(\) => void runLifecycleAction\(check, '(?:clear|bounce)'\)\}/)
+  assert.match(customers, /<h1 className="hidden[^>]+>العملاء<\/h1>/)
+  assert.match(suppliers, /<h1 className="hidden[^>]+>الموردون<\/h1>/)
+  assert.doesNotMatch(customers, /bg-slate-900|violet-|indigo-/)
+  assert.doesNotMatch(suppliers, /bg-violet-|text-violet-|border-violet-|indigo-/)
+  assert.match(customers, /border border-teal-200 bg-white/)
+  assert.match(suppliers, /border border-teal-200 bg-white/)
   assert.match(customers, /الرصيد الحالي/)
   assert.match(customers, /المشاريع/)
   assert.match(customers, /أحدث حركات الحساب/)
