@@ -8,7 +8,7 @@ import {
   statusLabel,
 } from '../business-labels'
 import { Store } from '../types'
-import { formatDecimal, formatHalfShekel } from '../money-display'
+import { formatCurrencyAmount, formatDecimal, formatHalfShekel } from '../money-display'
 import { AccountStatementDialog } from '../components/AccountStatementDialog'
 import { DialogCloseButton } from '../components/DialogCloseButton'
 
@@ -487,7 +487,7 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
 
 function SalesList({ items }: { items: Sale[] }) {
   if (!items.length) return <NoRecords />
-  return <>{items.map((item) => <RecordRow key={item.id} primary={`بيع ${item.document_number ?? `#${item.id}`}`} secondary={`${localDate(item.business_date)} · ${item.store_name} · ${statusLabel(item.status)}${item.project_name ? ` · ${item.project_name}` : ''}`} value={`${formatDecimal(item.total)} ${item.currency_code ?? ''}`} />)}</>
+  return <>{items.map((item) => <RecordRow key={item.id} primary={`بيع ${item.document_number ?? `#${item.id}`}`} secondary={`${localDate(item.business_date)} · ${item.store_name} · ${statusLabel(item.status)}${item.project_name ? ` · ${item.project_name}` : ''}`} value={formatCurrencyAmount(item.total, item.currency_code)} />)}</>
 }
 function MaintenanceList({ items }: { items: Maintenance[] }) {
   if (!items.length) return <NoRecords />
@@ -504,7 +504,7 @@ function ChecksList({ items }: { items: CustomerCheck[] }) {
       key={item.id}
       primary={`${item.direction === 'outflow' ? 'عكس ' : ''}${item.is_giro ? 'شيك جيرو' : 'شيك'} ${item.check_number}`}
       secondary={<>{item.is_giro && <>صاحب الشيك الأصلي: {item.original_owner_name} · {item.original_owner_phone} · </>}{item.supplier_id && <>حُوّل إلى المورد <Link className="font-bold text-teal-700 hover:text-teal-950 hover:underline" to={`/suppliers/${item.supplier_id}`}>{item.supplier_name}</Link> بتاريخ {localDate(item.transferred_at!)} · </>}{item.store_name} · {localDate(item.due_date)} · {customerCheckStatusLabel(item.status)}{item.notes && ` · ${item.notes}`}</>}
-      value={`${item.direction === 'outflow' ? '-' : ''}${formatDecimal(item.amount)} ${item.currency_code ?? ''}`}
+      value={`${item.direction === 'outflow' ? '-' : ''}${formatCurrencyAmount(item.amount, item.currency_code)}`}
     />
   ))}</>
 }
@@ -524,8 +524,5 @@ function NoRecords() { return <p className="p-5 text-slate-500">لا توجد س
 function EmptyState({ text, error = false }: { text: string; error?: boolean }) { return <p className={`rounded-2xl p-8 text-center text-lg font-black ${error ? 'bg-rose-50 text-rose-800' : 'bg-white text-slate-600'}`} role={error ? 'alert' : 'status'}>{text}</p> }
 function localDate(value: string) { return new Intl.DateTimeFormat('ar-PS', { dateStyle: 'medium', timeZone: 'Asia/Hebron' }).format(new Date(value)) }
 function originalMoney(amount: string, currency: string) {
-  const displayAmount = formatDecimal(amount)
-  if (currency === 'ILS') return `₪${displayAmount}`
-  if (currency === 'USD') return `$${displayAmount}`
-  return `${displayAmount} JOD`
+  return formatCurrencyAmount(amount, currency)
 }

@@ -68,7 +68,15 @@ test('statement and invoice documents expose Arabic print and PDF output without
   assert.match(pdfDocuments, /@react-pdf\/renderer/)
   assert.match(pdfDocuments, /createStatementPdf/)
   assert.match(pdfDocuments, /createInvoicePdf/)
-  assert.match(pdfDocuments, /Amiri-Regular\.ttf/)
+  assert.match(pdfDocuments, /pdfCurrencySymbols/)
+  assert.match(pdfDocuments, /return `\$\{symbol\}\$\{formatDecimal\(value\)\}`/)
+  assert.match(pdfDocuments, /NotoSansHebrew-Regular\.ttf/)
+  assert.match(pdfDocuments, /fontFamily: 'NotoHebrew'/)
+  assert.match(pdfDocuments, /MoneyValue/)
+  assert.match(pdfDocuments, /PurchaseItemsList/)
+  assert.doesNotMatch(pdfDocuments, /أصناف أخرى/)
+  assert.doesNotMatch(pdfDocuments, /₪\$\{formatDecimal/)
+  assert.match(pdfDocuments, /NotoSansArabic-Variable\.ttf/)
   assert.match(pdfDocuments, /direction: 'rtl'/)
   assert.match(electron, /printToPDF/)
   assert.match(electron, /generateTaggedPDF: true/)
@@ -86,12 +94,12 @@ test('statement and invoice documents expose Arabic print and PDF output without
 })
 
 test('the project bundles a licensed Arabic-capable font', async () => {
-  const [font, boldFont] = await Promise.all([
-    stat(new URL('../../client/src/assets/fonts/Amiri-Regular.ttf', import.meta.url)),
-    stat(new URL('../../client/src/assets/fonts/Amiri-Bold.ttf', import.meta.url)),
+  const [font, symbolFont] = await Promise.all([
+    stat(new URL('../../client/src/assets/fonts/NotoSansArabic-Variable.ttf', import.meta.url)),
+    stat(new URL('../../client/src/assets/fonts/NotoSansHebrew-Regular.ttf', import.meta.url)),
   ])
   const license = await readFile(new URL('../../client/src/assets/fonts/OFL.txt', import.meta.url), 'utf8')
   assert.ok(font.size > 100_000)
-  assert.ok(boldFont.size > 100_000)
+  assert.ok(symbolFont.size > 10_000)
   assert.match(license, /SIL OPEN FONT LICENSE/i)
 })

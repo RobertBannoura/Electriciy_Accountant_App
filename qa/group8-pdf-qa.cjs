@@ -22,6 +22,19 @@ const outputPath = path.resolve(
 )
 
 app.disableHardwareAcceleration()
+app.commandLine.appendSwitch('disable-gpu')
+app.commandLine.appendSwitch('disable-gpu-compositing')
+app.commandLine.appendSwitch('disable-gpu-sandbox')
+app.commandLine.appendSwitch('in-process-gpu')
+app.commandLine.appendSwitch('disk-cache-dir', path.resolve('tmp/electron-pdf-qa-cache'))
+app.setPath('userData', path.resolve('tmp/electron-pdf-qa-profile'))
+
+process.on('uncaughtException', (error) => {
+  if (error?.code === 'EPIPE') {
+    process.exit(process.exitCode ?? 0)
+  }
+  throw error
+})
 
 async function waitFor(window, expression, timeoutMs = 15_000) {
   const startedAt = Date.now()
@@ -39,6 +52,14 @@ app.whenReady().then(async () => {
   ipcMain.handle('device:get-store-assignment', () => ({ storeId: '1' }))
   ipcMain.handle('device:set-store-assignment', (_event, storeId) => ({ storeId }))
   ipcMain.handle('app:show-notification', () => ({ shown: false }))
+  ipcMain.handle('backup:get-status', () => ({
+    automaticBackupDue: false,
+    directory: null,
+    lastAutomaticBackupDate: null,
+  }))
+  ipcMain.handle('backup:save', () => ({ saved: false, path: null }))
+  ipcMain.handle('backup:choose-directory', () => ({ selected: false, directory: null }))
+  ipcMain.handle('backup:select-file', () => ({ selected: false, backup: null, name: null }))
   ipcMain.handle('app:save-pdf-data', async (_event, options) => {
     const bytes = options?.data
     const data = ArrayBuffer.isView(bytes)
@@ -70,31 +91,36 @@ app.whenReady().then(async () => {
       localStorage.setItem('electricity-accountant-user', JSON.stringify({
         id: '1', username: 'qa-admin', displayName: 'مدير الاختبار', role: 'admin'
       }));
+      localStorage.setItem('electricity-accountant.active-store-id', '1');
     `)
     await window.webContents.reload()
     if (documentKind === 'invoice') {
       phase = 'prepare invoice'
-      await waitFor(window, "document.querySelector('#sale-invoice-number') && document.querySelector('#sale-product-search')")
+      await waitFor(window, "document.querySelector('[aria-label=\"اسم الصنف اليدوي الجديد\"]') && document.querySelector('[aria-label=\"سعر الصنف اليدوي الجديد\"]')")
       await window.webContents.executeJavaScript(`
-        function setValue(selector, value) {
-          const element = document.querySelector(selector);
+        function setInputByLabel(label, value) {
+          const element = document.querySelector(\`[aria-label="\${label}"]\`);
           const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
           setter.call(element, value);
           element.dispatchEvent(new Event('input', { bubbles: true }));
+          element.dispatchEvent(new Event('blur', { bubbles: true }));
         }
-        setValue('#sale-invoice-number', ${JSON.stringify(invoiceNumber)});
-        setValue('#sale-product-search', ${JSON.stringify(productSearch)});
+        setInputByLabel('اسم الصنف اليدوي الجديد', ${JSON.stringify(productSearch)});
+        setInputByLabel('كمية الصنف اليدوي الجديد', '1');
+        setInputByLabel('سعر الصنف اليدوي الجديد', '20');
+        setInputByLabel('خصم الصنف اليدوي الجديد', '0');
       `)
-      await waitFor(window, "[...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'إضافة')")
-      phase = 'add invoice product and customer'
+      await waitFor(window, "document.querySelector('[aria-label=\"إضافة السطر اليدوي\"]') && !document.querySelector('[aria-label=\"إضافة السطر اليدوي\"]').disabled")
+      phase = 'add manual invoice line'
+      await window.webContents.executeJavaScript(`
+        document.querySelector('[aria-label="إضافة السطر اليدوي"]').click();
+      `)
+      await waitFor(window, "[...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'متابعة إلى الدفع' && !button.disabled)")
+      phase = 'continue invoice payment'
       await window.webContents.executeJavaScript(`
         [...document.querySelectorAll('button')]
-          .find((button) => button.textContent?.trim() === 'إضافة')
+          .find((button) => button.textContent?.trim() === 'متابعة إلى الدفع')
           .click();
-        const customer = document.querySelector('#sale-customer');
-        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
-        setter.call(customer, ${JSON.stringify(customerId)});
-        customer.dispatchEvent(new Event('change', { bubbles: true }));
       `)
       await waitFor(window, "[...document.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'إتمام البيع وحفظه' && !button.disabled)")
       phase = 'save invoice'
@@ -107,6 +133,7 @@ app.whenReady().then(async () => {
       phase = 'select invoice size'
       await window.webContents.executeJavaScript(`
         const size = document.querySelector('[aria-label="إخراج الفاتورة"] select');
+        const customer = document.querySelector('#sale-customer');
         const sizeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
         sizeSetter.call(size, ${JSON.stringify(invoiceSize)});
         size.dispatchEvent(new Event('change', { bubbles: true }));
@@ -136,6 +163,21 @@ app.whenReady().then(async () => {
   } catch (error) {
     console.error(`QA failed during: ${phase}`)
     console.error(error)
+    try {
+      const snapshot = await Promise.race([
+        window.webContents.executeJavaScript(`
+          JSON.stringify({
+            url: location.href,
+            title: document.title,
+            body: document.body?.innerText?.slice(0, 2000) ?? ''
+          }, null, 2)
+        `),
+        new Promise((resolve) => setTimeout(() => resolve('Snapshot timed out'), 3000)),
+      ])
+      console.error(snapshot)
+    } catch {
+      // The original error below is the useful failure.
+    }
     process.exitCode = 1
   } finally {
     window.destroy()

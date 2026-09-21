@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { apiFetch } from '../api'
-import { formatIls } from '../money-display'
+import { DateField } from '../components/DateField'
+import { formatCurrencyAmount, formatIls } from '../money-display'
 import { Store } from '../types'
 
 type ReportKey = 'sales' | 'purchases' | 'profit' | 'expenses' | 'customerDebt'
@@ -159,7 +160,7 @@ export function ReportsPage({ stores }: { stores: Store[] }) {
           <p className="font-bold text-teal-700">ملخصات واضحة لاتخاذ القرار</p>
           <h1 className="hidden text-3xl font-black sm:mt-1 sm:block sm:text-4xl" id="reports-title">التقارير</h1>
         </div>
-        <p className="rounded-xl bg-slate-100 px-4 py-2 font-bold text-slate-600">القيم المحاسبية بالشيكل</p>
+        <p className="rounded-xl bg-slate-100 px-4 py-2 font-bold text-slate-600">القيم المحاسبية بـ ₪</p>
       </div>
 
       <section className="mt-7 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" aria-label="مرشحات التقارير">
@@ -177,19 +178,15 @@ export function ReportsPage({ stores }: { stores: Store[] }) {
             </button>
           ))}
         </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-3">
           <label className="font-bold text-slate-700">المحل
             <select className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3 font-black" onChange={(event) => setStoreId(event.target.value)} value={storeId}>
               <option value="">الكل</option>
               {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
             </select>
           </label>
-          <label className="font-bold text-slate-700">من
-            <input className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3" max={to} onChange={(event) => { setPeriod('custom'); setFrom(event.target.value) }} type="date" value={from} />
-          </label>
-          <label className="font-bold text-slate-700">إلى
-            <input className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3" min={from} onChange={(event) => { setPeriod('custom'); setTo(event.target.value) }} type="date" value={to} />
-          </label>
+          <DateField label="من" max={to} onChange={(value) => { setPeriod('custom'); setFrom(value) }} value={from} />
+          <DateField label="إلى" min={from} onChange={(value) => { setPeriod('custom'); setTo(value) }} value={to} />
         </div>
       </section>
 
@@ -259,8 +256,8 @@ function ReportDetail({ report, selected }: { report: ReportResponse; selected: 
 
       {selected === 'money' && <>
         <h2 className="text-2xl font-black">حركة الأموال</h2>
-        <div className="mt-4"><MetricRow label="الداخل — شيكل" value={formatIls(s.inflow_ils)} /><MetricRow label="الخارج — شيكل" value={formatIls(s.outflow_ils)} /><MetricRow label="صافي الحركة — شيكل" strong value={formatIls(s.net_ils)} /></div>
-        {s.cash_movements.filter((row) => row.currency_code !== 'ILS').map((row) => <MetricRow key={row.currency_code} label={`صافي الصندوق — ${row.currency_code}`} value={`${row.net} ${row.currency_code}`} />)}
+        <div className="mt-4"><MetricRow label="الداخل — ₪" value={formatIls(s.inflow_ils)} /><MetricRow label="الخارج — ₪" value={formatIls(s.outflow_ils)} /><MetricRow label="صافي الحركة — ₪" strong value={formatIls(s.net_ils)} /></div>
+        {s.cash_movements.filter((row) => row.currency_code !== 'ILS').map((row) => <MetricRow key={row.currency_code} label={`صافي الصندوق — ${row.currency_code}`} value={formatCurrencyAmount(row.net, row.currency_code)} />)}
       </>}
 
       {selected === 'checks' && <>

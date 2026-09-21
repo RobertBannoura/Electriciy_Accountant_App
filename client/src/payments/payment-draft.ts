@@ -48,7 +48,7 @@ export function calculatePayment(payment: PaymentDraft) {
   const amount = parsePaymentDecimal(payment.amount, foreign ? 6 : 2)
   if (!amount || !amount.greaterThan(0)) return { amount: null, error: 'أدخل مبلغاً أكبر من صفر' }
   if (!foreign && !amount.mod('0.5').isZero()) {
-    return { amount: null, error: 'المبلغ بالشيكل يجب أن يكون بمضاعفات 0.50' }
+    return { amount: null, error: 'المبلغ بـ ₪ يجب أن يكون بمضاعفات 0.50' }
   }
   if (payment.method === 'check' && !payment.checkNumber.trim()) {
     return { amount: null, error: 'رقم الشيك مطلوب' }

@@ -12,7 +12,7 @@ import {
 import { Link } from 'react-router-dom'
 import { apiFetch, storeScopedApiFetch } from '../api'
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner'
-import { formatDecimal } from '../money-display'
+import { currencySymbol, formatDecimal } from '../money-display'
 import { InvoiceOutput } from '../components/InvoiceOutput'
 import type { SavedInvoice } from '../components/InvoiceOutput'
 
@@ -183,7 +183,7 @@ function calculatePayment(payment: PaymentDraft): PaymentCalculation {
     return { ilsAmount: null, error: 'أدخل مبلغاً أكبر من صفر' }
   }
   if (!foreignCash && !isHalfShekel(amount)) {
-    return { ilsAmount: null, error: 'المبلغ بالشيكل يجب أن يكون بمضاعفات 0.50' }
+    return { ilsAmount: null, error: 'المبلغ بـ ₪ يجب أن يكون بمضاعفات 0.50' }
   }
   if (payment.method === 'check') {
     if (!payment.checkNumber.trim()) return { ilsAmount: null, error: 'أدخل رقم الشيك' }
@@ -1134,7 +1134,7 @@ export function SalePage({
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5" aria-label="إضافة طريقة دفع">
           <button className="min-h-16 rounded-2xl bg-emerald-700 px-3 font-black text-white hover:bg-emerald-800" onClick={() => addPayment('cash')} type="button">
             <span className="block text-lg">نقدي</span>
-            <span className="mt-1 block text-xs font-bold text-emerald-100">شيكل / دولار / دينار</span>
+            <span className="mt-1 block text-xs font-bold text-emerald-100">₪ / دولار / دينار</span>
           </button>
           <button className="min-h-16 rounded-2xl bg-sky-700 px-3 font-black text-white hover:bg-sky-800" onClick={() => addPayment('bank_card')} type="button">
             <span className="block text-lg">بطاقة / بنك</span>
@@ -1176,14 +1176,14 @@ export function SalePage({
                       <label className="block">
                         <span className="mb-2 block font-black">عملة النقد</span>
                         <select className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-black" onChange={(event) => updatePayment(payment.id, { currency: event.target.value as Currency, exchangeRate: '' })} value={payment.currency}>
-                          <option value="ILS">شيكل</option>
+                          <option value="ILS">₪</option>
                           <option value="USD">دولار</option>
                           <option value="JOD">دينار</option>
                         </select>
                       </label>
                     )}
                     <label className="block">
-                      <span className="mb-2 block font-black">{foreignCash ? 'المبلغ الأصلي' : 'المبلغ بالشيكل'}</span>
+                      <span className="mb-2 block font-black">{foreignCash ? 'المبلغ الأصلي' : 'المبلغ (₪)'}</span>
                       <input className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-black" inputMode="decimal" min="0" onBlur={(event) => updatePayment(payment.id, { amount: normalizeDecimalInput(event.target.value, foreignCash ? 6 : 2) })} onChange={(event) => updatePayment(payment.id, { amount: event.target.value })} placeholder="0" value={payment.amount} />
                     </label>
                     {foreignCash && (
@@ -1230,7 +1230,7 @@ export function SalePage({
                       <p className="font-bold text-slate-600">القيمة المحتسبة</p>
                       <p className="mt-1 text-xl font-black text-teal-900" dir="ltr">₪ {formatAmount(calculation.ilsAmount)}</p>
                       {foreignCash && calculation.ilsAmount && (
-                        <p className="mt-1 text-sm font-bold text-slate-600" dir="ltr">{payment.amount || '0'} {payment.currency} × {payment.exchangeRate || '—'}</p>
+                        <p className="mt-1 text-sm font-bold text-slate-600" dir="ltr">{currencySymbol(payment.currency)}{payment.amount || '0'} × {payment.exchangeRate || '—'}</p>
                       )}
                     </div>
                   </div>

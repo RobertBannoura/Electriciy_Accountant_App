@@ -34,7 +34,7 @@ export function parseSupplierPayments(value, { allowEmpty = false } = {}) {
 
     const amount = normalizeDecimal(row?.amount, { scale: 2 })
     if (amount === undefined || new PaymentDecimal(amount).lessThanOrEqualTo(0) || !isHalfShekelAmount(amount)) {
-      return { error: 'مبلغ الدفعة يجب أن يكون أكبر من صفر وبمضاعفات نصف شيكل' }
+      return { error: 'مبلغ الدفعة يجب أن يكون أكبر من صفر وبمضاعفات ₪0.50' }
     }
 
     if (method === 'owner_check') {

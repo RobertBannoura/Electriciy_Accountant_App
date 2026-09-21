@@ -14,7 +14,7 @@ export function parseExpenseInput(body) {
   const paymentMethod = body?.paymentMethod === 'bank' ? 'bank_card' : body?.paymentMethod
   const notes = normalizeOptionalText(body?.notes, 1000)
   if (amount === undefined || !new ExpenseDecimal(amount).greaterThan(0) || !isHalfShekelAmount(amount)) {
-    return { error: 'المبلغ يجب أن يكون أكبر من صفر وبمضاعفات نصف شيكل' }
+    return { error: 'المبلغ يجب أن يكون أكبر من صفر وبمضاعفات ₪0.50' }
   }
   if (!category) return { error: 'يجب اختيار تصنيف مصروف صالح' }
   if (!isValidDate(expenseDate)) return { error: 'تاريخ المصروف غير صالح' }

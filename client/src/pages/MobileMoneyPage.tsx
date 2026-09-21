@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiFetch } from '../api'
-import { formatIls } from '../money-display'
+import { formatCurrencyAmount, formatIls } from '../money-display'
 import { Store } from '../types'
 
 type Period = 'today' | 'week' | 'month'
@@ -91,7 +91,7 @@ export function MobileMoneyPage({ stores }: { stores: Store[] }) {
           <MoneyCard label="الأموال الخارجة" tone="out" value={formatIls(report.summary.outflow_ils)} />
           <article className="col-span-2 rounded-2xl border border-teal-600 bg-teal-700 p-5 text-white shadow-sm shadow-teal-900/10"><p className="text-sm font-black text-teal-100">صافي الحركة</p><p className="mt-2 text-3xl font-black" dir="ltr">{formatIls(report.summary.net_ils)}</p><p className="mt-2 text-xs font-bold text-teal-100/80">من {report.filters.from} إلى {report.filters.to}</p></article>
         </div>
-        {report.summary.cash_movements.length > 0 && <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><h2 className="border-b border-slate-200 bg-slate-50 p-4 text-lg font-black">الحركة حسب العملة</h2>{report.summary.cash_movements.map((row) => <div className="grid grid-cols-3 gap-2 border-b border-slate-100 p-4 text-center last:border-0" key={row.currency_code}><div><p className="text-xs font-bold text-slate-500">داخل</p><p className="mt-1 font-black" dir="ltr">{row.inflow} {row.currency_code}</p></div><div><p className="text-xs font-bold text-slate-500">خارج</p><p className="mt-1 font-black" dir="ltr">{row.outflow} {row.currency_code}</p></div><div><p className="text-xs font-bold text-slate-500">الصافي</p><p className="mt-1 font-black" dir="ltr">{row.net} {row.currency_code}</p></div></div>)}</section>}
+        {report.summary.cash_movements.length > 0 && <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><h2 className="border-b border-slate-200 bg-slate-50 p-4 text-lg font-black">الحركة حسب العملة</h2>{report.summary.cash_movements.map((row) => <div className="grid grid-cols-3 gap-2 border-b border-slate-100 p-4 text-center last:border-0" key={row.currency_code}><div><p className="text-xs font-bold text-slate-500">داخل</p><p className="mt-1 font-black" dir="ltr">{formatCurrencyAmount(row.inflow, row.currency_code)}</p></div><div><p className="text-xs font-bold text-slate-500">خارج</p><p className="mt-1 font-black" dir="ltr">{formatCurrencyAmount(row.outflow, row.currency_code)}</p></div><div><p className="text-xs font-bold text-slate-500">الصافي</p><p className="mt-1 font-black" dir="ltr">{formatCurrencyAmount(row.net, row.currency_code)}</p></div></div>)}</section>}
       </>}
 
       <Link className="mt-4 flex min-h-12 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 font-black text-slate-800" to="/reports?section=money">عرض جميع التقارير</Link>

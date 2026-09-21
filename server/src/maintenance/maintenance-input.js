@@ -40,7 +40,7 @@ export function parseMaintenanceInput(body) {
   }
   if (body?.notes && notes === null) return { error: 'الملاحظات تتجاوز 2000 حرف' }
   if (amount === undefined || amount === '0' || !isHalfShekelAmount(amount)) {
-    return { error: 'مبلغ الصيانة يجب أن يكون أكبر من صفر وبمضاعفات 0.50 شيكل' }
+    return { error: 'مبلغ الصيانة يجب أن يكون أكبر من صفر وبمضاعفات ₪0.50' }
   }
   if (!isValidMaintenanceDate(businessDate)) {
     return { error: 'تاريخ الصيانة غير صالح ويجب أن يكون بصيغة YYYY-MM-DD' }

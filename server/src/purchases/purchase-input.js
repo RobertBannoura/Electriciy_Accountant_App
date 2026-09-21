@@ -13,13 +13,17 @@ const MAXIMUM_ITEMS = 500
 
 export function parsePurchaseInput(body) {
   const supplierId = parseId(body?.supplierId)
-  const documentNumber = normalizeRequiredText(body?.documentNumber, 100)
+  const documentNumber = normalizeOptionalText(body?.documentNumber, 100)
   const businessDate = body?.businessDate ?? body?.date
   const notes = normalizeOptionalText(body?.notes, 2000)
   const parsedPayments = parseSupplierPayments(body?.payments, { allowEmpty: true })
+  const hasProvidedDocumentNumber = body?.documentNumber != null
+    && String(body.documentNumber).trim() !== ''
 
   if (!supplierId) return { error: 'يجب اختيار مورد صالح' }
-  if (!documentNumber) return { error: 'رقم فاتورة الشراء مطلوب وبحد أقصى 100 حرف' }
+  if (hasProvidedDocumentNumber && documentNumber === null) {
+    return { error: 'رقم فاتورة الشراء يجب أن يكون بحد أقصى 100 حرف' }
+  }
   if (!isValidDate(businessDate)) return { error: 'تاريخ الشراء غير صالح ويجب أن يكون بصيغة YYYY-MM-DD' }
   if (body?.notes != null && body.notes !== '' && notes === null) {
     return { error: 'ملاحظات الشراء تتجاوز 2000 حرف' }
@@ -50,7 +54,7 @@ export function parsePurchaseInput(body) {
       return { error: 'كمية كل بند يجب أن تكون أكبر من صفر وبحد أقصى ثلاث منازل عشرية' }
     }
     if (purchasePrice === undefined || !isHalfShekelAmount(purchasePrice)) {
-      return { error: 'سعر الشراء مطلوب ويجب أن يكون موجباً أو صفراً وبمضاعفات نصف شيكل' }
+      return { error: 'سعر الشراء مطلوب ويجب أن يكون موجباً أو صفراً وبمضاعفات ₪0.50' }
     }
     if (productId) productIds.add(productId)
     items.push({ productId, ...(productId ? {} : { description }), quantity, purchasePrice })

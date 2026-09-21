@@ -9,6 +9,7 @@ import {
   createJsonComplexityGuard,
   createOriginGuard,
   createProxyClientIpNormalizer,
+  isDevelopmentBrowserOrigin,
   validateRequestMetadata,
 } from './middleware/request-boundaries.js'
 import { authRouter } from './routes/auth.js'
@@ -32,6 +33,16 @@ import { verificationRouter } from './routes/verification.js'
 export const app = express()
 const normalJsonBoundary = createJsonComplexityGuard({ maxDepth: 32, maxNodes: 20_000 })
 const backupJsonBoundary = createJsonComplexityGuard({ maxDepth: 32, maxNodes: 2_000_000 })
+const trustedBrowserOrigins = [env.clientOrigin, env.electronOrigin]
+const corsOrigin = env.nodeEnv === 'development'
+  ? (origin, callback) => {
+      if (!origin || trustedBrowserOrigins.includes(origin) || isDevelopmentBrowserOrigin(origin)) {
+        callback(null, true)
+        return
+      }
+      callback(null, false)
+    }
+  : trustedBrowserOrigins
 
 app.disable('x-powered-by')
 app.set(
@@ -50,10 +61,12 @@ app.use('/api', (_request, response, next) => {
   next()
 })
 app.use('/api', validateRequestMetadata)
-app.use('/api', createOriginGuard([env.clientOrigin, env.electronOrigin]))
+app.use('/api', createOriginGuard(trustedBrowserOrigins, {
+  allowDevelopmentBrowserOrigins: env.nodeEnv === 'development',
+}))
 app.use(
   cors({
-    origin: [env.clientOrigin, env.electronOrigin],
+    origin: corsOrigin,
     credentials: false,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [

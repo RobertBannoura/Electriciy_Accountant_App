@@ -10,7 +10,7 @@ import {
 import { Store } from '../types'
 import { AccountStatementDialog } from '../components/AccountStatementDialog'
 import { DialogCloseButton } from '../components/DialogCloseButton'
-import { formatHalfShekel } from '../money-display'
+import { formatCurrencyAmount, formatHalfShekel } from '../money-display'
 
 type StoreBalance = { store_id: string; store_name: string; amount_ils: string }
 type SupplierSummary = {
@@ -316,7 +316,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) { re
 function IlsBalance({ amount }: { amount: string }) { return <span className="inline-block whitespace-nowrap rounded-xl bg-teal-50 px-2.5 py-2 font-black text-teal-900 ring-1 ring-inset ring-teal-100 sm:px-3" dir="ltr">₪{formatHalfShekel(amount)}</span> }
 function StoreBreakdown({ balances }: { balances: StoreBalance[] }) { return <div className="mt-3 space-y-1 text-sm text-slate-600">{balances.map((balance) => <p className="flex justify-between gap-4" key={balance.store_id}><span>{balance.store_name}</span><span dir="ltr">₪{formatHalfShekel(balance.amount_ils)}</span></p>)}</div> }
 function DetailSection({ title, children }: { title: string; children: ReactNode }) { return <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><h2 className="border-b border-slate-200 bg-slate-50 px-5 py-4 text-xl font-black">{title}</h2><div className="divide-y divide-slate-100">{children}</div></section> }
-function PurchasesList({ items }: { items: Purchase[] }) { if (!items.length) return <NoRecords />; return <>{items.map((item) => <RecordRow key={item.id} primary={`شراء ${item.document_number ?? `#${item.id}`}`} secondary={`${localDate(item.business_date)} · ${item.store_name} · ${statusLabel(item.status)}`} value={`${item.total} ${item.currency_code ?? ''}`} />)}</> }
+function PurchasesList({ items }: { items: Purchase[] }) { if (!items.length) return <NoRecords />; return <>{items.map((item) => <RecordRow key={item.id} primary={`شراء ${item.document_number ?? `#${item.id}`}`} secondary={`${localDate(item.business_date)} · ${item.store_name} · ${statusLabel(item.status)}`} value={formatCurrencyAmount(item.total, item.currency_code)} />)}</> }
 function PaymentsList({ items }: { items: Payment[] }) { if (!items.length) return <NoRecords />; return <>{items.map((item) => <RecordRow key={item.id} primary={paymentMethodLabel(item.payment_method)} secondary={`${localDate(item.paid_at)} · ${item.store_name}${item.reference ? ` · ${item.reference}` : ''}${item.currency_code === 'ILS' ? '' : ` · يعادل ₪${item.converted_ils_amount}`}`} value={originalMoney(item.original_amount, item.currency_code)} />)}</> }
 function ChecksList({ items }: { items: SupplierCheck[] }) {
   if (!items.length) return <NoRecords />
@@ -325,7 +325,7 @@ function ChecksList({ items }: { items: SupplierCheck[] }) {
       key={item.id}
       primary={item.is_owner_issued ? `شيك المنشأة ${item.check_number}` : <>{item.is_giro ? 'شيك جيرو' : 'شيك'} {item.check_number} من العميل {item.customer_id ? <Link className="text-teal-700 hover:text-teal-950 hover:underline" to={`/customers/${item.customer_id}`}>{item.customer_name}</Link> : item.customer_name}</>}
       secondary={`${item.is_giro ? `صاحب الشيك الأصلي: ${item.original_owner_name} · ${item.original_owner_phone} · ` : ''}${item.transferred_at ? `تاريخ التحويل ${localDate(item.transferred_at)} · ` : ''}استحقاق ${localDate(item.due_date)} · ${item.store_name} · ${customerCheckStatusLabel(item.status)}`}
-      value={`${item.amount} ${item.currency_code ?? ''}`}
+      value={formatCurrencyAmount(item.amount, item.currency_code)}
     />
   ))}</>
 }
@@ -334,4 +334,4 @@ function RecordRow({ primary, secondary, value }: { primary: ReactNode; secondar
 function NoRecords() { return <p className="p-5 text-slate-500">لا توجد سجلات.</p> }
 function EmptyState({ text, error = false }: { text: string; error?: boolean }) { return <p className={`rounded-2xl p-8 text-center text-lg font-black ${error ? 'bg-rose-50 text-rose-800' : 'bg-white text-slate-600'}`} role={error ? 'alert' : 'status'}>{text}</p> }
 function localDate(value: string) { return new Intl.DateTimeFormat('ar-PS', { dateStyle: 'medium', timeZone: 'Asia/Hebron' }).format(new Date(value)) }
-function originalMoney(amount: string, currency: string) { if (currency === 'ILS') return `₪${amount}`; if (currency === 'USD') return `$${amount}`; return `${amount} JOD` }
+function originalMoney(amount: string, currency: string) { return formatCurrencyAmount(amount, currency) }

@@ -45,18 +45,22 @@ export function InvoiceOutput({ invoice, onClose }: { invoice: SavedInvoice; onC
           </header>
           <table className="statement-table mt-5 w-full border-collapse text-right">
             <thead><tr><th>الصنف</th><th className="text-center">الكمية</th><th className="text-center">السعر</th><th className="receipt-hide text-center">الخصم</th><th className="text-center">الإجمالي</th></tr></thead>
-            <tbody>{invoice.items.map((item) => <tr key={item.id}><td className="font-bold">{item.description}</td><td className="text-center" dir="ltr">{formatDecimal(item.quantity)}</td><td className="text-center" dir="ltr">₪{formatDecimal(item.actual_price)}</td><td className="receipt-hide text-center" dir="ltr">₪{formatDecimal(item.discount)}</td><td className="text-center font-black" dir="ltr">₪{formatDecimal(item.total)}</td></tr>)}</tbody>
+            <tbody>{invoice.items.map((item) => <tr key={item.id}><td className="font-bold">{item.description}</td><td className="text-center" dir="ltr">{formatDecimal(item.quantity)}</td><td className="text-center"><ReceiptMoney value={item.actual_price} /></td><td className="receipt-hide text-center"><ReceiptMoney value={item.discount} /></td><td className="text-center font-black"><ReceiptMoney value={item.total} /></td></tr>)}</tbody>
           </table>
           <footer className="document-footer mr-auto mt-5 max-w-sm border-t-2 border-slate-900 pt-3 font-bold">
-            <p className="flex justify-between gap-4"><span>المجموع</span><span dir="ltr">₪{formatDecimal(invoice.items_subtotal)}</span></p>
-            <p className="mt-2 flex justify-between gap-4"><span>خصم الفاتورة</span><span dir="ltr">₪{formatDecimal(invoice.invoice_discount)}</span></p>
-            <p className="mt-2 flex justify-between gap-4 text-xl font-black"><span>الإجمالي</span><span dir="ltr">₪{formatDecimal(invoice.total)}</span></p>
-            <p className="mt-2 flex justify-between gap-4"><span>المدفوع</span><span dir="ltr">₪{formatDecimal(invoice.paid_total)}</span></p>
-            <p className="mt-2 flex justify-between gap-4"><span>المتبقي</span><span dir="ltr">₪{formatDecimal(invoice.remaining_due)}</span></p>
+            <p className="flex justify-between gap-4"><span>المجموع</span><ReceiptMoney value={invoice.items_subtotal} /></p>
+            <p className="mt-2 flex justify-between gap-4"><span>خصم الفاتورة</span><ReceiptMoney value={invoice.invoice_discount} /></p>
+            <p className="mt-2 flex justify-between gap-4 text-xl font-black"><span>الإجمالي</span><ReceiptMoney value={invoice.total} /></p>
+            <p className="mt-2 flex justify-between gap-4"><span>المدفوع</span><ReceiptMoney value={invoice.paid_total} /></p>
+            <p className="mt-2 flex justify-between gap-4"><span>المتبقي</span><ReceiptMoney value={invoice.remaining_due} /></p>
           </footer>
           <p className="mt-7 border-t border-slate-300 pt-3 text-center text-sm font-bold">شكراً لتعاملكم معنا</p>
         </article>
       </div>
     </div>
   )
+}
+
+function ReceiptMoney({ value }: { value: string }) {
+  return <span className="inline-flex flex-row items-baseline justify-center gap-0.5 whitespace-nowrap" dir="ltr"><span>₪</span><span>{formatDecimal(value)}</span></span>
 }

@@ -70,6 +70,12 @@ export function SupplierPaymentPage({ defaultStoreId, stores, onDraftStateChange
   const debt = supplier ? new Decimal(supplier.balance_ils) : null
   const remaining = debt && paid ? debt.minus(paid) : null
   const canSave = Boolean(supplier && debt?.greaterThan(0) && paid?.greaterThan(0) && !remaining?.lessThan(0) && !saving)
+  const saveBlockers = [
+    !debt?.greaterThan(0) ? 'لا يوجد دين على المورد لتسجيل دفعة.' : null,
+    paid === null ? 'أكمل بيانات الدفعة أو احذف طريقة الدفع غير المكتملة.' : null,
+    paid !== null && !paid?.greaterThan(0) ? 'أدخل مبلغ دفعة أكبر من صفر أو اختر شيكاً متاحاً.' : null,
+    remaining?.lessThan(0) ? 'مجموع الدفعة أكبر من دين المورد الحالي.' : null,
+  ].filter(Boolean)
   const hasDraft = Boolean(notes.trim() || payments.length > 1 || payments.some((payment) => payment.amount || payment.reference || payment.checkNumber || payment.checkId))
   useEffect(() => onDraftStateChange(hasDraft), [hasDraft, onDraftStateChange])
   useEffect(() => () => onDraftStateChange(false), [onDraftStateChange])
@@ -109,7 +115,7 @@ export function SupplierPaymentPage({ defaultStoreId, stores, onDraftStateChange
       {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-lg font-black text-rose-900">{error}</p>}
       <div className="mt-6 grid items-start gap-5 min-[1120px]:grid-cols-[20rem_minmax(0,1fr)]" dir="ltr">
         <div className="order-1 min-w-0 min-[1120px]:order-2" dir="rtl"><SupplierPaymentEditor businessDate={currentBusinessDate()} checks={checks} onChange={setPayments} payments={payments} /></div>
-        <aside aria-label="ملخص دفعة المورد" className="order-2 rounded-3xl border-2 border-slate-200 bg-white p-5 shadow-sm min-[1120px]:sticky min-[1120px]:top-4 min-[1120px]:order-1" dir="rtl"><label><span className="mb-2 block font-black">ملاحظات (اختياري)</span><textarea className="min-h-24 w-full rounded-xl border border-slate-300 p-3 text-lg" maxLength={2000} onChange={(event) => setNotes(event.target.value)} value={notes} /></label><div className="mt-4 rounded-2xl bg-slate-100 p-5"><Row label="الدين قبل الدفع" value={debt} /><Row label="مجموع الدفعة" value={paid} /><Row label="المتبقي" value={remaining} /><button className="mt-5 min-h-16 w-full rounded-2xl bg-violet-700 text-xl font-black text-white disabled:bg-slate-300 disabled:text-slate-600" disabled={!canSave} onClick={() => void save()} type="button">{saving ? 'جارٍ التسجيل…' : 'تسجيل الدفعة'}</button></div></aside>
+        <aside aria-label="ملخص دفعة المورد" className="order-2 rounded-3xl border-2 border-slate-200 bg-white p-5 shadow-sm min-[1120px]:sticky min-[1120px]:top-4 min-[1120px]:order-1" dir="rtl"><label><span className="mb-2 block font-black">ملاحظات (اختياري)</span><textarea className="min-h-24 w-full rounded-xl border border-slate-300 p-3 text-lg" maxLength={2000} onChange={(event) => setNotes(event.target.value)} value={notes} /></label><div className="mt-4 rounded-2xl bg-slate-100 p-5"><Row label="الدين قبل الدفع" value={debt} /><Row label="مجموع الدفعة" value={paid} /><Row label="المتبقي" value={remaining} /><button className="mt-5 min-h-16 w-full rounded-2xl bg-violet-700 text-xl font-black text-white disabled:bg-slate-300 disabled:text-slate-600" disabled={!canSave} onClick={() => void save()} type="button">{saving ? 'جارٍ التسجيل…' : 'تسجيل الدفعة'}</button>{!canSave && !saving && saveBlockers.length > 0 && <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-black text-amber-900" role="status">{saveBlockers.map((reason) => <p key={reason}>{reason}</p>)}</div>}</div></aside>
       </div>
     </section>
   )

@@ -68,7 +68,7 @@ function calculatePayment(payment: PaymentDraft) {
   const amount = parseDecimal(payment.amount, foreign ? 6 : 2)
   if (!amount || !amount.greaterThan(0)) return { amount: null, error: 'أدخل مبلغاً أكبر من صفر' }
   if (!foreign && !isHalfShekel(amount)) {
-    return { amount: null, error: 'المبلغ بالشيكل يجب أن يكون بمضاعفات 0.50' }
+    return { amount: null, error: 'المبلغ بـ ₪ يجب أن يكون بمضاعفات 0.50' }
   }
   if (payment.method === 'check' && !payment.checkNumber.trim()) {
     return { amount: null, error: 'رقم الشيك مطلوب' }
@@ -294,13 +294,13 @@ export function CustomerPaymentPage({
                   <button className="min-h-11 rounded-xl px-4 font-black text-rose-700 hover:bg-rose-50" disabled={payments.length === 1} onClick={() => setPayments((current) => current.filter((item) => item.id !== payment.id))} type="button">حذف</button>
                 </div>
                 <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  {payment.method === 'cash' && <PaymentField label="عملة النقد"><select className={inputClass} onChange={(event) => updatePayment(payment.id, { currency: event.target.value as Currency, exchangeRate: '' })} value={payment.currency}><option value="ILS">شيكل</option><option value="USD">دولار</option><option value="JOD">دينار</option></select></PaymentField>}
-                  <PaymentField label={foreign ? 'المبلغ الأصلي' : 'المبلغ بالشيكل'}><input className={inputClass} inputMode="decimal" onBlur={(event) => updatePayment(payment.id, { amount: normalized(event.target.value, foreign ? 6 : 2) })} onChange={(event) => updatePayment(payment.id, { amount: event.target.value })} placeholder="0" value={payment.amount} /></PaymentField>
+                  {payment.method === 'cash' && <PaymentField label="عملة النقد"><select className={inputClass} onChange={(event) => updatePayment(payment.id, { currency: event.target.value as Currency, exchangeRate: '' })} value={payment.currency}><option value="ILS">₪</option><option value="USD">دولار</option><option value="JOD">دينار</option></select></PaymentField>}
+                  <PaymentField label={foreign ? 'المبلغ الأصلي' : 'المبلغ (₪)'}><input className={inputClass} inputMode="decimal" onBlur={(event) => updatePayment(payment.id, { amount: normalized(event.target.value, foreign ? 6 : 2) })} onChange={(event) => updatePayment(payment.id, { amount: event.target.value })} placeholder="0" value={payment.amount} /></PaymentField>
                   {foreign && <PaymentField label="سعر الصرف اليدوي"><input className={inputClass} inputMode="decimal" onBlur={(event) => updatePayment(payment.id, { exchangeRate: normalized(event.target.value, 6) })} onChange={(event) => updatePayment(payment.id, { exchangeRate: event.target.value })} placeholder="مثال: 3.00" value={payment.exchangeRate} /></PaymentField>}
                   {payment.method === 'bank_card' && <PaymentField label="مرجع العملية (اختياري)"><input className={inputClass} maxLength={200} onChange={(event) => updatePayment(payment.id, { reference: event.target.value })} value={payment.reference} /></PaymentField>}
                   {payment.method === 'check' && <><PaymentField label="رقم الشيك"><input className={inputClass} maxLength={100} onChange={(event) => updatePayment(payment.id, { checkNumber: event.target.value })} value={payment.checkNumber} /></PaymentField><PaymentField label="تاريخ الاستحقاق"><input className={inputClass} onChange={(event) => updatePayment(payment.id, { dueDate: event.target.value })} type="date" value={payment.dueDate} /></PaymentField><PaymentField label="ملاحظات — اختياري"><input className={inputClass} maxLength={2000} onChange={(event) => updatePayment(payment.id, { notes: event.target.value })} value={payment.notes} /></PaymentField></>}
                   {payment.method === 'check' && payment.isGiro && <><PaymentField label="اسم صاحب الشيك الأصلي"><input className={inputClass} maxLength={150} onChange={(event) => updatePayment(payment.id, { originalOwnerName: event.target.value })} value={payment.originalOwnerName} /></PaymentField><PaymentField label="رقم هاتف صاحب الشيك الأصلي"><input className={inputClass} inputMode="tel" maxLength={50} onChange={(event) => updatePayment(payment.id, { originalOwnerPhone: event.target.value })} value={payment.originalOwnerPhone} /></PaymentField></>}
-                  <div className="rounded-xl bg-slate-100 p-3"><p className="font-bold text-slate-600">القيمة بالشيكل</p><p className="mt-1 text-xl font-black text-teal-900" dir="ltr">₪{calculation.amount?.toFixed() ?? '—'}</p></div>
+                  <div className="rounded-xl bg-slate-100 p-3"><p className="font-bold text-slate-600">القيمة بـ ₪</p><p className="mt-1 text-xl font-black text-teal-900" dir="ltr">₪{calculation.amount?.toFixed() ?? '—'}</p></div>
                 </div>
                 {calculation.error && <p className="mt-3 font-black text-rose-700">{calculation.error}</p>}
               </article>

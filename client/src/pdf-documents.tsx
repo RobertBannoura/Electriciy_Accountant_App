@@ -1,7 +1,8 @@
 /* eslint-disable react-refresh/only-export-components -- Lazily loaded PDF renderers intentionally export document factories and typed helpers. */
 import { Document, Font, Page, StyleSheet, Text, View, pdf } from '@react-pdf/renderer'
-import amiriBoldUrl from './assets/fonts/Amiri-Bold.ttf?url'
-import amiriRegularUrl from './assets/fonts/Amiri-Regular.ttf?url'
+import notoSansHebrewBoldUrl from './assets/fonts/NotoSansHebrew-Bold.ttf?url'
+import notoSansHebrewRegularUrl from './assets/fonts/NotoSansHebrew-Regular.ttf?url'
+import notoSansArabicUrl from './assets/fonts/NotoSansArabic-Variable.ttf?url'
 import { movementSourceLabel } from './business-labels'
 import { formatDecimal } from './money-display'
 import type { SavedInvoice } from './components/InvoiceOutput'
@@ -41,10 +42,18 @@ export type PdfAccountStatement = {
 }
 
 Font.register({
-  family: 'Amiri',
+  family: 'NotoArabic',
   fonts: [
-    { src: amiriRegularUrl, fontWeight: 400 },
-    { src: amiriBoldUrl, fontWeight: 700 },
+    { src: notoSansArabicUrl, fontWeight: 400 },
+    { src: notoSansArabicUrl, fontWeight: 700 },
+  ],
+})
+
+Font.register({
+  family: 'NotoHebrew',
+  fonts: [
+    { src: notoSansHebrewRegularUrl, fontWeight: 400 },
+    { src: notoSansHebrewBoldUrl, fontWeight: 700 },
   ],
 })
 
@@ -55,14 +64,16 @@ const colors = {
   soft: '#f1f5f9',
 }
 
+const MAX_STATEMENT_PAGE_HEIGHT = 475
+
 const styles = StyleSheet.create({
   page: {
     backgroundColor: '#ffffff', color: colors.ink, direction: 'rtl',
-    fontFamily: 'Amiri', fontSize: 9, padding: 28,
+    fontFamily: 'NotoArabic', fontSize: 8.4, padding: 28,
   },
   receiptPage: {
     backgroundColor: '#ffffff', color: colors.ink, direction: 'rtl',
-    fontFamily: 'Amiri', fontSize: 8, padding: 9,
+    fontFamily: 'NotoArabic', fontSize: 8, padding: 9,
   },
   brand: { color: colors.muted, direction: 'rtl', fontSize: 9, fontWeight: 700, textAlign: 'right' },
   title: { direction: 'rtl', fontSize: 22, fontWeight: 700, textAlign: 'right' },
@@ -78,17 +89,29 @@ const styles = StyleSheet.create({
   rtl: { direction: 'rtl', textAlign: 'right' },
   ltr: { direction: 'ltr', textAlign: 'left' },
   table: { borderColor: colors.line, borderLeftWidth: 1, borderTopWidth: 1 },
-  tableRow: { flexDirection: 'row-reverse', minHeight: 31 },
-  tableHeader: { backgroundColor: colors.soft, flexDirection: 'row-reverse', minHeight: 25 },
+  tableRow: { alignItems: 'stretch', flexDirection: 'row-reverse', minHeight: 40 },
+  tableHeader: { backgroundColor: colors.soft, flexDirection: 'row-reverse', minHeight: 27 },
   cell: {
     borderBottomColor: colors.line, borderBottomWidth: 1,
     borderRightColor: colors.line, borderRightWidth: 1,
-    direction: 'rtl', justifyContent: 'center', paddingHorizontal: 4,
-    paddingVertical: 4, textAlign: 'right',
+    direction: 'rtl', justifyContent: 'flex-start', paddingHorizontal: 4,
+    paddingVertical: 5, textAlign: 'right',
   },
-  cellText: { direction: 'rtl', fontSize: 8, textAlign: 'right' },
-  cellSmall: { color: colors.muted, direction: 'rtl', fontSize: 6.8, marginTop: 2, textAlign: 'right' },
-  cellLtr: { direction: 'ltr', fontSize: 8, textAlign: 'center' },
+  cellText: { direction: 'rtl', fontSize: 7.6, lineHeight: 1.75, textAlign: 'right' },
+  cellSmall: { color: colors.muted, direction: 'rtl', fontSize: 6.4, lineHeight: 1.85, marginTop: 2, textAlign: 'right' },
+  itemName: { color: colors.ink, direction: 'rtl', fontSize: 6.4, lineHeight: 1.8, marginTop: 3, textAlign: 'right' },
+  itemFormula: { color: colors.muted, direction: 'ltr', fontFamily: 'NotoHebrew', fontSize: 6.2, lineHeight: 1.55, textAlign: 'right' },
+  cellLtr: { direction: 'ltr', fontSize: 7.4, lineHeight: 1.45, textAlign: 'center' },
+  documentNumber: { direction: 'ltr', fontSize: 7.5, lineHeight: 1.45, textAlign: 'center' },
+  documentStore: { color: colors.muted, direction: 'rtl', fontSize: 6.5, lineHeight: 1.65, marginTop: 3, textAlign: 'center' },
+  moneyCell: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
+  moneyValue: {
+    alignItems: 'baseline', direction: 'ltr', flexDirection: 'row',
+    justifyContent: 'center', minWidth: 38,
+  },
+  moneyNumber: { direction: 'ltr', fontFamily: 'NotoHebrew', fontSize: 7.8, lineHeight: 1.2, textAlign: 'left' },
+  moneyNumberSmall: { color: colors.muted, fontSize: 7 },
+  shekelSymbol: { direction: 'ltr', fontFamily: 'NotoHebrew', fontSize: 8.2, lineHeight: 1.2, marginRight: 2 },
   footerBalance: {
     borderTopColor: colors.ink, borderTopWidth: 1.5, flexDirection: 'row-reverse',
     fontSize: 11, fontWeight: 700, justifyContent: 'space-between', marginTop: 9, paddingTop: 7,
@@ -101,11 +124,11 @@ const styles = StyleSheet.create({
 })
 
 const statementColumns = [
-  { key: 'date', label: 'التاريخ', width: '13%' },
-  { key: 'description', label: 'البيان', width: '34%' },
-  { key: 'document', label: 'المستند / المحل', width: '19%' },
-  { key: 'debit', label: 'مدين', width: '11%' },
-  { key: 'credit', label: 'دائن', width: '11%' },
+  { key: 'date', label: 'التاريخ', width: '10%' },
+  { key: 'description', label: 'البيان', width: '38%' },
+  { key: 'document', label: 'المستند / المتجر', width: '16%' },
+  { key: 'debit', label: 'مدين', width: '12%' },
+  { key: 'credit', label: 'دائن', width: '12%' },
   { key: 'balance', label: 'الرصيد', width: '12%' },
 ] as const
 
@@ -124,14 +147,55 @@ const receiptInvoiceColumns = [
   { key: 'total', label: 'الإجمالي', width: '19%' },
 ] as const
 
-const pdfCurrencyLabels: Record<string, string> = {
-  ILS: 'شيكل',
-  USD: 'دولار',
-  JOD: 'دينار',
+const pdfCurrencySymbols: Record<string, string> = {
+  ILS: '₪',
+  USD: '$',
+  JOD: 'د.أ',
 }
 
 export function formatPdfMoney(value: string, currencyCode = 'ILS') {
-  return `${formatDecimal(value)} ${pdfCurrencyLabels[currencyCode] ?? currencyCode}`
+  const symbol = pdfCurrencySymbols[currencyCode] ?? currencyCode
+  return `${symbol}${formatDecimal(value)}`
+}
+
+function MoneyValue({ bold = false, currencyCode = 'ILS', small = false, value }: {
+  bold?: boolean
+  currencyCode?: string
+  small?: boolean
+  value: string
+}) {
+  const amount = formatDecimal(value)
+  if (currencyCode !== 'ILS') {
+    return <Text style={[styles.moneyNumber, small ? styles.moneyNumberSmall : {}, bold ? styles.bold : {}]}>{formatPdfMoney(value, currencyCode)}</Text>
+  }
+
+  return <Text style={[styles.moneyNumber, small ? styles.moneyNumberSmall : {}, bold ? styles.bold : {}]}>₪{amount}</Text>
+}
+
+function PurchaseItemsList({ items }: { items: NonNullable<PdfStatementEntry['purchase_items']> }) {
+  if (!items.length) return null
+  return <View>
+    <Text style={styles.cellSmall}>الأصناف:</Text>
+    {items.map((item, index) => <View key={`${item.product}:${index}`} wrap={false}>
+      <Text style={styles.itemName}>{index + 1}. {item.product}</Text>
+      <Text style={styles.itemFormula}>{formatDecimal(item.quantity)} x {formatPdfMoney(item.unit_price)} = {formatPdfMoney(item.line_total)}</Text>
+    </View>)}
+  </View>
+}
+
+function normalizePdfText(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function estimateStatementRowHeight(entry: PdfStatementEntry) {
+  const itemCount = entry.purchase_items?.length ?? 0
+  const descriptionLength = normalizePdfText(entry.description ?? '').length
+  const descriptionLines = descriptionLength ? Math.max(1, Math.ceil(descriptionLength / 42)) : 0
+  const projectLines = entry.project_name ? 1 : 0
+  const itemNameLines = (entry.purchase_items ?? []).reduce((total, item) => {
+    return total + Math.max(1, Math.ceil(normalizePdfText(item.product).length / 34))
+  }, 0)
+  return 32 + (descriptionLines * 9) + (projectLines * 9) + (itemCount ? 8 : 0) + (itemNameLines * 10) + (itemCount * 9)
 }
 
 export function statementEntryLabel(entry: PdfStatementEntry, kind: PdfAccountStatement['kind']) {
@@ -176,38 +240,30 @@ function TableHeader({ columns }: { columns: ReadonlyArray<{ key: string; label:
 function StatementRow({ entry, kind }: { entry: PdfStatementEntry; kind: PdfAccountStatement['kind'] }) {
   const items = entry.purchase_items ?? []
   return <View style={styles.tableRow} wrap={false}>
-    <View style={[styles.cell, { width: '13%' }]}><Text style={styles.cellLtr}>{entry.date}</Text></View>
-    <View style={[styles.cell, { width: '34%' }]}>
+    <View style={[styles.cell, { width: '10%' }]}><Text style={styles.cellLtr}>{entry.date}</Text></View>
+    <View style={[styles.cell, { width: '38%' }]}>
       <Text style={[styles.cellText, styles.bold]}>{statementEntryLabel(entry, kind)}</Text>
-      {entry.description && <Text style={styles.cellSmall}>{entry.description}</Text>}
+      {entry.description && <Text style={styles.cellSmall}>{normalizePdfText(entry.description)}</Text>}
       {entry.project_name && <Text style={styles.cellSmall}>المشروع: {entry.project_name}</Text>}
-      {items.map((item, index) => <Text key={`${entry.id}:${index}`} style={styles.cellSmall}>
-        {item.product} - {formatDecimal(item.quantity)} × {formatPdfMoney(item.unit_price)} = {formatPdfMoney(item.line_total)}
-      </Text>)}
+      <PurchaseItemsList items={items} />
     </View>
-    <View style={[styles.cell, { width: '19%' }]}>
-      <Text style={styles.cellText}>{entry.document_number ?? `#${entry.source_id ?? entry.id}`}</Text>
-      <Text style={styles.cellSmall}>{entry.store_name}</Text>
+    <View style={[styles.cell, { width: '16%' }]}>
+      <Text style={styles.documentNumber}>{entry.document_number ?? `#${entry.source_id ?? entry.id}`}</Text>
+      <Text style={styles.documentStore}>{entry.store_name}</Text>
     </View>
-    <View style={[styles.cell, { width: '11%' }]}><Text style={styles.cellLtr}>{entry.debit === '0' ? '—' : formatPdfMoney(entry.debit)}</Text></View>
-    <View style={[styles.cell, { width: '11%' }]}><Text style={styles.cellLtr}>{entry.credit === '0' ? '—' : formatPdfMoney(entry.credit)}</Text></View>
-    <View style={[styles.cell, { width: '12%' }]}><Text style={[styles.cellLtr, styles.bold]}>{formatPdfMoney(entry.running_balance)}</Text></View>
+    <View style={[styles.cell, styles.moneyCell, { width: '12%' }]}>{entry.debit === '0' ? <Text style={styles.cellLtr}>—</Text> : <MoneyValue value={entry.debit} />}</View>
+    <View style={[styles.cell, styles.moneyCell, { width: '12%' }]}>{entry.credit === '0' ? <Text style={styles.cellLtr}>—</Text> : <MoneyValue value={entry.credit} />}</View>
+    <View style={[styles.cell, styles.moneyCell, { width: '12%' }]}><MoneyValue bold value={entry.running_balance} /></View>
   </View>
 }
 
 function StatementPdfDocument({ statement }: { statement: PdfAccountStatement }) {
   const pages = statement.entries.reduce<PdfStatementEntry[][]>((result, entry) => {
-    const estimatedHeight = 31
-      + (entry.description ? 9 : 0)
-      + (entry.project_name ? 9 : 0)
-      + (entry.purchase_items?.length ?? 0) * 9
+    const estimatedHeight = estimateStatementRowHeight(entry)
     const current = result.at(-1)!
-    const currentHeight = current.reduce((height, item) => height + 31
-      + (item.description ? 9 : 0)
-      + (item.project_name ? 9 : 0)
-      + (item.purchase_items?.length ?? 0) * 9, 0)
+    const currentHeight = current.reduce((height, item) => height + estimateStatementRowHeight(item), 0)
 
-    if (current.length && currentHeight + estimatedHeight > 530) result.push([entry])
+    if (current.length && currentHeight + estimatedHeight > MAX_STATEMENT_PAGE_HEIGHT) result.push([entry])
     else current.push(entry)
     return result
   }, [[]])
@@ -217,7 +273,7 @@ function StatementPdfDocument({ statement }: { statement: PdfAccountStatement })
       <StatementHeader statement={statement} />
       {pageIndex === 0 && <View style={styles.balance}>
         <Text style={[styles.rtl, styles.bold]}>الرصيد الافتتاحي</Text>
-        <Text style={[styles.ltr, styles.bold]}>{formatPdfMoney(statement.opening_balance)}</Text>
+        <MoneyValue bold value={statement.opening_balance} />
       </View>}
       <View style={[styles.table, { marginTop: pageIndex === 0 ? 0 : 8 }]}>
         <TableHeader columns={statementColumns} />
@@ -228,7 +284,7 @@ function StatementPdfDocument({ statement }: { statement: PdfAccountStatement })
       </View>
       {pageIndex === pages.length - 1 && <View style={styles.footerBalance}>
         <Text style={styles.rtl}>الرصيد الختامي</Text>
-        <Text style={styles.ltr}>{formatPdfMoney(statement.closing_balance)}</Text>
+        <MoneyValue bold value={statement.closing_balance} />
       </View>}
       <Text fixed render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`} style={styles.pageNumber} />
     </Page>)}
@@ -256,18 +312,18 @@ function InvoiceRow({ item, receipt }: { item: SavedInvoice['items'][number]; re
   const columns = receipt ? [
     { value: item.description, width: '46%', rtl: true },
     { value: formatDecimal(item.quantity), width: '16%', rtl: false },
-    { value: `₪${formatDecimal(item.actual_price)}`, width: '19%', rtl: false },
-    { value: `₪${formatDecimal(item.total)}`, width: '19%', rtl: false },
+    { value: item.actual_price, width: '19%', money: true },
+    { value: item.total, width: '19%', money: true },
   ] : [
     { value: item.description, width: '38%', rtl: true },
     { value: formatDecimal(item.quantity), width: '14%', rtl: false },
-    { value: `₪${formatDecimal(item.actual_price)}`, width: '18%', rtl: false },
-    { value: `₪${formatDecimal(item.discount)}`, width: '14%', rtl: false },
-    { value: `₪${formatDecimal(item.total)}`, width: '16%', rtl: false },
+    { value: item.actual_price, width: '18%', money: true },
+    { value: item.discount, width: '14%', money: true },
+    { value: item.total, width: '16%', money: true },
   ]
   return <View style={styles.tableRow} wrap={false}>
-    {columns.map((column, index) => <View key={index} style={[styles.cell, { width: column.width }]}>
-      <Text style={column.rtl ? styles.cellText : styles.cellLtr}>{column.value}</Text>
+    {columns.map((column, index) => <View key={index} style={[styles.cell, column.money ? styles.moneyCell : {}, { width: column.width }]}>
+      {column.money ? <MoneyValue value={column.value} /> : <Text style={column.rtl ? styles.cellText : styles.cellLtr}>{column.value}</Text>}
     </View>)}
   </View>
 }
@@ -297,7 +353,7 @@ function InvoicePdfDocument({ invoice, size }: { invoice: SavedInvoice; size: 'A
 function SummaryRow({ bold = false, label, value }: { bold?: boolean; label: string; value: string }) {
   return <View style={styles.summaryRow}>
     <Text style={[styles.rtl, bold ? styles.bold : {}]}>{label}</Text>
-    <Text style={[styles.ltr, bold ? styles.bold : {}]}>₪{formatDecimal(value)}</Text>
+    <MoneyValue bold={bold} value={value} />
   </View>
 }
 

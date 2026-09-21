@@ -34,7 +34,7 @@ export function parseSalePayments(value) {
       && row.currency !== null
       && row.currency !== 'ILS'
     ) {
-      return { error: 'دفعات البطاقة والبنك والشيك تُسجل بالشيكل فقط' }
+      return { error: 'دفعات البطاقة والبنك والشيك تُسجل بـ ₪ فقط' }
     }
 
     const currency = method === 'cash' ? row?.currency : 'ILS'
@@ -65,10 +65,10 @@ export function parseSalePayments(value) {
     } catch (error) {
       if (!(error instanceof MoneyValidationError)) throw error
       if (error.code === 'UNSUPPORTED_CURRENCY') {
-        return { error: 'عملة النقد يجب أن تكون شيكلاً أو دولاراً أو ديناراً' }
+        return { error: 'عملة النقد يجب أن تكون ₪ أو دولاراً أو ديناراً' }
       }
       if (error.code === 'INVALID_ILS_STEP') {
-        return { error: 'مبلغ الدفع بالشيكل يجب أن يكون بمضاعفات 0.50' }
+        return { error: 'مبلغ الدفع بـ ₪ يجب أن يكون بمضاعفات 0.50' }
       }
       return { error: 'بيانات مبلغ الدفع أو سعر الصرف غير صالحة' }
     }

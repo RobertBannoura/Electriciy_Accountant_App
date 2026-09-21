@@ -115,6 +115,7 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
       ],
     )
     const purchase = purchaseResult.rows[0]
+    const purchaseDocumentNumber = purchase.document_number
     const savedItems = []
     for (const item of calculated.items) {
       const result = await client.query(
@@ -149,7 +150,7 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
           RETURNING id::TEXT AS id, occurred_at
         `,
         [storeId, productId, quantity.toFixed(), input.businessDate, purchase.id,
-          `فاتورة شراء ${input.documentNumber}`, userId],
+          `فاتورة شراء ${purchaseDocumentNumber}`, userId],
       )
       const movement = movementResult.rows[0]
       const cost = costUpdates.get(productId)
@@ -172,7 +173,7 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
       amount: calculated.total,
       sourceId: purchase.id,
       occurredAt: input.businessDate,
-      notes: `فاتورة شراء ${input.documentNumber}`,
+      notes: `فاتورة شراء ${purchaseDocumentNumber}`,
       userId,
     })
     const savedPayments = await writeSupplierPayments(client, {
@@ -192,7 +193,7 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
       entityType: 'purchase',
       entityId: purchase.id,
       newValues: {
-        documentNumber: input.documentNumber,
+        documentNumber: purchaseDocumentNumber,
         supplierId: supplier.id,
         totalIls: calculated.total,
         paidTotalIls: prepared.total,

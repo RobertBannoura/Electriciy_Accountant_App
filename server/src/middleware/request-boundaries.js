@@ -3,6 +3,36 @@ import { isIP } from 'node:net'
 
 const requestIdPattern = /^[A-Za-z0-9._:-]{1,100}$/
 
+function isPrivateOrLoopbackIpv4(hostname) {
+  const octets = hostname.split('.').map(Number)
+  return octets.length === 4
+    && octets.every((octet) => Number.isInteger(octet) && octet >= 0 && octet <= 255)
+    && (
+      octets[0] === 10
+      || octets[0] === 127
+      || (octets[0] === 169 && octets[1] === 254)
+      || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+      || (octets[0] === 192 && octets[1] === 168)
+    )
+}
+
+export function isDevelopmentBrowserOrigin(origin) {
+  let parsed
+  try {
+    parsed = new URL(origin)
+  } catch {
+    return false
+  }
+
+  if (parsed.protocol !== 'http:' || parsed.username || parsed.password || parsed.pathname !== '/') {
+    return false
+  }
+
+  if (parsed.search || parsed.hash || !parsed.port) return false
+  if (parsed.hostname === 'localhost') return true
+  return isIP(parsed.hostname) === 4 && isPrivateOrLoopbackIpv4(parsed.hostname)
+}
+
 export function createProxyClientIpNormalizer(clientIpHeader) {
   if (clientIpHeader === 'x-forwarded-for') {
     return function retainStandardForwardedFor(_request, _response, next) {
@@ -59,13 +89,17 @@ export function validateRequestMetadata(request, _response, next) {
   next()
 }
 
-export function createOriginGuard(trustedOrigins) {
+export function createOriginGuard(trustedOrigins, { allowDevelopmentBrowserOrigins = false } = {}) {
   const trusted = new Set(trustedOrigins)
 
   return function requireTrustedOrigin(request, _response, next) {
     const origin = request.get('origin')
 
-    if (origin !== undefined && !trusted.has(origin)) {
+    const trustedOrigin = origin === undefined
+      || trusted.has(origin)
+      || (allowDevelopmentBrowserOrigins && isDevelopmentBrowserOrigin(origin))
+
+    if (!trustedOrigin) {
       throw new AppError(
         'مصدر الطلب غير مسموح',
         403,

@@ -252,7 +252,7 @@ export function MaintenancePage({
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <label><span className="mb-1.5 block font-black">الجهاز أو القطعة *</span><input autoFocus className={inputClass} maxLength={200} onChange={(event) => setItemDescription(event.target.value)} placeholder="مثال: مضخة مياه" required value={itemDescription} /></label>
                 <label><span className="mb-1.5 block font-black">العميل (اختياري)</span><select className={inputClass} onChange={(event) => setCustomerId(event.target.value)} value={customerId}><option value="">بدون عميل — دفع كامل</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
-                <label><span className="mb-1.5 block font-black">المبلغ بالشيكل *</span><input className={inputClass} inputMode="decimal" onChange={(event) => setAmount(event.target.value)} placeholder="0.00" required value={amount} />{amount && !amountValid && <span className="mt-1.5 block text-sm font-bold text-rose-700">أدخل مبلغاً أكبر من صفر وبمضاعفات 0.50</span>}</label>
+                <label><span className="mb-1.5 block font-black">المبلغ (₪) *</span><input className={inputClass} inputMode="decimal" onChange={(event) => setAmount(event.target.value)} placeholder="0.00" required value={amount} />{amount && !amountValid && <span className="mt-1.5 block text-sm font-bold text-rose-700">أدخل مبلغاً أكبر من صفر وبمضاعفات 0.50</span>}</label>
                 <label><span className="mb-1.5 block font-black">التاريخ *</span><input className={inputClass} onChange={(event) => setBusinessDate(event.target.value)} required type="date" value={businessDate} /></label>
               </div>
             </section>

@@ -47,7 +47,7 @@ test('customer payment screen keeps mixed payment editing inline and uses the co
     '+ نقدي',
     '+ بطاقة / بنك',
     '+ شيك',
-    'شيكل',
+    '₪',
     'دولار',
     'دينار',
     'سعر الصرف اليدوي',

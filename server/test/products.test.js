@@ -51,7 +51,7 @@ test('rejects invalid prices and missing categories', () => {
 
   assert.match(
     parseProductInput({ ...base, defaultSalePrice: '10.25' }).error,
-    /نصف شيكل/,
+    /₪0\.50/,
   )
   assert.match(parseProductInput({ ...base, categoryId: '' }).error, /تصنيف/)
   assert.match(parseProductInput({ ...base, categoryId: 1 }).error, /تصنيف/)

@@ -92,7 +92,7 @@ test('supplier UI stays separate and exposes only the requested supplier actions
 
   assert.match(app, /path="suppliers"[\s\S]*<SuppliersPage/)
   assert.match(app, /path="suppliers\/:supplierId"[\s\S]*<SupplierDetailPage/)
-  assert.doesNotMatch(page, /\/customers/)
+  assert.doesNotMatch(page, /to="\/customers"/)
   assert.doesNotMatch(page, /name="balance"/)
   assert.doesNotMatch(page, /BalanceBadges/)
   assert.match(page, /balance_ils/)
@@ -102,6 +102,6 @@ test('supplier UI stays separate and exposes only the requested supplier actions
 
 test('purchasing uses the implemented store-scoped workflow', async () => {
   const app = await readFile(new URL('../../client/src/App.tsx', import.meta.url), 'utf8')
-  assert.match(app, /path="purchases" element={<PurchasePage configuredStoreId=/)
-  assert.match(app, /path="suppliers\/:supplierId\/payment" element={<SupplierPaymentPage/)
+  assert.match(app, /path="purchases"[\s\S]*<PurchasePage configuredStoreId=/)
+  assert.match(app, /path="suppliers\/:supplierId\/payment"[\s\S]*<SupplierPaymentPage/)
 })

@@ -58,7 +58,7 @@ test('sale input permits automatic invoice numbering and validates the remaining
   )
   assert.match(
     parseSaleInput({ ...base, invoiceDiscount: '0.25' }).error,
-    /نصف شيكل/,
+    /₪0\.50/,
   )
 })
 

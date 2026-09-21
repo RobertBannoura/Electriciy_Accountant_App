@@ -117,10 +117,10 @@ export function parseProductInput(body) {
   if (!saleUnit) return { error: 'وحدة البيع يجب أن تكون قطعة أو متر' }
   if (barcode === undefined) return { error: 'الباركود غير صالح ولا يجوز أن يحتوي مسافات' }
   if (purchasePrice === undefined || !isHalfShekelAmount(purchasePrice)) {
-    return { error: 'سعر الشراء يجب أن يكون صفراً أو موجباً وبمضاعفات نصف شيكل' }
+    return { error: 'سعر الشراء يجب أن يكون صفراً أو موجباً وبمضاعفات ₪0.50' }
   }
   if (salePrice === undefined || !isHalfShekelAmount(salePrice)) {
-    return { error: 'سعر البيع يجب أن يكون صفراً أو موجباً وبمضاعفات نصف شيكل' }
+    return { error: 'سعر البيع يجب أن يكون صفراً أو موجباً وبمضاعفات ₪0.50' }
   }
   if (
     body?.notes !== undefined &&

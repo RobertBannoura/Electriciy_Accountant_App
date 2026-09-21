@@ -89,12 +89,18 @@ test('protected routes and store name updates reject unauthenticated requests', 
   assert.equal(updateBody.error.code, 'AUTHENTICATION_REQUIRED')
 })
 
-test('allows only the canonical frontend development origin through CORS', async () => {
+test('allows canonical and private LAN development origins through CORS', async () => {
   const allowedResponse = await fetch(`${baseUrl}/api/health`, {
     headers: { Origin: 'http://localhost:5173' },
   })
-  const rejectedResponse = await fetch(`${baseUrl}/api/health`, {
+  const lanResponse = await fetch(`${baseUrl}/api/health`, {
     headers: { Origin: 'http://127.0.0.1:5173' },
+  })
+  const privateLanResponse = await fetch(`${baseUrl}/api/health`, {
+    headers: { Origin: 'http://192.168.1.28:5173' },
+  })
+  const rejectedResponse = await fetch(`${baseUrl}/api/health`, {
+    headers: { Origin: 'https://attacker.example' },
   })
   const allowedPreflight = await fetch(`${baseUrl}/api/stores`, {
     method: 'OPTIONS',
@@ -115,6 +121,16 @@ test('allows only the canonical frontend development origin through CORS', async
   assert.equal(
     allowedResponse.headers.get('access-control-allow-origin'),
     'http://localhost:5173',
+  )
+  assert.equal(lanResponse.status, 200)
+  assert.equal(
+    lanResponse.headers.get('access-control-allow-origin'),
+    'http://127.0.0.1:5173',
+  )
+  assert.equal(privateLanResponse.status, 200)
+  assert.equal(
+    privateLanResponse.headers.get('access-control-allow-origin'),
+    'http://192.168.1.28:5173',
   )
   const rejectedBody = await rejectedResponse.json()
 

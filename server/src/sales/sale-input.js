@@ -75,7 +75,7 @@ export function parseSaleInput(body) {
     return { error: 'يجب اختيار العميل عند اختيار مشروع له' }
   }
   if (invoiceDiscount === undefined) {
-    return { error: 'خصم الفاتورة يجب أن يكون مبلغاً موجباً أو صفراً وبمضاعفات نصف شيكل' }
+    return { error: 'خصم الفاتورة يجب أن يكون مبلغاً موجباً أو صفراً وبمضاعفات ₪0.50' }
   }
   if (parsedPayments.error) return parsedPayments
   if (!Array.isArray(body?.items) || body.items.length === 0) {
@@ -103,10 +103,10 @@ export function parseSaleInput(body) {
       return { error: 'كمية كل بند يجب أن تكون أكبر من صفر وبحد أقصى ثلاث منازل عشرية' }
     }
     if (actualPrice === undefined) {
-      return { error: 'سعر البيع الفعلي لكل بند مطلوب وبمضاعفات نصف شيكل' }
+      return { error: 'سعر البيع الفعلي لكل بند مطلوب وبمضاعفات ₪0.50' }
     }
     if (discount === undefined) {
-      return { error: 'خصم كل بند يجب أن يكون مبلغاً موجباً أو صفراً وبمضاعفات نصف شيكل' }
+      return { error: 'خصم كل بند يجب أن يكون مبلغاً موجباً أو صفراً وبمضاعفات ₪0.50' }
     }
 
     items.push(productId === null

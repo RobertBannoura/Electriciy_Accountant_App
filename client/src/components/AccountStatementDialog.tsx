@@ -6,6 +6,7 @@ import { formatDecimal } from '../money-display'
 import { DialogCloseButton } from './DialogCloseButton'
 import type { Store } from '../types'
 import { DocumentOutputActions } from './DocumentOutputActions'
+import { DateField } from './DateField'
 import type { PdfAccountStatement, PdfStatementEntry } from '../pdf-documents'
 
 type AccountStatement = PdfAccountStatement
@@ -106,9 +107,9 @@ export function AccountStatementDialog({
           <h2 className="text-2xl font-black">{kind === 'customer' ? 'كشف حساب عميل' : 'كشف حساب مورد'}</h2>
           <DialogCloseButton onClick={onClose} />
         </div>
-        <div className="mb-5 grid gap-3 rounded-2xl bg-slate-100 p-4 print:hidden sm:grid-cols-2 lg:grid-cols-4">
-          <label className="font-black">من<input className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3" max={to} onChange={(event) => setFrom(event.target.value)} type="date" value={from} /></label>
-          <label className="font-black">إلى<input className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 px-3" min={from} onChange={(event) => setTo(event.target.value)} type="date" value={to} /></label>
+        <div className="mb-5 grid min-w-0 gap-3 rounded-2xl bg-slate-100 p-4 print:hidden sm:grid-cols-2 lg:grid-cols-4">
+          <DateField label="من" max={to} onChange={setFrom} value={from} />
+          <DateField label="إلى" min={from} onChange={setTo} value={to} />
           <label className="font-black">المحل<select className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3" onChange={(event) => setStoreId(event.target.value)} value={storeId}><option value="">كل المحلات</option>{stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}</select></label>
           {kind === 'customer' && <label className="font-black">المشروع<select className="mt-2 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-3" onChange={(event) => setProjectId(event.target.value)} value={projectId}><option value="">كل المشاريع</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>}
         </div>

@@ -31,3 +31,16 @@ export function formatHalfShekel(value: string) {
 export function formatIls(value: string) {
   return `₪${formatMoney(value)}`
 }
+
+export function currencySymbol(currency: string | null | undefined) {
+  if (currency === 'ILS') return '₪'
+  if (currency === 'USD') return '$'
+  if (currency === 'JOD') return 'د.أ'
+  return currency ?? ''
+}
+
+export function formatCurrencyAmount(value: string, currency: string | null | undefined) {
+  const amount = formatDecimal(value)
+  if (currency === 'JOD') return `${amount} ${currencySymbol(currency)}`
+  return `${currencySymbol(currency)}${amount}`
+}

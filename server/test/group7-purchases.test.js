@@ -26,6 +26,10 @@ test('purchase and supplier payment inputs cover all four settlement methods', (
   assert.deepEqual(parsed.value.payments.map((payment) => payment.method), [
     'cash', 'bank', 'owner_check', 'transferred_customer_check',
   ])
+  assert.equal(parsePurchaseInput({ ...purchaseInput, documentNumber: '' }).value.documentNumber, null)
+  assert.equal(parsePurchaseInput({ ...purchaseInput, documentNumber: '   ' }).value.documentNumber, null)
+  assert.equal(parsePurchaseInput({ ...purchaseInput, documentNumber: undefined }).value.documentNumber, null)
+  assert.match(parsePurchaseInput({ ...purchaseInput, documentNumber: 'x'.repeat(101) }).error, /رقم فاتورة الشراء/)
 
   assert.match(parsePurchaseInput({ ...purchaseInput, items: [...purchaseInput.items, purchaseInput.items[0]] }).error, /تكرار/)
   assert.match(parseSupplierPaymentInput({ payments: [] }).error, /طريقة دفع/)
@@ -209,9 +213,10 @@ test('standalone supplier payments cannot exceed locked supplier debt', async ()
 })
 
 test('purchase migration protects historical costs and links payment instruments', async () => {
-  const [sql, manualItemsSql] = await Promise.all([
+  const [sql, manualItemsSql, automaticNumberSql] = await Promise.all([
     readFile(new URL('../db/migrations/0019_purchase_entry_and_supplier_payments.sql', import.meta.url), 'utf8'),
     readFile(new URL('../db/migrations/0026_manual_purchase_items.sql', import.meta.url), 'utf8'),
+    readFile(new URL('../db/migrations/0028_automatic_purchase_document_numbers.sql', import.meta.url), 'utf8'),
   ])
   assert.match(sql, /CREATE TRIGGER purchase_items_immutable/)
   assert.match(sql, /ADD COLUMN purchase_id BIGINT/)
@@ -221,6 +226,10 @@ test('purchase migration protects historical costs and links payment instruments
   assert.match(manualItemsSql, /purchase_items_description_not_blank/)
   assert.match(manualItemsSql, /BTRIM\(description\) <> ''/)
   assert.match(manualItemsSql, /never create stock or cost movements/)
+  assert.match(automaticNumberSql, /assign_automatic_purchase_document_number/)
+  assert.match(automaticNumberSql, /BEFORE INSERT ON purchases/)
+  assert.match(automaticNumberSql, /NEW\.id/)
+  assert.match(automaticNumberSql, /purchases_document_number_not_blank/)
 })
 
 test('purchase UI supports scanner search and all supplier settlement choices', async () => {

@@ -151,6 +151,33 @@ html[data-connection='offline'] a[href*='/payment'] {
   }
 }
 
+@media screen {
+  .supplier-statement.statement-print-area {
+    width: min(100%, 210mm);
+    min-height: 297mm;
+    margin-inline: auto;
+    padding: 12mm;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 18px 45px rgb(15 23 42 / 12%);
+  }
+
+  .supplier-statement.statement-print-area .statement-table {
+    table-layout: fixed;
+  }
+
+  .supplier-statement.statement-print-area .statement-table th,
+  .supplier-statement.statement-print-area .statement-table td {
+    overflow-wrap: anywhere;
+    vertical-align: top;
+  }
+
+  .supplier-statement.statement-print-area .statement-table small {
+    display: block;
+    margin-top: 0.25rem;
+    line-height: 1.6;
+  }
+}
+
 @media print {
   body * {
     visibility: hidden;
@@ -220,6 +247,7 @@ html[data-connection='offline'] a[href*='/payment'] {
   .statement-table td {
     border: 1px solid #cbd5e1;
     padding: 2.5mm;
+    overflow-wrap: anywhere;
     vertical-align: top;
   }
 
