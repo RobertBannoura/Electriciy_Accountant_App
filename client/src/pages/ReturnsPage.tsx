@@ -2,7 +2,7 @@ import Decimal from 'decimal.js'
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiFetch, storeScopedApiFetch } from '../api'
-import { formatDecimal } from '../money-display'
+import { formatDecimal, formatQuantity } from '../money-display'
 
 type SourceItem = {
   id: string
@@ -123,7 +123,7 @@ function ReturnPage({ configuredStoreId, kind, onDraftStateChange }: {
       <form className="mt-6 space-y-6" onSubmit={submit}>
         <label className="block"><span className="mb-2 block font-black">{sourceLabel}</span><select className={inputClass} disabled={loading || (!configuredStoreId && !window.desktop)} onChange={(event) => { setDocumentId(event.target.value); setQuantities({}); setSuccess(null) }} required value={documentId}><option value="">{loading ? 'جارٍ التحميل…' : 'اختر الفاتورة'}</option>{documents.map((document) => <option key={document.id} value={document.id}>{document.document_number} — {document.party_name ?? 'بيع نقدي'} — {document.business_date}</option>)}</select></label>
         {hasMoreSources && <button className="min-h-11 rounded-xl border border-slate-300 px-5 font-black" onClick={() => void load(sourcePage + 1, true)} type="button">تحميل فواتير أقدم</button>}
-        {selected && <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="border-b bg-slate-50 p-4 font-black">أصناف الفاتورة</div>{selected.items.map((item) => <div className="grid items-center gap-3 border-b p-4 last:border-0 sm:grid-cols-[1fr_12rem]" key={item.id}><div><p className="font-black">{item.description}</p><p className="text-sm text-slate-600">المتاح للمرتجع: {item.returnable_quantity} من أصل {item.original_quantity}</p></div><label><span className="sr-only">كمية مرتجع {item.description}</span><input className={inputClass} inputMode="decimal" max={item.returnable_quantity} min="0" onChange={(event) => setQuantities((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="الكمية المرتجعة" step="0.001" value={quantities[item.id] ?? ''} /></label></div>)}</div>}
+        {selected && <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="border-b bg-slate-50 p-4 font-black">أصناف الفاتورة</div>{selected.items.map((item) => <div className="grid items-center gap-3 border-b p-4 last:border-0 sm:grid-cols-[1fr_12rem]" key={item.id}><div><p className="font-black">{item.description}</p><p className="text-sm text-slate-600">المتاح للمرتجع: {formatQuantity(item.returnable_quantity)} من أصل {formatQuantity(item.original_quantity)}</p></div><label><span className="sr-only">كمية مرتجع {item.description}</span><input className={inputClass} inputMode="decimal" max={item.returnable_quantity} min="0" onChange={(event) => setQuantities((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="الكمية المرتجعة" step="0.001" value={quantities[item.id] ?? ''} /></label></div>)}</div>}
         {kind === 'customer' && <p className="rounded-xl bg-sky-50 p-4 text-sm font-bold text-sky-900">ينشئ المرتجع رصيداً دائناً للعميل ولا يصرف مبلغاً نقدياً تلقائياً.</p>}
         {error && <p className="rounded-xl bg-rose-50 p-4 font-bold text-rose-800" role="alert">{error}</p>}
         {success && <p className="rounded-xl bg-emerald-50 p-4 font-bold text-emerald-900" role="status">{success}</p>}

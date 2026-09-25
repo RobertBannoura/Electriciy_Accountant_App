@@ -53,7 +53,8 @@ test('offline financial requests are rejected in the client and never queued for
     readFile(clientFile('src/api.ts'), 'utf8'),
     readFile(clientFile('public/sw.js'), 'utf8'),
   ])
-  assert.match(api, /!navigator\.onLine \|\| \(isMutation\(init\) && !serverReachable\)/)
+  assert.match(api, /!window\.desktop\?\.trialMode && !navigator\.onLine/)
+  assert.match(api, /isMutation\(init\) && !serverReachable/)
   assert.match(api, /return Promise\.reject/)
   assert.doesNotMatch(`${api}\n${serviceWorker}`, /indexedDB|sync\.register|addEventListener\(['"]sync['"]|Background Sync/i)
   assert.doesNotMatch(serviceWorker, /cache\.put\([^\n]*(POST|request\.method)/i)

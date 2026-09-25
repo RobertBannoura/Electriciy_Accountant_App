@@ -4,7 +4,7 @@ import { isValidEan13 } from '../barcodes/ean13'
 import { BarcodePreview } from '../components/BarcodePreview'
 import { DialogCloseButton } from '../components/DialogCloseButton'
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner'
-import { formatMoney } from '../money-display'
+import { formatMoney, formatQuantity } from '../money-display'
 import { Store } from '../types'
 
 type Category = { id: string; name: string }
@@ -276,7 +276,7 @@ export function ProductsPage({
                       <p className="mt-0.5 truncate text-xs font-bold text-slate-500">{product.category_name}{product.default_sale_price ? ` · بيع ₪${formatMoney(product.default_sale_price)}` : ''}</p>
                     </div>
                     <div className="shrink-0 text-left">
-                      <p className="font-black text-teal-800" dir="ltr">{displayedQuantity} <span className="text-xs">{product.sale_unit}</span></p>
+                      <p className="font-black text-teal-800" dir="ltr">{formatQuantity(displayedQuantity)} <span className="text-xs">{product.sale_unit}</span></p>
                       <p className="text-[10px] font-bold text-slate-400">{storeFilter ? 'المحل' : 'الإجمالي'}</p>
                     </div>
                     <svg aria-hidden="true" className="size-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>
@@ -289,8 +289,8 @@ export function ProductsPage({
                           <p className="text-xs font-bold text-violet-700">متوسط التكلفة ₪{formatMoney(inventory.weighted_average_cost)}</p>
                         </div>
                         <div className="shrink-0 text-left">
-                          <p className={`font-black ${inventory.low_stock ? 'text-amber-800' : 'text-slate-900'}`} dir="ltr">{inventory.quantity} {product.sale_unit}</p>
-                          {inventory.low_stock && <p className="text-[10px] font-bold text-amber-700">الحد {inventory.reorder_level}</p>}
+                          <p className={`font-black ${inventory.low_stock ? 'text-amber-800' : 'text-slate-900'}`} dir="ltr">{formatQuantity(inventory.quantity)} {product.sale_unit}</p>
+                          {inventory.low_stock && <p className="text-[10px] font-bold text-amber-700">الحد {formatQuantity(inventory.reorder_level)}</p>}
                         </div>
                       </div>
                     ))}
@@ -322,15 +322,15 @@ export function ProductsPage({
                     .map((inventory) => (
                     <div className={`min-w-48 rounded-xl border p-4 ${inventory.low_stock ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50'}`} key={inventory.store_id}>
                       <p className="font-bold text-slate-600">{inventory.store_name}</p>
-                      <p className="mt-1 text-2xl font-black">{inventory.quantity} <span className="text-base">{product.sale_unit}</span></p>
+                      <p className="mt-1 text-2xl font-black">{formatQuantity(inventory.quantity)} <span className="text-base">{product.sale_unit}</span></p>
                       <p className="mt-1 text-sm font-bold text-violet-800">متوسط التكلفة: ₪{formatMoney(inventory.weighted_average_cost)}</p>
-                      {inventory.low_stock && <p className="mt-1 text-sm font-black text-amber-800">مخزون منخفض · الحد {inventory.reorder_level}</p>}
+                      {inventory.low_stock && <p className="mt-1 text-sm font-black text-amber-800">مخزون منخفض · الحد {formatQuantity(inventory.reorder_level)}</p>}
                     </div>
                   ))}
                   {!storeFilter && product.inventories.length > 1 && (
                     <div className="min-w-48 rounded-xl border border-teal-200 bg-teal-50 p-4">
                       <p className="font-bold text-teal-800">الإجمالي</p>
-                      <p className="mt-1 text-2xl font-black text-teal-950">{product.total_quantity} <span className="text-base">{product.sale_unit}</span></p>
+                      <p className="mt-1 text-2xl font-black text-teal-950">{formatQuantity(product.total_quantity)} <span className="text-base">{product.sale_unit}</span></p>
                     </div>
                   )}
                 </div>
@@ -496,7 +496,7 @@ function MovementEditor({ onClose, onSaved, product }: { onClose: () => void; on
       </form>
       <h3 className="mt-7 text-xl font-black">سجل الحركات</h3>
       <div className="mt-3 max-h-72 overflow-y-auto rounded-xl border border-slate-200">
-        {movements.length === 0 ? <p className="p-5 text-center text-slate-600">لا توجد حركات مسجلة.</p> : movements.map((movement) => <div className="grid gap-1 border-b border-slate-200 p-4 last:border-0 sm:grid-cols-[1fr_auto]" key={movement.id}><div><p className="font-black">{movementLabels[movement.movement_type]} · {movement.store_name}</p><p className="text-sm text-slate-500">{formatMovementDate(movement.occurred_at)}{movement.reason ? ` · ${movement.reason}` : ''}</p></div><p className={`text-lg font-black ${movement.quantity_delta.startsWith('-') ? 'text-rose-700' : 'text-emerald-700'}`} dir="ltr">{movement.quantity_delta}</p></div>)}
+        {movements.length === 0 ? <p className="p-5 text-center text-slate-600">لا توجد حركات مسجلة.</p> : movements.map((movement) => <div className="grid gap-1 border-b border-slate-200 p-4 last:border-0 sm:grid-cols-[1fr_auto]" key={movement.id}><div><p className="font-black">{movementLabels[movement.movement_type]} · {movement.store_name}</p><p className="text-sm text-slate-500">{formatMovementDate(movement.occurred_at)}{movement.reason ? ` · ${movement.reason}` : ''}</p></div><p className={`text-lg font-black ${movement.quantity_delta.startsWith('-') ? 'text-rose-700' : 'text-emerald-700'}`} dir="ltr">{formatQuantity(movement.quantity_delta)}</p></div>)}
       </div>
       {hasMoreMovements && <button className="mt-3 min-h-11 rounded-xl border border-slate-300 px-5 font-black" onClick={() => void loadMovements(movementPage + 1, true)} type="button">تحميل حركات أقدم</button>}
     </Modal>

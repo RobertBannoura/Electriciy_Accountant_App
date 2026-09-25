@@ -62,7 +62,7 @@ test('API security matrix contains every and only declared router method/path pa
     documented.add(`${match[1]} ${match[2]}`)
   }
 
-  assert.equal(declared.size, 62)
+  assert.equal(declared.size, 64)
   assert.deepEqual([...documented].sort(), [...declared].sort())
 })
 

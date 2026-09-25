@@ -194,7 +194,7 @@ test(
         createdExpenseIds.push(expense.body.expense.id)
       }
       const expenseList = await apiRequest(baseUrl, '/expenses', { token, storeId: store.id })
-      assert.deepEqual(expenseList.body.categories, ['كهرباء', 'أجار', 'رواتب', 'مواصلات', 'صيانة', 'مشتريات للمحل', 'أخرى'])
+      assert.deepEqual(expenseList.body.categories.slice(0, 7), ['كهرباء', 'أجار', 'رواتب', 'مواصلات', 'صيانة', 'مشتريات للمحل', 'أخرى'])
       assert.equal(createdExpenseIds.every((id) => expenseList.body.expenses.some((expense) => expense.id === id)), true)
       const cash = await pool.query("SELECT balance::TEXT AS balance FROM store_cash_balances WHERE store_id = $1 AND currency_code = 'ILS'", [store.id])
       const bank = await pool.query('SELECT balance_ils::TEXT AS balance FROM store_bank_balances WHERE store_id = $1', [store.id])
@@ -204,7 +204,7 @@ test(
       const invalidExpenseCount = Number((await pool.query('SELECT COUNT(*) AS count FROM expenses')).rows[0].count)
       const invalidExpense = await apiRequest(baseUrl, '/expenses', {
         token, storeId: store.id, method: 'POST', body: {
-          amount: '10', category: 'دخل متنوع', date: '2026-09-09', paymentMethod: 'cash',
+          amount: '10', category: 'x'.repeat(101), date: '2026-09-09', paymentMethod: 'cash',
         },
       })
       assert.equal(invalidExpense.response.status, 400)
@@ -259,6 +259,21 @@ test(
       )
       money(originals.rows[0].sale_quantity, '4')
       money(originals.rows[0].purchase_quantity, '10')
+
+      const customCategory = `رسوم اختبار ${unique}`
+      const customExpense = await apiRequest(baseUrl, '/expenses', {
+        token, storeId: store.id, method: 'POST', body: {
+          amount: '0.50', category: `  ${customCategory}  `,
+          date: '2026-09-09', paymentMethod: 'cash',
+        },
+      })
+      assert.equal(customExpense.response.status, 201)
+      assert.equal(customExpense.body.expense.category, customCategory)
+      const refreshedExpenses = await apiRequest(baseUrl, '/expenses', { token, storeId: store.id })
+      assert.ok(refreshedExpenses.body.categories.includes(customCategory))
+      assert.ok(refreshedExpenses.body.expenses.some((expense) => expense.id === customExpense.body.expense.id))
+      const otherStoreExpenses = await apiRequest(baseUrl, '/expenses', { token, storeId: otherStore.id })
+      assert.ok(!otherStoreExpenses.body.categories.includes(customCategory))
     } finally {
       await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
       await pool.end()

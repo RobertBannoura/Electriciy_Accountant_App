@@ -13,6 +13,7 @@ async function run() {
       password: env.adminPassword,
       displayName: env.adminDisplayName,
       allowLocalDevelopmentPassword: env.shortDevelopmentAdminPasswordEnabled,
+      allowOfflineTrialPassword: env.offlineTrial,
     })
     await client.query('COMMIT')
     console.log(`Admin provisioned: ${admin.username}`)

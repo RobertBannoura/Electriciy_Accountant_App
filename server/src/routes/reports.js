@@ -4,8 +4,44 @@ import { query } from '../db/pool.js'
 import { AppError } from '../errors/app-error.js'
 import { requireStore } from '../middleware/require-store.js'
 import { parseReportFilters } from '../reports/report-input.js'
+import { paginatedResult, parsePagination } from '../pagination/pagination.js'
 
 export const reportsRouter = Router()
+
+reportsRouter.get('/sales', async (request, response) => {
+  const parsed = parseReportFilters(request.query)
+  if (parsed.error) throw new AppError(parsed.error, 400, 'INVALID_REPORT_FILTERS')
+  const { from, to, storeId } = parsed.value
+  const pagination = parsePagination(request.query)
+  const search = request.query.search === undefined ? '' : request.query.search
+  if (typeof search !== 'string' || search.length > 100) {
+    throw new AppError('بحث المبيعات غير صالح', 400, 'INVALID_SALES_SEARCH')
+  }
+  await requireActiveReportStore(storeId)
+
+  const result = await query(
+    `SELECT sale.id::TEXT AS id, sale.store_id::TEXT AS store_id,
+       sale.document_number AS invoice_number,
+       sale.business_date::TEXT AS business_date,
+       sale.total::TEXT AS total, sale.paid_total::TEXT AS paid_total,
+       sale.remaining_due::TEXT AS remaining_due,
+       customers.name AS customer_name, stores.name AS store_name
+     FROM sales AS sale
+     INNER JOIN stores ON stores.id = sale.store_id
+     LEFT JOIN customers ON customers.id = sale.customer_id
+     WHERE ($1::BIGINT IS NULL OR sale.store_id = $1::BIGINT)
+       AND sale.business_date BETWEEN $2::DATE AND $3::DATE
+       AND sale.status = 'recorded'
+       AND POSITION(LOWER($4::TEXT) IN LOWER(
+         COALESCE(sale.document_number, '') || ' ' || COALESCE(customers.name, '')
+       )) > 0
+     ORDER BY sale.business_date DESC, sale.id DESC
+     LIMIT $5::INTEGER OFFSET $6::INTEGER`,
+    [storeId, from, to, search.trim(), pagination.fetchLimit, pagination.offset],
+  )
+  const page = paginatedResult(result.rows, pagination)
+  response.json({ sales: page.rows, pagination: page.pagination })
+})
 
 reportsRouter.get('/home', requireStore, async (request, response) => {
   const today = currentBusinessDate()

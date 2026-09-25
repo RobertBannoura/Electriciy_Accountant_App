@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { apiFetch } from '../api'
 import { movementSourceLabel } from '../business-labels'
-import { formatDecimal } from '../money-display'
+import { formatDecimal, formatQuantity } from '../money-display'
 import { DialogCloseButton } from './DialogCloseButton'
 import type { Store } from '../types'
 import { DocumentOutputActions } from './DocumentOutputActions'
@@ -151,7 +151,7 @@ function StatementDocument({ documentRef, statement }: { documentRef: RefObject<
           <tbody>
             {statement.entries.map((entry) => <tr key={entry.id}>
               <td>{entry.date}</td>
-              <td><strong>{entryLabel(entry, statement.kind)}</strong>{entry.description && <small>{entry.description}</small>}{entry.project_name && <small>المشروع: {entry.project_name}</small>}{entry.purchase_items?.map((item, index) => <small key={`${entry.id}:${index}`}>{item.product} - {formatDecimal(item.quantity)} × ₪{formatDecimal(item.unit_price)} = ₪{formatDecimal(item.line_total)}</small>)}</td>
+              <td><strong>{entryLabel(entry, statement.kind)}</strong>{entry.description && <small>{entry.description}</small>}{entry.project_name && <small>المشروع: {entry.project_name}</small>}{entry.purchase_items?.map((item, index) => <small key={`${entry.id}:${index}`}>{item.product} - {formatQuantity(item.quantity)} × ₪{formatDecimal(item.unit_price)} = ₪{formatDecimal(item.line_total)}</small>)}</td>
               <td>{entry.document_number ?? `#${entry.source_id ?? entry.id}`}<small>{entry.store_name}</small></td>
               <td dir="ltr">{entry.debit === '0' ? '—' : `₪${formatDecimal(entry.debit)}`}</td>
               <td dir="ltr">{entry.credit === '0' ? '—' : `₪${formatDecimal(entry.credit)}`}</td>

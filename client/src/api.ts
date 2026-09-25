@@ -1,11 +1,15 @@
-export const apiUrl =
-  import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api'
+export const apiUrl = window.location.protocol === 'app:'
+  ? window.desktop?.trialMode && window.desktop.trialApiBaseUrl
+    ? window.desktop.trialApiBaseUrl
+    : (() => { throw new Error('تعذر الاتصال بالخدمة المحلية') })()
+  : import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api'
 
 const sessionTokenKey = 'electricity-accountant-session'
 const rememberedSessionTokenKey = 'electricity-accountant-remembered-session'
 const cachedUserKey = 'electricity-accountant-user'
 export const connectionStatusEvent = 'app:connection-status'
-let serverReachable = typeof navigator === 'undefined' ? true : navigator.onLine
+let serverReachable = typeof navigator === 'undefined' || Boolean(window.desktop?.trialMode)
+  ? true : navigator.onLine
 const financialRequestStoragePrefix = 'electricity-accountant-financial-request:'
 const financialRequestRetryWindowMs = 5 * 60 * 1000
 const financialRequestCompletedWindowMs = 3 * 1000
@@ -179,7 +183,7 @@ export function clearCachedAuthUser() {
 }
 
 export function publicApiFetch(path: string, init?: RequestInit) {
-  if (!navigator.onLine || (isMutation(init) && !serverReachable)) {
+  if ((!window.desktop?.trialMode && !navigator.onLine) || (isMutation(init) && !serverReachable)) {
     announceConnection(false)
     return Promise.reject(new Error('لا يوجد اتصال بالخادم. أُوقفت العمليات المالية حتى عودة الاتصال.'))
   }

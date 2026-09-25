@@ -300,7 +300,7 @@ export function CustomerPaymentPage({
                   {payment.method === 'bank_card' && <PaymentField label="مرجع العملية (اختياري)"><input className={inputClass} maxLength={200} onChange={(event) => updatePayment(payment.id, { reference: event.target.value })} value={payment.reference} /></PaymentField>}
                   {payment.method === 'check' && <><PaymentField label="رقم الشيك"><input className={inputClass} maxLength={100} onChange={(event) => updatePayment(payment.id, { checkNumber: event.target.value })} value={payment.checkNumber} /></PaymentField><PaymentField label="تاريخ الاستحقاق"><input className={inputClass} onChange={(event) => updatePayment(payment.id, { dueDate: event.target.value })} type="date" value={payment.dueDate} /></PaymentField><PaymentField label="ملاحظات — اختياري"><input className={inputClass} maxLength={2000} onChange={(event) => updatePayment(payment.id, { notes: event.target.value })} value={payment.notes} /></PaymentField></>}
                   {payment.method === 'check' && payment.isGiro && <><PaymentField label="اسم صاحب الشيك الأصلي"><input className={inputClass} maxLength={150} onChange={(event) => updatePayment(payment.id, { originalOwnerName: event.target.value })} value={payment.originalOwnerName} /></PaymentField><PaymentField label="رقم هاتف صاحب الشيك الأصلي"><input className={inputClass} inputMode="tel" maxLength={50} onChange={(event) => updatePayment(payment.id, { originalOwnerPhone: event.target.value })} value={payment.originalOwnerPhone} /></PaymentField></>}
-                  <div className="rounded-xl bg-slate-100 p-3"><p className="font-bold text-slate-600">القيمة بـ ₪</p><p className="mt-1 text-xl font-black text-teal-900" dir="ltr">₪{calculation.amount?.toFixed() ?? '—'}</p></div>
+                  <div className="rounded-xl bg-slate-100 p-3"><p className="font-bold text-slate-600">القيمة بـ ₪</p><p className="mt-1 text-xl font-black text-teal-900" dir="ltr">₪{calculation.amount ? formatDecimal(calculation.amount.toFixed()) : '—'}</p></div>
                 </div>
                 {calculation.error && <p className="mt-3 font-black text-rose-700">{calculation.error}</p>}
               </article>
@@ -334,7 +334,7 @@ function PaymentField({ label, children }: { label: string; children: React.Reac
 }
 
 function SummaryRow({ label, value, large = false }: { label: string; value: Decimal | null; large?: boolean }) {
-  return <div className={`flex items-center justify-between gap-4 ${large ? 'text-2xl font-black text-teal-900' : 'mt-3 text-lg font-bold'}`}><span>{label}</span><span dir="ltr">₪{value?.toFixed() ?? '—'}</span></div>
+  return <div className={`flex items-center justify-between gap-4 ${large ? 'text-2xl font-black text-teal-900' : 'mt-3 text-lg font-bold'}`}><span>{label}</span><span dir="ltr">₪{value ? formatDecimal(value.toFixed()) : '—'}</span></div>
 }
 
 function PaymentState({ text, error = false }: { text: string; error?: boolean }) {

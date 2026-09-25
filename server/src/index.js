@@ -13,7 +13,9 @@ const server = app.listen(env.port, env.host, () => {
   console.log(`الخادم يعمل على http://${env.host}:${env.port}`)
   console.log(`المنطقة الزمنية: ${env.timezone}`)
 })
-const stopPushScheduler = startCheckDueNotificationScheduler()
+const stopPushScheduler = env.offlineTrial
+  ? () => {}
+  : startCheckDueNotificationScheduler()
 
 async function shutdown(signal) {
   console.log(`تم استلام ${signal}، جارٍ إيقاف الخادم بأمان...`)

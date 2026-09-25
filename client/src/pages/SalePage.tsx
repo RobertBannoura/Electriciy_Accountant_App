@@ -12,7 +12,7 @@ import {
 import { Link } from 'react-router-dom'
 import { apiFetch, storeScopedApiFetch } from '../api'
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner'
-import { currencySymbol, formatDecimal } from '../money-display'
+import { currencySymbol, formatDecimal, formatQuantity } from '../money-display'
 import { InvoiceOutput } from '../components/InvoiceOutput'
 import type { SavedInvoice } from '../components/InvoiceOutput'
 
@@ -70,6 +70,7 @@ type PaymentDraft = {
   method: PaymentMethod
   currency: Currency
   amount: string
+  autoAmount: boolean
   exchangeRate: string
   reference: string
   checkNumber: string
@@ -115,7 +116,7 @@ function isHalfShekel(decimal: Decimal) {
 }
 
 function formatAmount(decimal: Decimal | null) {
-  return decimal === null ? '—' : decimal.toFixed()
+  return decimal === null ? '—' : formatDecimal(decimal.toFixed())
 }
 
 function customerOptionLabel(customer: Customer) {
@@ -210,6 +211,7 @@ function newPayment(method: PaymentMethod, dueDate: string, isGiro = false): Pay
     method,
     currency: 'ILS',
     amount: '',
+    autoAmount: false,
     exchangeRate: '',
     reference: '',
     checkNumber: '',
@@ -479,15 +481,32 @@ export function SalePage({
     subtotal !== null && parsedInvoiceDiscount && !invoiceDiscountError
       ? subtotal.minus(parsedInvoiceDiscount)
       : null
+  const effectivePayments = useMemo(() => {
+    if (finalTotal === null) return payments
+    const automatic = payments.find((payment) => payment.autoAmount)
+    if (!automatic) return payments
+
+    let otherTotal = new DraftDecimal(0)
+    for (const payment of payments) {
+      if (payment.id === automatic.id) continue
+      const calculated = calculatePayment(payment).ilsAmount
+      if (calculated === null) return payments
+      otherTotal = otherTotal.plus(calculated)
+    }
+    const amount = DraftDecimal.max(finalTotal.minus(otherTotal), 0).toFixed()
+    return payments.map((payment) => payment.id === automatic.id
+      ? { ...payment, amount }
+      : payment)
+  }, [finalTotal, payments])
   const paymentCalculations = useMemo(
-    () => new Map(payments.map((payment) => [payment.id, calculatePayment(payment)])),
-    [payments],
+    () => new Map(effectivePayments.map((payment) => [payment.id, calculatePayment(payment)])),
+    [effectivePayments],
   )
   const paidTotal = useMemo(() => {
-    const amounts = payments.map((payment) => paymentCalculations.get(payment.id)?.ilsAmount ?? null)
+    const amounts = effectivePayments.map((payment) => paymentCalculations.get(payment.id)?.ilsAmount ?? null)
     if (amounts.some((amount) => amount === null)) return null
     return amounts.reduce<Decimal>((sum, amount) => sum.plus(amount!), new DraftDecimal(0))
-  }, [paymentCalculations, payments])
+  }, [paymentCalculations, effectivePayments])
   const remainingDue = finalTotal !== null && paidTotal !== null
     ? finalTotal.minus(paidTotal)
     : null
@@ -591,7 +610,7 @@ export function SalePage({
     if (!canContinueToPayment) return
     setPayments((current) => {
       if (current.length > 0 || payLater) return current
-      return [{ ...newPayment('cash', businessDate), amount: finalTotal?.toFixed() ?? '' }]
+      return [{ ...newPayment('cash', businessDate), amount: finalTotal?.toFixed() ?? '', autoAmount: true }]
     })
     setStep('payment')
     setMessage(null)
@@ -627,7 +646,7 @@ export function SalePage({
             actualPrice: normalizeDecimalInput(line.actualSalePrice, 2),
             discount: normalizeDecimalInput(line.discount || '0', 2),
           })),
-          payments: payments.map((payment) => ({
+          payments: effectivePayments.map((payment) => ({
             method: payment.method,
             currency: payment.method === 'cash' ? payment.currency : 'ILS',
             amount: normalizeDecimalInput(
@@ -936,10 +955,10 @@ export function SalePage({
                     <div className="min-w-0">
                       <p className="text-lg font-black">{product.name}</p>
                       <p className="mt-1 font-bold text-slate-600">
-                        {product.sale_unit} · المتوفر {resultStock(product)}
+                        {product.sale_unit} · المتوفر {formatQuantity(resultStock(product))}
                         {product.default_sale_price === null
                           ? ' · السعر غير محدد'
-                          : ` · السعر الافتراضي ${product.default_sale_price}`}
+                          : ` · السعر الافتراضي ${formatDecimal(product.default_sale_price)}`}
                       </p>
                     </div>
                     <button className="min-h-12 rounded-xl bg-teal-700 px-6 text-lg font-black text-white hover:bg-teal-800" onClick={() => addProduct(product)} type="button">إضافة</button>
@@ -956,7 +975,7 @@ export function SalePage({
         {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-lg font-black text-rose-900" role="alert">{error}</p>}
       </div>
 
-      {savedInvoice && <InvoiceOutput invoice={savedInvoice} onClose={() => setSavedInvoice(null)} />}
+      {savedInvoice && <InvoiceOutput celebrate invoice={savedInvoice} onClose={() => setSavedInvoice(null)} />}
 
       <div className="mt-4 min-h-64 rounded-3xl border border-slate-200 bg-white shadow-sm">
         <table className="sale-lines-table w-full min-w-0 table-fixed text-right">
@@ -1079,7 +1098,7 @@ export function SalePage({
                   </td>
                   <td className="px-2 py-4 text-center" data-mobile-label="السعر">
                     <input aria-label={`سعر بيع ${line.productName || 'الصنف اليدوي'}`} className={moneyInputClass} inputMode="decimal" min="0" onBlur={(event) => normalizeLineInput(event, line, 'actualSalePrice', 2)} onChange={(event) => updateLine(line.id, { actualSalePrice: event.target.value })} placeholder="أدخل السعر" value={line.actualSalePrice} />
-                    {line.productId && <p className="mt-2 text-sm font-bold text-slate-500">{line.originalPrice === null ? 'لا يوجد سعر افتراضي' : `السعر الافتراضي: ${line.originalPrice}`}</p>}
+                    {line.productId && <p className="mt-2 text-sm font-bold text-slate-500">{line.originalPrice === null ? 'لا يوجد سعر افتراضي' : `السعر الافتراضي: ${formatDecimal(line.originalPrice)}`}</p>}
                     {calculation.priceError && <p className="mt-1 text-sm font-bold text-rose-700">{calculation.priceError}</p>}
                   </td>
                   <td className="px-2 py-4 text-center" data-mobile-label="الخصم">
@@ -1160,7 +1179,7 @@ export function SalePage({
           </div>
         ) : (
           <div className="mt-4 space-y-3">
-            {payments.map((payment, index) => {
+            {effectivePayments.map((payment, index) => {
               const calculation = paymentCalculations.get(payment.id)!
               const foreignCash = payment.method === 'cash' && payment.currency !== 'ILS'
               return (
@@ -1175,7 +1194,7 @@ export function SalePage({
                     {payment.method === 'cash' && (
                       <label className="block">
                         <span className="mb-2 block font-black">عملة النقد</span>
-                        <select className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-black" onChange={(event) => updatePayment(payment.id, { currency: event.target.value as Currency, exchangeRate: '' })} value={payment.currency}>
+                        <select className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-black" onChange={(event) => updatePayment(payment.id, { currency: event.target.value as Currency, exchangeRate: '', autoAmount: false })} value={payment.currency}>
                           <option value="ILS">₪</option>
                           <option value="USD">دولار</option>
                           <option value="JOD">دينار</option>
@@ -1184,7 +1203,7 @@ export function SalePage({
                     )}
                     <label className="block">
                       <span className="mb-2 block font-black">{foreignCash ? 'المبلغ الأصلي' : 'المبلغ (₪)'}</span>
-                      <input className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-black" inputMode="decimal" min="0" onBlur={(event) => updatePayment(payment.id, { amount: normalizeDecimalInput(event.target.value, foreignCash ? 6 : 2) })} onChange={(event) => updatePayment(payment.id, { amount: event.target.value })} placeholder="0" value={payment.amount} />
+                      <input className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-black" inputMode="decimal" min="0" onBlur={(event) => updatePayment(payment.id, { amount: normalizeDecimalInput(event.target.value, foreignCash ? 6 : 2), autoAmount: false })} onChange={(event) => updatePayment(payment.id, { amount: event.target.value, autoAmount: false })} placeholder="0" value={payment.amount} />
                     </label>
                     {foreignCash && (
                       <label className="block">

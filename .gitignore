@@ -10,6 +10,8 @@ coverage/
 Thumbs.db
 release/
 tmp/
+vendor/postgresql/windows-x64/
+vendor/postgresql/.postgres-extract-*/
 
 output/
 

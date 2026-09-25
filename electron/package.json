@@ -1,6 +1,6 @@
 {
   "name": "@electricity-accountant/electron",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "main": "main.cjs",
   "scripts": {
@@ -8,6 +8,7 @@
     "start": "node launch.cjs",
     "smoke": "node launch.cjs --smoke-test",
     "package:win": "node package-windows.cjs",
+    "installer:win": "node ../scripts/build-offline-installer.cjs",
     "test": "node --test",
     "lint": "eslint ."
   },
@@ -15,6 +16,7 @@
     "@electron/packager": "^20.3.0",
     "@eslint/js": "^9.35.0",
     "electron": "^44.3.0",
+    "electron-builder": "^26.8.1",
     "eslint": "^9.35.0",
     "globals": "^16.3.0",
     "wait-on": "^8.0.4"

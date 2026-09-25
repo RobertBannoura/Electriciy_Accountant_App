@@ -1,0 +1,3 @@
+# Bundled PostgreSQL runtime
+
+`windows-x64.zip` contains the PostgreSQL 18.1 native Windows x64 `bin`, `lib`, and `share` trees, copied from the development machine's PostgreSQL 18.1 distribution. It also includes `server_license.txt` and `commandlinetools_3rd_party_licenses.txt` from that distribution. `scripts/materialize-postgres.cjs` verifies the archive hash and extracts it for Windows builds. The extracted `windows-x64` directory is ignored by Git. The packaged application runs these bundled files from its own resources directory and keeps all database files under the current user's LocalAppData trial directory.

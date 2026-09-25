@@ -55,6 +55,13 @@ function toDecimalString(decimal) {
   return decimal.isZero() ? '0' : decimal.toFixed()
 }
 
+export function formatMoneyDisplay(value) {
+  const decimal = new MoneyDecimal(value)
+  const rounded = decimal.toDecimalPlaces(2)
+  if (!decimal.isZero() && rounded.isZero()) return decimal.isNegative() ? '>-0.01' : '<0.01'
+  return rounded.toFixed(2)
+}
+
 function prepareExactOperation(...decimals) {
   // Decimal operation precision is derived from operand digit counts. The native
   // numbers here describe string lengths; financial values remain Decimal values.

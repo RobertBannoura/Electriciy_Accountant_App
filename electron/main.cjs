@@ -1,9 +1,11 @@
 const path = require('node:path')
 const fs = require('node:fs/promises')
+const fsSync = require('node:fs')
 const { pathToFileURL } = require('node:url')
 const { app, BrowserWindow, dialog, ipcMain, Menu, net, Notification, protocol } = require('electron')
 const { createDeviceSettingsStore } = require('./device-settings.cjs')
 const { createBackupFileStore } = require('./backup-files.cjs')
+const { localDataRoot, prepareTrial, stopTrial } = require('./trial-runtime.cjs')
 const {
   assertSafePdfData,
   assertSafeSelectedFile,
@@ -30,6 +32,49 @@ const developmentRendererUrl =
   process.env.ELECTRON_RENDERER_URL ?? 'http://localhost:5173'
 const isDevelopment = !app.isPackaged && process.argv.includes('--dev')
 const isSmokeTest = process.argv.includes('--smoke-test')
+  || process.env.ELECTRICITY_TRIAL_SMOKE_TEST === '1'
+if (!isDevelopment && process.platform === 'win32') {
+  const dataRoot = localDataRoot()
+  fsSync.mkdirSync(dataRoot, { recursive: true })
+  app.setPath('userData', dataRoot)
+}
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+let mainWindow = null
+let startupWindow = null
+let trial = null
+let startupTask = null
+let shutdownTask = null
+let shutdownComplete = false
+
+app.on('before-quit', (event) => {
+  if (!hasSingleInstanceLock || isDevelopment || shutdownComplete) return
+  event.preventDefault()
+  if (shutdownTask) return
+  shutdownTask = (async () => {
+    try {
+      if (startupTask) await startupTask.catch(() => {})
+      await stopTrial(trial)
+    } catch (error) {
+      const logDirectory = path.join(app.getPath('userData'), 'logs')
+      await fs.mkdir(logDirectory, { recursive: true }).catch(() => {})
+      await fs.appendFile(path.join(logDirectory, 'startup.log'),
+        `${new Date().toISOString()} Shutdown: ${error?.stack ?? String(error)}\n`).catch(() => {})
+    } finally {
+      shutdownComplete = true
+      app.quit()
+    }
+  })()
+})
+
+if (!hasSingleInstanceLock) app.quit()
+else app.on('second-instance', () => {
+  const target = mainWindow && !mainWindow.isDestroyed() ? mainWindow : startupWindow
+  if (target && !target.isDestroyed()) {
+    if (target.isMinimized()) target.restore()
+    target.show()
+    target.focus()
+  }
+})
 
 function isAllowedNavigation(targetUrl) {
   return isTrustedRendererUrl({
@@ -39,10 +84,10 @@ function isAllowedNavigation(targetUrl) {
   })
 }
 
-function registerApplicationProtocol() {
+function registerApplicationProtocol(trialPort) {
   const rendererRoot = path.resolve(__dirname, '..', 'client', 'dist')
 
-  protocol.handle('app', (request) => {
+  protocol.handle('app', async (request) => {
     const requestUrl = new URL(request.url)
 
     if (requestUrl.host !== 'renderer') {
@@ -60,12 +105,17 @@ function registerApplicationProtocol() {
       return new Response('Not found', { status: 404 })
     }
 
+    if (relativePath === 'index.html') {
+      const original = await fs.readFile(filePath, 'utf8')
+      const html = original.replace(/connect-src[^"]*/, `connect-src 'self' http://127.0.0.1:${trialPort}`)
+      return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+    }
     return net.fetch(pathToFileURL(filePath).toString())
   })
 }
 
-function createMainWindow() {
-  const mainWindow = new BrowserWindow({
+function createMainWindow(trialPort = null) {
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 960,
@@ -78,8 +128,11 @@ function createMainWindow() {
       nodeIntegration: false,
       sandbox: true,
       devTools: isDevelopment,
+      additionalArguments: trialPort ? [`--trial-api-port=${trialPort}`] : [],
     },
   })
+
+  mainWindow.on('session-end', () => app.quit())
 
   const revealMainWindow = () => {
     if (!isSmokeTest && !mainWindow.isDestroyed()) {
@@ -185,12 +238,47 @@ function assertTrustedIpcSender(event) {
   }
 }
 
-app.whenReady().then(() => {
+function createStartupWindow() {
+  const startup = new BrowserWindow({
+    width: 480, height: 180, resizable: false, frame: false,
+    show: !isSmokeTest,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  })
+  startup.on('session-end', () => app.quit())
+  const html = '<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'"><body style="font:20px Segoe UI,sans-serif;background:#f7f8fb;color:#183b54;display:grid;place-items:center;height:100vh;margin:0">جاري تجهيز النظام لأول استخدام...</body></html>'
+  void startup.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+  startup.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  startup.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+  startupWindow = startup
+  startup.once('closed', () => { if (startupWindow === startup) startupWindow = null })
+  return startup
+}
+
+if (hasSingleInstanceLock) startupTask = app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
 
   if (!isDevelopment) {
-    registerApplicationProtocol()
+    const startup = createStartupWindow()
+    try {
+      trial = await prepareTrial(app)
+      startup.close()
+    } catch (error) {
+      startup.close()
+      const logDirectory = path.join(app.getPath('userData'), 'logs')
+      await fs.mkdir(logDirectory, { recursive: true }).catch(() => {})
+      await fs.appendFile(path.join(logDirectory, 'startup.log'),
+        `${new Date().toISOString()} ${error?.stack ?? String(error)}\n`).catch(() => {})
+      await dialog.showMessageBox({
+        type: 'error', title: 'تعذر تشغيل النظام',
+        message: 'تعذر تجهيز النظام المحلي. يرجى إعادة فتح التطبيق أو التواصل مع الدعم.',
+        buttons: ['إغلاق'], noLink: true,
+      })
+      app.quit()
+      return
+    }
   }
+
+  if (!isDevelopment) registerApplicationProtocol(trial.backendPort)
 
   const deviceSettings = createDeviceSettingsStore(app.getPath('userData'))
   const backupFiles = createBackupFileStore(deviceSettings)
@@ -298,13 +386,19 @@ app.whenReady().then(() => {
     return { saved: true, canceled: false, path: selection.filePath }
   })
 
-  createMainWindow()
+  createMainWindow(trial?.backendPort)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow()
+      createMainWindow(trial?.backendPort)
     }
   })
+}).catch(async (error) => {
+  const logDirectory = path.join(app.getPath('userData'), 'logs')
+  await fs.mkdir(logDirectory, { recursive: true }).catch(() => {})
+  await fs.appendFile(path.join(logDirectory, 'startup.log'),
+    `${new Date().toISOString()} Main process: ${error?.stack ?? String(error)}\n`).catch(() => {})
+  app.quit()
 })
 
 app.on('window-all-closed', () => {

@@ -4,7 +4,7 @@ import notoSansHebrewBoldUrl from './assets/fonts/NotoSansHebrew-Bold.ttf?url'
 import notoSansHebrewRegularUrl from './assets/fonts/NotoSansHebrew-Regular.ttf?url'
 import notoSansArabicUrl from './assets/fonts/NotoSansArabic-Variable.ttf?url'
 import { movementSourceLabel } from './business-labels'
-import { formatDecimal } from './money-display'
+import { formatDecimal, formatQuantity } from './money-display'
 import type { SavedInvoice } from './components/InvoiceOutput'
 
 export type PdfStatementEntry = {
@@ -178,7 +178,7 @@ function PurchaseItemsList({ items }: { items: NonNullable<PdfStatementEntry['pu
     <Text style={styles.cellSmall}>الأصناف:</Text>
     {items.map((item, index) => <View key={`${item.product}:${index}`} wrap={false}>
       <Text style={styles.itemName}>{index + 1}. {item.product}</Text>
-      <Text style={styles.itemFormula}>{formatDecimal(item.quantity)} x {formatPdfMoney(item.unit_price)} = {formatPdfMoney(item.line_total)}</Text>
+      <Text style={styles.itemFormula}>{formatQuantity(item.quantity)} x {formatPdfMoney(item.unit_price)} = {formatPdfMoney(item.line_total)}</Text>
     </View>)}
   </View>
 }
@@ -301,7 +301,7 @@ function InvoiceHeader({ invoice, receipt }: { invoice: SavedInvoice; receipt: b
       </View>
       <View>
         <Text style={styles.rtl}>التاريخ: {invoice.business_date}</Text>
-        <Text style={[styles.rtl, { marginTop: 3 }]}>العميل: {invoice.customer_name ?? 'بيع نقدي'}</Text>
+        <Text style={[styles.rtl, { marginTop: 3 }]}>العميل: {invoice.customer_name ?? 'بدون عميل'}</Text>
       </View>
     </View>
     <View style={styles.rule} />
@@ -311,12 +311,12 @@ function InvoiceHeader({ invoice, receipt }: { invoice: SavedInvoice; receipt: b
 function InvoiceRow({ item, receipt }: { item: SavedInvoice['items'][number]; receipt: boolean }) {
   const columns = receipt ? [
     { value: item.description, width: '46%', rtl: true },
-    { value: formatDecimal(item.quantity), width: '16%', rtl: false },
+    { value: formatQuantity(item.quantity), width: '16%', rtl: false },
     { value: item.actual_price, width: '19%', money: true },
     { value: item.total, width: '19%', money: true },
   ] : [
     { value: item.description, width: '38%', rtl: true },
-    { value: formatDecimal(item.quantity), width: '14%', rtl: false },
+    { value: formatQuantity(item.quantity), width: '14%', rtl: false },
     { value: item.actual_price, width: '18%', money: true },
     { value: item.discount, width: '14%', money: true },
     { value: item.total, width: '16%', money: true },

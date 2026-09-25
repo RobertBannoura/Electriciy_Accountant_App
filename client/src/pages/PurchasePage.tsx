@@ -4,6 +4,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { apiFetch, storeScopedApiFetch } from '../api'
 import { SupplierPaymentEditor } from '../components/SupplierPaymentEditor'
 import { DialogCloseButton } from '../components/DialogCloseButton'
+import { PurchaseConfirmation } from '../components/PurchaseConfirmation'
+import type { SavedPurchase } from '../components/PurchaseConfirmation'
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner'
 import { formatDecimal } from '../money-display'
 import { parsePaymentDecimal } from '../payments/payment-draft'
@@ -73,6 +75,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
   onDraftStateChange: (active: boolean) => void
 }) {
   const [params] = useSearchParams()
+  const [step, setStep] = useState<'items' | 'payment'>('items')
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedCategoryId, setSelectedCategoryId] = useState('')
@@ -94,6 +97,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
   const [loadingCatalog, setLoadingCatalog] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [savedPurchase, setSavedPurchase] = useState<SavedPurchase | null>(null)
   const searchId = useRef(0)
   const manualNameInputRef = useRef<HTMLInputElement>(null)
   const store = stores.find((item) => item.id === configuredStoreId)
@@ -185,7 +189,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
       setError(caught instanceof Error ? caught.message : 'تعذر البحث عن الباركود')
     } finally { setSearching(false) }
   }, [addProduct, configuredStoreId])
-  useBarcodeScanner({ enabled: Boolean(configuredStoreId), onScan: scanBarcode })
+  useBarcodeScanner({ enabled: Boolean(configuredStoreId) && step === 'items', onScan: scanBarcode })
 
   useEffect(() => {
     const term = search.trim()
@@ -225,14 +229,18 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
     : lineTotals.reduce<Decimal>((sum, value) => sum.plus(value!), new PurchaseDecimal(0))
   const paid = useMemo(() => supplierPaymentsTotal(payments, checks), [payments, checks])
   const remaining = total && paid ? total.minus(paid) : null
-  const canSave = Boolean(configuredStoreId && supplierId && businessDate
-    && lines.length && total !== null && paid !== null && !remaining?.lessThan(0) && !saving)
-  const saveBlockers = [
+  const canContinueToPayment = Boolean(configuredStoreId && supplierId && businessDate
+    && lines.length && total !== null && !saving)
+  const canSave = Boolean(canContinueToPayment && paid !== null && !remaining?.lessThan(0))
+  const itemBlockers = [
     !configuredStoreId ? 'اختر المتجر المستلم أولاً.' : null,
     !supplierId ? 'اختر المورد.' : null,
     !businessDate ? 'اختر تاريخ الشراء.' : null,
     !lines.length ? 'أضف صنفاً واحداً على الأقل إلى الفاتورة.' : null,
     lines.length && total === null ? 'أكمل اسم الصنف والكمية وسعر الشراء لكل بند. سعر الشراء يجب أن يكون بمضاعفات 0.50.' : null,
+  ].filter(Boolean)
+  const saveBlockers = [
+    ...itemBlockers,
     paid === null ? 'أكمل بيانات دفعات المورد أو احذف الدفعة غير المكتملة.' : null,
     remaining?.lessThan(0) ? 'مجموع الدفعات أكبر من إجمالي فاتورة الشراء.' : null,
   ].filter(Boolean)
@@ -243,6 +251,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
 
   function updateLine(lineId: string, values: Partial<PurchaseLine>) {
     setLines((current) => current.map((line) => line.id === lineId ? { ...line, ...values } : line))
+    setMessage(null)
   }
 
   function updateManualDraft(values: Partial<PurchaseLine>) {
@@ -277,6 +286,14 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
     commitManualLine()
   }
 
+  function continueToPayment() {
+    if (!canContinueToPayment) return
+    setShowCatalog(false)
+    setStep('payment')
+    setMessage(null)
+    setError(null)
+  }
+
   async function save() {
     if (!canSave || !configuredStoreId) return
     setSaving(true); setError(null); setMessage('جارٍ حفظ الشراء والمخزون والحسابات…')
@@ -296,7 +313,8 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
         }),
       })
       if (!response.ok) throw new Error(await responseError(response))
-      const body = await response.json() as { purchase: { id: string; document_number: string | null; total: string; remaining_due: string } }
+      const body = await response.json() as { purchase: SavedPurchase }
+      setSavedPurchase(body.purchase)
       const transferredIds = new Set(payments.filter((payment) => payment.method === 'transferred_customer_check').map((payment) => payment.checkId))
       setChecks((current) => current.filter((check) => !transferredIds.has(check.id)))
       setSuppliers((current) => current.map((supplier) => supplier.id === supplierId
@@ -304,6 +322,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
         : supplier))
       setDocumentNumber(''); setNotes(''); setLines([]); setPayments([])
       setManualDraft(newManualPurchaseDraft()); setManualDraftAttempted(false)
+      setStep('items')
       setMessage(`تم حفظ فاتورة الشراء ${body.purchase.document_number ?? `#${body.purchase.id}`} بقيمة ₪${formatDecimal(body.purchase.total)}؛ المتبقي للمورد ₪${formatDecimal(body.purchase.remaining_due)}.`)
       onDraftStateChange(false)
     } catch (caught) {
@@ -313,16 +332,48 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
 
   if (needsStore) return <p className="rounded-2xl bg-white p-8 text-center text-lg font-black text-slate-600">اختر المحل المستلم من أعلى الصفحة قبل تسجيل الشراء.</p>
   return (
-    <section>
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-slate-900 p-6 text-white"><div><p className="font-bold text-violet-300">المتجر المستلم: {store?.name ?? 'المتجر الحالي'}</p><h1 className="mt-1 text-3xl font-black">تسجيل فاتورة شراء</h1></div><Link className="rounded-xl bg-rose-100 px-5 py-3 font-black text-rose-900" to="/purchase-returns">مرتجع مشتريات</Link></div>
+    <section aria-labelledby="purchase-title">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-violet-700">{step === 'items' ? 'الخطوة 1 من 2' : 'الخطوة 2 من 2'} · المتجر المستلم: {store?.name ?? 'المتجر الحالي'}</p>
+          <h1 className="text-2xl font-black sm:text-3xl" id="purchase-title">{step === 'items' ? 'شراء جديد' : 'إتمام الشراء'}</h1>
+        </div>
+        {step === 'payment'
+          ? <button className="inline-flex min-h-11 items-center rounded-xl bg-white px-5 font-black ring-1 ring-slate-300 hover:bg-slate-100" onClick={() => setStep('items')} type="button">العودة إلى الأصناف</button>
+          : <Link className="inline-flex min-h-11 items-center rounded-xl bg-rose-100 px-5 font-black text-rose-900 hover:bg-rose-200" to="/purchase-returns">مرتجع مشتريات</Link>}
+      </div>
       {message && <p className="mt-5 rounded-xl bg-emerald-50 p-4 text-lg font-black text-emerald-900" role="status">{message}</p>}
       {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-lg font-black text-rose-900" role="alert">{error}</p>}
-      <div className="mt-6 grid gap-4 rounded-3xl border-2 border-slate-200 bg-white p-5 md:grid-cols-3">
+      {savedPurchase && <PurchaseConfirmation onClose={() => setSavedPurchase(null)} purchase={savedPurchase} />}
+      <div className="mt-5 grid items-start gap-5 min-[1150px]:grid-cols-[20rem_minmax(0,1fr)]" dir="ltr">
+        <aside aria-label="ملخص فاتورة الشراء المباشر" aria-live="polite" className="order-2 rounded-3xl border-2 border-violet-200 bg-white p-5 shadow-lg shadow-violet-900/5 min-[1150px]:sticky min-[1150px]:top-4 min-[1150px]:order-1" dir="rtl">
+          <p className="text-sm font-black text-violet-700">{step === 'items' ? 'ملخص الأصناف' : 'ملخص الدفع'}</p>
+          <h2 className="mt-1 text-2xl font-black">فاتورة شراء جديدة</h2>
+          <div className="mt-5 rounded-2xl bg-slate-100 p-4">
+            <div className="flex justify-between gap-4 border-b border-slate-200 py-3 text-lg font-bold"><span>الأصناف</span><span>{lines.length}</span></div>
+            <Summary label="الإجمالي" value={total} />
+            <Summary label="المدفوع" value={paid} />
+            <Summary large label="الدين المتبقي" value={remaining} />
+          </div>
+          {step === 'items' ? (
+            <button className="mt-5 min-h-16 w-full rounded-2xl bg-violet-700 px-6 text-xl font-black text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600" disabled={!canContinueToPayment} onClick={continueToPayment} type="button">متابعة إلى الدفع</button>
+          ) : (
+            <>
+              <button className="mt-5 min-h-16 w-full rounded-2xl bg-violet-700 px-6 text-xl font-black text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600" disabled={!canSave} onClick={() => void save()} type="button">{saving ? 'جارٍ الحفظ…' : 'حفظ فاتورة الشراء'}</button>
+              <button className="mt-3 min-h-12 w-full rounded-xl bg-white px-5 font-black ring-1 ring-slate-300 hover:bg-slate-100" onClick={() => setStep('items')} type="button">العودة وتعديل الأصناف</button>
+            </>
+          )}
+          {(step === 'items' ? !canContinueToPayment : !canSave) && !saving && (step === 'items' ? itemBlockers : saveBlockers).length > 0 && <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-black text-amber-900" role="status">{(step === 'items' ? itemBlockers : saveBlockers).map((reason) => <p key={reason}>{reason}</p>)}</div>}
+          {manualDraftTouched && <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-bold text-amber-900">السطر اليدوي غير المضاف لن يدخل الفاتورة. اضغط + لإضافته.</p>}
+        </aside>
+        <div className="order-1 min-w-0 min-[1150px]:order-2" dir="rtl">
+      {step === 'items' ? <>
+      <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3">
         <label><span className="mb-2 block font-black">المورد</span><select className={inputClass} onChange={(event) => setSupplierId(event.target.value)} value={supplierId}><option value="">اختر المورد</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} — المستحق ₪{formatDecimal(supplier.balance_ils)}</option>)}</select></label>
         <label><span className="mb-2 block font-black">رقم فاتورة المورد (اختياري)</span><input className={inputClass} maxLength={100} onChange={(event) => setDocumentNumber(event.target.value)} placeholder="اتركه فارغاً ليولّد النظام رقماً تلقائياً" value={documentNumber} /></label>
         <label><span className="mb-2 block font-black">التاريخ</span><input className={inputClass} onChange={(event) => setBusinessDate(event.target.value)} type="date" value={businessDate} /></label>
       </div>
-      <div className="relative mt-6 rounded-3xl border-2 border-teal-200 bg-white p-5">
+      <div className="relative mt-5 rounded-3xl border-2 border-violet-200 bg-white p-5 shadow-sm">
         <h2 className="text-2xl font-black">الأصناف</h2>
         <input className={`${inputClass} mt-4`} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => {
           if (event.key !== 'Enter') return
@@ -450,7 +501,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
                 <td className="px-2 py-3" data-mobile-label="سعر الشراء">
                   <input aria-label="سعر صنف الشراء اليدوي الجديد" className={inputClass} inputMode="decimal" onChange={(event) => updateManualDraft({ purchasePrice: event.target.value })} onKeyDown={handleManualDraftKeyDown} placeholder="السعر" value={manualDraft.purchasePrice} />
                 </td>
-                <td className="px-2 py-5 text-center text-lg font-black" data-mobile-label="الإجمالي" dir="ltr">₪{manualDraftTotal?.toFixed() ?? '—'}</td>
+                <td className="px-2 py-5 text-center text-lg font-black" data-mobile-label="الإجمالي" dir="ltr">₪{manualDraftTotal ? formatDecimal(manualDraftTotal.toFixed()) : '—'}</td>
                 <td className="px-1 py-3 text-center" data-mobile-label="">
                   <button aria-label="إضافة سطر الشراء اليدوي" className={`size-11 rounded-xl text-2xl font-black text-white ${manualDraftTotal === null ? 'bg-slate-600 hover:bg-slate-700' : 'bg-violet-700 hover:bg-violet-800'}`} onClick={commitManualLine} title="إضافة السطر" type="button">+</button>
                 </td>
@@ -476,7 +527,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
                   <td className="px-2 py-4" data-mobile-label="سعر الشراء">
                     <input className={inputClass} inputMode="decimal" onChange={(event) => updateLine(line.id, { purchasePrice: event.target.value })} value={line.purchasePrice} />
                   </td>
-                  <td className="px-2 py-5 text-center text-lg font-black" data-mobile-label="الإجمالي" dir="ltr">₪{lineTotals[index]?.toFixed() ?? '—'}</td>
+                  <td className="px-2 py-5 text-center text-lg font-black" data-mobile-label="الإجمالي" dir="ltr">₪{lineTotals[index] ? formatDecimal(lineTotals[index]!.toFixed()) : '—'}</td>
                   <td className="px-1 py-4 text-center" data-mobile-label="">
                     <button aria-label={`حذف ${line.name}`} className="min-h-11 rounded-xl px-3 font-black text-rose-700 hover:bg-rose-50" onClick={() => setLines((current) => current.filter((item) => item.id !== line.id))} type="button">حذف</button>
                   </td>
@@ -486,8 +537,19 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
           </table>
         </div>
       </div>
-      <div className="mt-6"><SupplierPaymentEditor allowEmpty businessDate={businessDate} checks={checks} onChange={setPayments} payments={payments} /></div>
-      <div className="mt-6 grid gap-5 rounded-3xl border-2 border-slate-200 bg-white p-5 lg:grid-cols-[1fr_24rem]"><label><span className="mb-2 block font-black">ملاحظات (اختياري)</span><textarea className={`${inputClass} min-h-28 py-3`} maxLength={2000} onChange={(event) => setNotes(event.target.value)} value={notes} /></label><div className="rounded-2xl bg-slate-100 p-5"><Summary label="الإجمالي" value={total} /><Summary label="المدفوع" value={paid} /><Summary large label="الدين المتبقي" value={remaining} /><button className="mt-5 min-h-16 w-full rounded-2xl bg-violet-700 px-6 text-xl font-black text-white disabled:bg-slate-300 disabled:text-slate-600" disabled={!canSave} onClick={() => void save()} type="button">{saving ? 'جارٍ الحفظ…' : 'حفظ فاتورة الشراء'}</button>{!canSave && !saving && saveBlockers.length > 0 && <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-black text-amber-900" role="status">{saveBlockers.map((reason) => <p key={reason}>{reason}</p>)}</div>}</div></div>
+      </> : <>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="font-black">المورد: {suppliers.find((supplier) => supplier.id === supplierId)?.name ?? '—'} · {businessDate}</p>
+        <p className="mt-1 text-sm font-bold text-slate-600">{documentNumber.trim() ? `رقم فاتورة المورد: ${documentNumber.trim()}` : 'رقم فاتورة المورد سيُنشأ عند الحفظ'} · {lines.length} {lines.length === 1 ? 'صنف' : 'أصناف'}</p>
+        <ul className="mt-3 divide-y divide-slate-200 rounded-xl bg-slate-50 px-4">
+          {lines.map((line, index) => <li className="flex flex-wrap items-center justify-between gap-2 py-3 font-bold" key={line.id}><span>{line.name} · {line.quantity} × ₪{formatDecimal(line.purchasePrice)}</span><span dir="ltr">₪{lineTotals[index] ? formatDecimal(lineTotals[index]!.toFixed()) : '—'}</span></li>)}
+        </ul>
+      </div>
+      <div className="mt-5"><SupplierPaymentEditor allowEmpty businessDate={businessDate} checks={checks} onChange={setPayments} payments={payments} /></div>
+      <label className="mt-5 block rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"><span className="mb-2 block font-black">ملاحظات (اختياري)</span><textarea className={`${inputClass} min-h-28 py-3`} maxLength={2000} onChange={(event) => setNotes(event.target.value)} value={notes} /></label>
+      </>}
+        </div>
+      </div>
     </section>
   )
 }
@@ -502,5 +564,5 @@ function calculateLine(line: PurchaseLine) {
 }
 
 function Summary({ label, value, large = false }: { label: string; value: Decimal | null; large?: boolean }) {
-  return <div className={`flex justify-between gap-4 border-b border-slate-200 py-3 ${large ? 'text-2xl font-black text-violet-900' : 'text-lg font-bold'}`}><span>{label}</span><span dir="ltr">₪{value?.toFixed() ?? '—'}</span></div>
+  return <div className={`flex justify-between gap-4 border-b border-slate-200 py-3 ${large ? 'text-2xl font-black text-violet-900' : 'text-lg font-bold'}`}><span>{label}</span><span dir="ltr">₪{value ? formatDecimal(value.toFixed()) : '—'}</span></div>
 }

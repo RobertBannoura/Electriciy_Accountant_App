@@ -3,6 +3,7 @@ import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { pool } from '../db/pool.js'
 import { AppError } from '../errors/app-error.js'
 import { claimFinancialOperation } from '../financial/financial-operation.js'
+import { formatMoneyDisplay } from '../money/money.js'
 import { prepareSupplierPayments, writeSupplierPayments } from './supplier-payment-writer.js'
 
 const PaymentDecimal = Decimal.clone({ precision: 100 })
@@ -36,7 +37,7 @@ export async function createSupplierPayment({ databasePool = pool, supplierId, i
     if (total.greaterThan(balanceBefore)) {
       throw new AppError(
         balanceBefore.greaterThan(0)
-          ? `مجموع الدفعات أكبر من دين المورد البالغ ₪${balanceBefore.toFixed()}`
+          ? `مجموع الدفعات أكبر من دين المورد البالغ ₪${formatMoneyDisplay(balanceBefore)}`
           : 'لا يوجد دين مستحق لهذا المورد',
         409,
         'SUPPLIER_PAYMENT_EXCEEDS_DEBT',

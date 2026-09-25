@@ -10,7 +10,7 @@ import {
 import { Store } from '../types'
 import { AccountStatementDialog } from '../components/AccountStatementDialog'
 import { DialogCloseButton } from '../components/DialogCloseButton'
-import { formatCurrencyAmount, formatHalfShekel } from '../money-display'
+import { formatCurrencyAmount, formatDecimal } from '../money-display'
 
 type StoreBalance = { store_id: string; store_name: string; amount_ils: string }
 type SupplierSummary = {
@@ -313,11 +313,11 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   return <div aria-label={title} aria-modal="true" className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-4" role="dialog"><div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl sm:p-8"><div className="mb-6 flex items-center justify-between gap-4"><h2 className="text-2xl font-black">{title}</h2><DialogCloseButton onClick={onClose} /></div>{children}</div></div>
 }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="block"><span className="mb-2 block text-sm font-black text-slate-700">{label}</span>{children}</label> }
-function IlsBalance({ amount }: { amount: string }) { return <span className="inline-block whitespace-nowrap rounded-xl bg-teal-50 px-2.5 py-2 font-black text-teal-900 ring-1 ring-inset ring-teal-100 sm:px-3" dir="ltr">₪{formatHalfShekel(amount)}</span> }
-function StoreBreakdown({ balances }: { balances: StoreBalance[] }) { return <div className="mt-3 space-y-1 text-sm text-slate-600">{balances.map((balance) => <p className="flex justify-between gap-4" key={balance.store_id}><span>{balance.store_name}</span><span dir="ltr">₪{formatHalfShekel(balance.amount_ils)}</span></p>)}</div> }
+function IlsBalance({ amount }: { amount: string }) { return <span className="inline-block whitespace-nowrap rounded-xl bg-teal-50 px-2.5 py-2 font-black text-teal-900 ring-1 ring-inset ring-teal-100 sm:px-3" dir="ltr">₪{formatDecimal(amount)}</span> }
+function StoreBreakdown({ balances }: { balances: StoreBalance[] }) { return <div className="mt-3 space-y-1 text-sm text-slate-600">{balances.map((balance) => <p className="flex justify-between gap-4" key={balance.store_id}><span>{balance.store_name}</span><span dir="ltr">₪{formatDecimal(balance.amount_ils)}</span></p>)}</div> }
 function DetailSection({ title, children }: { title: string; children: ReactNode }) { return <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><h2 className="border-b border-slate-200 bg-slate-50 px-5 py-4 text-xl font-black">{title}</h2><div className="divide-y divide-slate-100">{children}</div></section> }
 function PurchasesList({ items }: { items: Purchase[] }) { if (!items.length) return <NoRecords />; return <>{items.map((item) => <RecordRow key={item.id} primary={`شراء ${item.document_number ?? `#${item.id}`}`} secondary={`${localDate(item.business_date)} · ${item.store_name} · ${statusLabel(item.status)}`} value={formatCurrencyAmount(item.total, item.currency_code)} />)}</> }
-function PaymentsList({ items }: { items: Payment[] }) { if (!items.length) return <NoRecords />; return <>{items.map((item) => <RecordRow key={item.id} primary={paymentMethodLabel(item.payment_method)} secondary={`${localDate(item.paid_at)} · ${item.store_name}${item.reference ? ` · ${item.reference}` : ''}${item.currency_code === 'ILS' ? '' : ` · يعادل ₪${item.converted_ils_amount}`}`} value={originalMoney(item.original_amount, item.currency_code)} />)}</> }
+function PaymentsList({ items }: { items: Payment[] }) { if (!items.length) return <NoRecords />; return <>{items.map((item) => <RecordRow key={item.id} primary={paymentMethodLabel(item.payment_method)} secondary={`${localDate(item.paid_at)} · ${item.store_name}${item.reference ? ` · ${item.reference}` : ''}${item.currency_code === 'ILS' ? '' : ` · يعادل ₪${formatDecimal(item.converted_ils_amount)}`}`} value={originalMoney(item.original_amount, item.currency_code)} />)}</> }
 function ChecksList({ items }: { items: SupplierCheck[] }) {
   if (!items.length) return <NoRecords />
   return <>{items.map((item) => (
@@ -329,7 +329,7 @@ function ChecksList({ items }: { items: SupplierCheck[] }) {
     />
   ))}</>
 }
-function MovementsList({ items }: { items: Movement[] }) { if (!items.length) return <NoRecords />; return <>{items.map((item) => <RecordRow key={item.id} primary={item.notes ?? movementSourceLabel(item.source_type)} secondary={`${localDate(item.occurred_at)} · ${item.store_name} · ${item.direction === 'credit' ? 'دائن' : 'مدين'}`} value={`${item.direction === 'credit' ? '+' : '-'}₪${item.amount_ils}`} />)}</> }
+function MovementsList({ items }: { items: Movement[] }) { if (!items.length) return <NoRecords />; return <>{items.map((item) => <RecordRow key={item.id} primary={item.notes ?? movementSourceLabel(item.source_type)} secondary={`${localDate(item.occurred_at)} · ${item.store_name} · ${item.direction === 'credit' ? 'دائن' : 'مدين'}`} value={`${item.direction === 'credit' ? '+' : '-'}₪${formatDecimal(item.amount_ils)}`} />)}</> }
 function RecordRow({ primary, secondary, value }: { primary: ReactNode; secondary: ReactNode; value?: string }) { return <div className="flex items-start justify-between gap-4 p-4"><div><p className="font-black">{primary}</p><p className="mt-1 text-sm text-slate-500">{secondary}</p></div>{value && <p className="whitespace-nowrap font-black" dir="ltr">{value}</p>}</div> }
 function NoRecords() { return <p className="p-5 text-slate-500">لا توجد سجلات.</p> }
 function EmptyState({ text, error = false }: { text: string; error?: boolean }) { return <p className={`rounded-2xl p-8 text-center text-lg font-black ${error ? 'bg-rose-50 text-rose-800' : 'bg-white text-slate-600'}`} role={error ? 'alert' : 'status'}>{text}</p> }

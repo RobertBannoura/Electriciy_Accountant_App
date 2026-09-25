@@ -77,7 +77,7 @@ function AuthenticatedApplication({
     let running = false
 
     async function createDailyBackupIfDue() {
-      if (stopped || running || !navigator.onLine) return
+      if (stopped || running || (!window.desktop?.trialMode && !navigator.onLine)) return
       running = true
       try {
         const status = await desktop!.getBackupStatus()

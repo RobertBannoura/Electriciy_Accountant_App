@@ -120,7 +120,7 @@ export function AppShell({ configuredStore, isOnline, stores, user, onBrowserSto
 
       {!isOnline && <div className="border-b border-rose-300 bg-rose-50 px-4 py-3 text-center font-black text-rose-900" role="alert">لا يوجد اتصال بالخادم. العمليات المالية متوقفة حتى عودة الاتصال.</div>}
 
-      <div className={`mx-auto px-4 py-5 sm:px-8 sm:py-10 ${location.pathname === '/sale' ? 'max-w-[78rem]' : 'max-w-6xl'}`}>
+      <div className={`mx-auto px-4 py-5 sm:px-8 sm:py-10 ${['/sale', '/purchases'].includes(location.pathname) ? 'max-w-[78rem]' : 'max-w-6xl'}`}>
         {financialRouteLocked && <p className="mb-4 rounded-2xl border-2 border-rose-300 bg-rose-50 p-5 text-center text-lg font-black text-rose-900" role="alert">هذه العملية غير متاحة دون اتصال بالخادم.</p>}
         <div aria-disabled={financialRouteLocked} className={financialRouteLocked ? 'select-none opacity-45' : undefined} inert={financialRouteLocked}><Outlet /></div>
       </div>

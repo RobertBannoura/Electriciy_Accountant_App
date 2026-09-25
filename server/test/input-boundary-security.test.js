@@ -151,7 +151,7 @@ test('pagination, report ranges, inventory batches, barcodes, money, FX, and enu
   }]).error)
   assert.ok(parseExpenseInput({
     amount: '10',
-    category: `${DEFAULT_EXPENSE_CATEGORIES[0]}-attacker`,
+    category: `${DEFAULT_EXPENSE_CATEGORIES[0]}${'x'.repeat(101)}`,
     date: '2026-09-10',
     paymentMethod: 'cash',
   }).error)

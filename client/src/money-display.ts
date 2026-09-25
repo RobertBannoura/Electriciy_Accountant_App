@@ -4,25 +4,25 @@ const DisplayDecimal = Decimal.clone({ precision: 100 })
 
 export function formatDecimal(value: string) {
   try {
-    return new DisplayDecimal(value).toFixed()
+    const decimal = new DisplayDecimal(value)
+    const rounded = decimal.toDecimalPlaces(2)
+    if (!decimal.isZero() && rounded.isZero()) return decimal.isNegative() ? '>-0.01' : '<0.01'
+    return rounded.toFixed(2)
   } catch {
     return value
   }
 }
 
 export function formatMoney(value: string) {
-  try {
-    return new DisplayDecimal(value).toDecimalPlaces(2).toFixed()
-  } catch {
-    return value
-  }
+  return formatDecimal(value)
 }
 
-export function formatHalfShekel(value: string) {
+export function formatQuantity(value: string) {
   try {
-    return new DisplayDecimal(value)
-      .toNearest('0.5', DisplayDecimal.ROUND_HALF_UP)
-      .toFixed()
+    const decimal = new DisplayDecimal(value)
+    const rounded = decimal.toDecimalPlaces(3)
+    if (!decimal.isZero() && rounded.isZero()) return decimal.isNegative() ? '>-0.001' : '<0.001'
+    return rounded.toFixed()
   } catch {
     return value
   }

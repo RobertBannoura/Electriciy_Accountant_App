@@ -122,7 +122,7 @@ export function SupplierPaymentPage({ defaultStoreId, stores, onDraftStateChange
 }
 
 function Row({ label, value }: { label: string; value: Decimal | null }) {
-  return <div className="flex justify-between gap-4 border-b border-slate-200 py-3 text-lg font-black"><span>{label}</span><span dir="ltr">₪{value?.toFixed() ?? '—'}</span></div>
+  return <div className="flex justify-between gap-4 border-b border-slate-200 py-3 text-lg font-black"><span>{label}</span><span dir="ltr">₪{value ? formatDecimal(value.toFixed()) : '—'}</span></div>
 }
 function State({ text, error = false }: { text: string; error?: boolean }) {
   return <p className={`rounded-2xl p-8 text-center text-lg font-black ${error ? 'bg-rose-50 text-rose-800' : 'bg-white text-slate-600'}`}>{text}</p>

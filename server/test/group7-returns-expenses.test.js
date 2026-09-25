@@ -17,7 +17,7 @@ test('return input requires one original document and unique positive item quant
   assert.ok(parseReturnInput({ saleId: '12', items: [{ saleItemId: '31', quantity: '0' }] }).error)
 })
 
-test('expense input exposes exactly the requested defaults and cash/bank methods', () => {
+test('expense input keeps the default choices and accepts a bounded custom category', () => {
   assert.deepEqual(DEFAULT_EXPENSE_CATEGORIES, [
     'كهرباء', 'أجار', 'رواتب', 'مواصلات', 'صيانة', 'مشتريات للمحل', 'أخرى',
   ])
@@ -28,7 +28,17 @@ test('expense input exposes exactly the requested defaults and cash/bank methods
     amount: '125.50', category: 'صيانة', expenseDate: '2026-09-09',
     paymentMethod: 'bank_card', notes: 'فاتورة صيانة',
   } })
-  assert.ok(parseExpenseInput({ amount: '1', category: 'دخل متنوع', date: '2026-09-09', paymentMethod: 'cash' }).error)
+  assert.equal(parseExpenseInput({ amount: '1', category: '  رسوم بلدية  ', date: '2026-09-09', paymentMethod: 'cash' }).value.category, 'رسوم بلدية')
+  for (const category of ['', '   ', 'أ'.repeat(101), 123]) {
+    assert.ok(parseExpenseInput({ amount: '1', category, date: '2026-09-09', paymentMethod: 'cash' }).error)
+  }
+})
+
+test('expense schema permits named categories while bounding recorded values', async () => {
+  const migration = await readFile(new URL('../db/migrations/0029_custom_expense_categories.sql', import.meta.url), 'utf8')
+  assert.match(migration, /DROP CONSTRAINT expenses_recorded_values/)
+  assert.match(migration, /CHAR_LENGTH\(expense_category\) BETWEEN 1 AND 100/)
+  assert.match(migration, /expense_category = BTRIM\(expense_category\)/)
 })
 
 function expensePool({ failMovement = false } = {}) {

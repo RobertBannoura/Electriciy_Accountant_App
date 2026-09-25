@@ -3,6 +3,7 @@ import { pool } from '../db/pool.js'
 import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { AppError } from '../errors/app-error.js'
 import { claimFinancialOperation } from '../financial/financial-operation.js'
+import { formatMoneyDisplay } from '../money/money.js'
 
 const CheckDecimal = Decimal.clone({ precision: 100 })
 
@@ -72,7 +73,7 @@ export async function transferCheckToSupplier({
     if (new CheckDecimal(check.amount).greaterThan(balance)) {
       throw new AppError(
         balance.greaterThan(0)
-          ? `قيمة الشيك أكبر من دين المورد البالغ ₪${balance.toFixed()}`
+          ? `قيمة الشيك أكبر من دين المورد البالغ ₪${formatMoneyDisplay(balance)}`
           : 'لا يوجد دين مستحق لهذا المورد',
         409,
         'SUPPLIER_PAYMENT_EXCEEDS_DEBT',

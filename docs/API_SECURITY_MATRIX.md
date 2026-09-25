@@ -65,12 +65,14 @@ Scope: every HTTP route mounted by `server/src/app.js` and every method declared
 | POST | /api/push/subscriptions | Yes | admin, persistent account required | No | Account-wide | Write | Critical: push endpoint and encryption keys |
 | DELETE | /api/push/subscriptions | Yes | admin, persistent account required | No | Account-wide | Write | Critical: push endpoint |
 | GET | /api/reports/home | Yes | admin | Yes | Store-scoped | Read | Critical: financial and inventory summary |
+| GET | /api/reports/sales | Yes | admin | No; optional validated active-store query filter | Business-wide or selected-store | Read | Critical: sale history and debt |
 | GET | /api/reports | Yes | admin | No; optional validated active-store query filter | Business-wide or selected-store | Read | Critical: financial reports |
 | GET | /api/returns/customer/sources | Yes | admin | Yes | Store-scoped | Read | Critical: sales and returnable lines |
 | GET | /api/returns/supplier/sources | Yes | admin | Yes | Store-scoped | Read | Critical: purchases and returnable lines |
 | POST | /api/returns/customer | Yes | admin | Yes | Store-scoped | Financial/inventory write | Critical: return, stock, customer ledger |
 | POST | /api/returns/supplier | Yes | admin | Yes | Store-scoped | Financial/inventory write | Critical: return, stock, supplier ledger |
 | POST | /api/sales | Yes | admin | Yes | Store-scoped | Financial/inventory write | Critical: sale, stock, payments, ledgers |
+| GET | /api/sales/:saleId | Yes | admin | Yes | Store-scoped | Read | Critical: sale and invoice details |
 | GET | /api/stores | Yes | admin | No | Business-wide | Read | Yes: store directory |
 | PATCH | /api/stores/:storeId | Yes | admin | No; path store validated active | Business-wide administration | Write | Yes: settings and audit |
 | GET | /api/suppliers | Yes | admin | Yes, operating context | Business-wide identity | Read | Yes: contact and balance data |
@@ -89,6 +91,8 @@ Scope: every HTTP route mounted by `server/src/app.js` and every method declared
 | OPTIONS | /api/* CORS preflight | No | None | No | Transport metadata only | Read | No business data; configured methods/headers only |
 
 Unsupported methods fall through to the centralized 404 path after the applicable authentication middleware. Unknown `/api/*` paths are therefore not a hidden public bypass.
+
+The offline trial also registers `GET /api/health/trial-runtime` and `POST /api/health/trial-shutdown` directly in `app.js`. They exist only with `TRIAL_OFFLINE=1`, bind to `127.0.0.1`, and return 404 without the per-install runtime token. They expose no accounting data and are unavailable in the normal server configuration.
 
 ## Surfaces that do not exist
 

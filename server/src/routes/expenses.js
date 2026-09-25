@@ -27,7 +27,17 @@ expensesRouter.get('/', async (request, response) => {
     [request.storeId, pagination.fetchLimit, pagination.offset],
   )
   const page = paginatedResult(result.rows, pagination)
-  response.json({ categories: DEFAULT_EXPENSE_CATEGORIES, expenses: page.rows, pagination: page.pagination })
+  const usedCategories = await query(
+    `SELECT DISTINCT expense_category AS category FROM expenses
+     WHERE store_id = $1::BIGINT AND status = 'recorded'
+     ORDER BY expense_category`,
+    [request.storeId],
+  )
+  const categories = [...new Set([
+    ...DEFAULT_EXPENSE_CATEGORIES,
+    ...usedCategories.rows.map((row) => row.category),
+  ])]
+  response.json({ categories, expenses: page.rows, pagination: page.pagination })
 })
 
 expensesRouter.post('/', requireFinancialRequestId, async (request, response) => {

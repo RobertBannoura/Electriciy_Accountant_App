@@ -12,6 +12,7 @@ export async function provisionAdmin(
     password,
     displayName = 'المدير',
     allowLocalDevelopmentPassword = false,
+    allowOfflineTrialPassword = false,
   },
 ) {
   const normalizedUsername = normalizeUsername(username)
@@ -24,6 +25,13 @@ export async function provisionAdmin(
 
   const passwordIsAllowed = isValidProvisionedPassword(password)
     || (allowLocalDevelopmentPassword && isValidLoginPassword(password))
+    || (
+      allowOfflineTrialPassword
+      && process.env.TRIAL_OFFLINE === '1'
+      && process.env.NODE_ENV === 'trial'
+      && normalizedUsername === 'admin'
+      && password === 'admin'
+    )
     || (process.env.NODE_ENV === 'development' && password === 'admin')
 
   if (!passwordIsAllowed) {

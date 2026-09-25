@@ -8,7 +8,7 @@ import {
   statusLabel,
 } from '../business-labels'
 import { Store } from '../types'
-import { formatCurrencyAmount, formatDecimal, formatHalfShekel } from '../money-display'
+import { formatCurrencyAmount, formatDecimal } from '../money-display'
 import { AccountStatementDialog } from '../components/AccountStatementDialog'
 import { DialogCloseButton } from '../components/DialogCloseButton'
 
@@ -474,11 +474,11 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function IlsBalance({ amount }: { amount: string }) {
-  return <span className="inline-block whitespace-nowrap rounded-xl bg-teal-50 px-2.5 py-2 font-black text-teal-900 ring-1 ring-inset ring-teal-100 sm:px-3" dir="ltr">₪{formatHalfShekel(amount)}</span>
+  return <span className="inline-block whitespace-nowrap rounded-xl bg-teal-50 px-2.5 py-2 font-black text-teal-900 ring-1 ring-inset ring-teal-100 sm:px-3" dir="ltr">₪{formatDecimal(amount)}</span>
 }
 
 function StoreBreakdown({ balances }: { balances: StoreBalance[] }) {
-  return <div className="mt-3 space-y-1 text-sm text-slate-600">{balances.map((balance) => <p className="flex justify-between gap-4" key={balance.store_id}><span>{balance.store_name}</span><span dir="ltr">₪{formatHalfShekel(balance.amount_ils)}</span></p>)}</div>
+  return <div className="mt-3 space-y-1 text-sm text-slate-600">{balances.map((balance) => <p className="flex justify-between gap-4" key={balance.store_id}><span>{balance.store_name}</span><span dir="ltr">₪{formatDecimal(balance.amount_ils)}</span></p>)}</div>
 }
 
 function DetailSection({ title, children }: { title: string; children: ReactNode }) {

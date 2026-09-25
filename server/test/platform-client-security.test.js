@@ -38,7 +38,7 @@ test('renderer and Electron production sources contain no backend private config
   const files = await Promise.all([
     collectTextFiles('client/src'),
     collectTextFiles('client/public'),
-    collectTextFiles('electron', new Set(['test'])),
+    collectTextFiles('electron', new Set(['test', 'trial-runtime.cjs'])),
   ])
   const source = files.flat().join('\n')
   assert.doesNotMatch(source, /VAPID_PRIVATE_KEY|vapidPrivateKey|DATABASE_URL|BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY/)

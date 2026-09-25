@@ -3,6 +3,8 @@ export {}
 declare global {
   interface Window {
     desktop?: {
+      trialMode: boolean
+      trialApiBaseUrl: string
       getVersions: () => Promise<{
         electron: string
         chrome: string

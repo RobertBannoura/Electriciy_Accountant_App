@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { apiFetch } from '../api'
 import { DateField } from '../components/DateField'
+import { SalesReportList } from '../components/SalesReportList'
 import { formatCurrencyAmount, formatIls } from '../money-display'
 import { Store } from '../types'
 
@@ -212,6 +213,7 @@ export function ReportsPage({ stores }: { stores: Store[] }) {
           <ReportDetail report={report} selected={selected} />
         </>
       )}
+      {selected === 'sales' && <SalesReportList from={from} key={`${from}:${to}:${storeId}`} storeId={storeId} to={to} />}
     </section>
   )
 }

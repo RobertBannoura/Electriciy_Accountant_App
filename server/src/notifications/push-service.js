@@ -3,6 +3,7 @@ import { env } from '../config/env.js'
 import { query } from '../db/pool.js'
 import { notificationCategories } from './notification-input.js'
 import { safeErrorDetails } from '../security/security-log.js'
+import { formatMoneyDisplay } from '../money/money.js'
 
 const categoryColumns = new Set(notificationCategories)
 const vapidConfigured = Boolean(env.vapidPublicKey && env.vapidPrivateKey && env.vapidSubject)
@@ -118,7 +119,9 @@ export async function notifyAdminAfterCommit(notification, {
 }
 
 export function formatIlsAmount(value) {
-  const [integer, fraction = ''] = String(value ?? '0').split('.')
+  const formatted = formatMoneyDisplay(value ?? '0')
+  if (formatted.startsWith('<') || formatted.startsWith('>')) return `₪${formatted}`
+  const [integer, fraction = ''] = formatted.split('.')
   const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   const visibleFraction = fraction.replace(/0+$/, '')
   return `₪${grouped}${visibleFraction ? `.${visibleFraction}` : ''}`

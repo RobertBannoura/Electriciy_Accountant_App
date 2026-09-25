@@ -1,6 +1,7 @@
 import cors from 'cors'
 import express from 'express'
 import helmet from 'helmet'
+import { timingSafeEqual } from 'node:crypto'
 import { env } from './config/env.js'
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js'
 import { requireAdmin } from './middleware/require-admin.js'
@@ -33,7 +34,9 @@ import { verificationRouter } from './routes/verification.js'
 export const app = express()
 const normalJsonBoundary = createJsonComplexityGuard({ maxDepth: 32, maxNodes: 20_000 })
 const backupJsonBoundary = createJsonComplexityGuard({ maxDepth: 32, maxNodes: 2_000_000 })
-const trustedBrowserOrigins = [env.clientOrigin, env.electronOrigin]
+const trustedBrowserOrigins = env.offlineTrial
+  ? [env.electronOrigin]
+  : [env.clientOrigin, env.electronOrigin]
 const corsOrigin = env.nodeEnv === 'development'
   ? (origin, callback) => {
       if (!origin || trustedBrowserOrigins.includes(origin) || isDevelopmentBrowserOrigin(origin)) {
@@ -79,6 +82,27 @@ app.use(
   }),
 )
 app.use('/api/health', healthRouter)
+if (env.offlineTrial) {
+  const token = process.env.TRIAL_RUNTIME_TOKEN ?? ''
+  const tokenBuffer = Buffer.from(token, 'utf8')
+  const authorized = (request) => {
+    const supplied = Buffer.from(request.get('x-trial-runtime-token') ?? '', 'utf8')
+    return tokenBuffer.length === 64 && supplied.length === tokenBuffer.length
+      && timingSafeEqual(supplied, tokenBuffer)
+  }
+  app.get('/api/health/trial-runtime', (request, response) => {
+    if (!authorized(request)) return response.sendStatus(404)
+    return response.json({
+      buildId: process.env.TRIAL_BUILD_ID,
+      databasePort: new URL(env.databaseUrl).port,
+    })
+  })
+  app.post('/api/health/trial-shutdown', (request, response) => {
+    if (!authorized(request)) return response.sendStatus(404)
+    response.sendStatus(204)
+    setImmediate(() => process.emit('SIGTERM'))
+  })
+}
 app.use('/api/auth', express.json({ limit: '1mb' }), normalJsonBoundary, authRouter)
 app.use('/api/backups', requireAuth, requireAdmin, express.json({ limit: '100mb' }), backupJsonBoundary, backupsRouter)
 app.use(express.json({ limit: '1mb' }))

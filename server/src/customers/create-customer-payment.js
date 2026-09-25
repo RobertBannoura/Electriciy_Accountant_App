@@ -3,6 +3,7 @@ import { writeAuditEntry } from '../audit/write-audit-entry.js'
 import { pool } from '../db/pool.js'
 import { AppError } from '../errors/app-error.js'
 import { claimFinancialOperation } from '../financial/financial-operation.js'
+import { formatMoneyDisplay } from '../money/money.js'
 import {
   insertCustomerLedgerMovement,
   insertIncomingPayment,
@@ -62,7 +63,7 @@ export async function createCustomerPayment({
     if (total.greaterThan(balanceBefore)) {
       throw new AppError(
         balanceBefore.greaterThan(0)
-          ? `مجموع الدفعات أكبر من دين العميل البالغ ₪${balanceBefore.toFixed()}`
+          ? `مجموع الدفعات أكبر من دين العميل البالغ ₪${formatMoneyDisplay(balanceBefore)}`
           : 'لا يوجد دين مستحق على هذا العميل',
         409,
         'CUSTOMER_PAYMENT_EXCEEDS_DEBT',

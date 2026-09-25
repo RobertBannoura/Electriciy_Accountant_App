@@ -1,6 +1,8 @@
 {
   "name": "electricity-accountant-app",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "description": "Offline Windows trial of the Electricity Accountant application",
+  "author": "Altra Innovations",
   "private": true,
   "workspaces": [
     "client",
@@ -25,6 +27,7 @@
     "start:electron": "npm run start --workspace electron",
     "smoke:electron": "npm run smoke --workspace electron",
     "package:electron:win": "npm run package:win --workspace electron",
+    "installer:electron:win": "npm run installer:win --workspace electron",
     "db:migrate": "npm run db:migrate --workspace server",
     "db:seed:dev": "npm run db:seed:dev --workspace server",
     "db:seed:mock": "npm run db:seed:mock --workspace server",

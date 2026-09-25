@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiFetch } from '../api'
+import { SaleInvoiceViewer } from '../components/SaleInvoiceViewer'
 import { formatDecimal } from '../money-display'
 
 type ReminderCheck = {
@@ -131,6 +132,7 @@ export function HomePage({ isOnline, readOnly = false, storeId }: { isOnline: bo
   const [actingId, setActingId] = useState<string | null>(null)
   const [summary, setSummary] = useState<HomeSummary | null>(null)
   const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [viewingSale, setViewingSale] = useState<{ id: string; storeId: string } | null>(null)
 
   const loadSummary = useCallback(async (signal?: AbortSignal) => {
     if (!storeId) {
@@ -271,7 +273,10 @@ export function HomePage({ isOnline, readOnly = false, storeId }: { isOnline: bo
 
       {summary && (
         <section className="mt-7" aria-labelledby="recent-activity-title">
-          <h2 className="text-xl font-black" id="recent-activity-title">النشاط الأخير</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-black" id="recent-activity-title">النشاط الأخير</h2>
+            <Link className="font-black text-teal-700 hover:text-teal-900" to="/reports?section=sales">كل فواتير المبيعات</Link>
+          </div>
           <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             {summary.recent_activity.length === 0 ? (
               <p className="p-5 font-bold text-slate-500">لا يوجد نشاط حديث.</p>
@@ -281,12 +286,17 @@ export function HomePage({ isOnline, readOnly = false, storeId }: { isOnline: bo
                   <p className="font-black">{activityLabel(activity.kind)}</p>
                   <p className="mt-1 text-sm font-bold text-slate-500">{activity.document_number} · {localDate(activity.business_date)}</p>
                 </div>
-                <p className="shrink-0 font-black" dir="ltr">₪{formatDecimal(activity.amount)}</p>
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
+                  <p className="font-black" dir="ltr">₪{formatDecimal(activity.amount)}</p>
+                  {activity.kind === 'sale' && storeId && <button className="min-h-11 rounded-xl bg-teal-50 px-4 font-black text-teal-800 hover:bg-teal-100" onClick={() => setViewingSale({ id: activity.id, storeId })} type="button">عرض الفاتورة</button>}
+                </div>
               </article>
             ))}
           </div>
         </section>
       )}
+
+      {viewingSale && <SaleInvoiceViewer key={`${viewingSale.storeId}:${viewingSale.id}`} onClose={() => setViewingSale(null)} saleId={viewingSale.id} storeId={viewingSale.storeId} />}
 
       {reminders && reminders.due_today.length > 0 && (
         <p className="mb-5 mt-7 rounded-2xl border border-sky-300 bg-sky-50 p-4 font-black text-sky-950" role="status">

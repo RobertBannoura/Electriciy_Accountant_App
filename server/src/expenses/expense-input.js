@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js'
-import { isHalfShekelAmount, normalizeDecimal, normalizeOptionalText } from '../products/product-input.js'
+import { isHalfShekelAmount, normalizeDecimal, normalizeOptionalText, normalizeRequiredText } from '../products/product-input.js'
 
 export const DEFAULT_EXPENSE_CATEGORIES = Object.freeze([
   'كهرباء', 'أجار', 'رواتب', 'مواصلات', 'صيانة', 'مشتريات للمحل', 'أخرى',
@@ -9,7 +9,7 @@ const ExpenseDecimal = Decimal.clone({ precision: 100 })
 
 export function parseExpenseInput(body) {
   const amount = normalizeDecimal(body?.amount, { scale: 2 })
-  const category = DEFAULT_EXPENSE_CATEGORIES.includes(body?.category) ? body.category : null
+  const category = normalizeRequiredText(body?.category, 100)
   const expenseDate = body?.date ?? body?.expenseDate
   const paymentMethod = body?.paymentMethod === 'bank' ? 'bank_card' : body?.paymentMethod
   const notes = normalizeOptionalText(body?.notes, 1000)
