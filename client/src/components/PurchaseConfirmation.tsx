@@ -3,6 +3,7 @@ import { formatDecimal, formatQuantity } from '../money-display'
 
 export type SavedPurchase = {
   id: string
+  store_id: string
   document_number: string | null
   business_date: string
   supplier_name: string
@@ -18,7 +19,7 @@ export type SavedPurchase = {
   }>
 }
 
-export function PurchaseConfirmation({ purchase, onClose }: { purchase: SavedPurchase; onClose: () => void }) {
+export function PurchaseConfirmation({ purchase, storeName, onClose }: { purchase: SavedPurchase; storeName: string; onClose: () => void }) {
   return (
     <div aria-label="تأكيد حفظ فاتورة الشراء" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 p-3" onClick={(event) => { if (event.target === event.currentTarget) onClose() }} role="dialog">
       <div className="mx-auto max-w-4xl rounded-3xl bg-white p-5 shadow-2xl sm:p-7" dir="rtl">
@@ -27,6 +28,7 @@ export function PurchaseConfirmation({ purchase, onClose }: { purchase: SavedPur
           <DialogCloseButton onClick={onClose} />
         </div>
         <div className="rounded-2xl bg-slate-50 p-4 font-bold">
+          <p>المحل المستلم: {storeName}</p>
           <p>رقم الفاتورة: <span dir="ltr">{purchase.document_number ?? `#${purchase.id}`}</span></p>
           <p className="mt-2">المورد: {purchase.supplier_name}</p>
           <p className="mt-2">التاريخ: {purchase.business_date}</p>

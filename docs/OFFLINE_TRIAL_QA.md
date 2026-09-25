@@ -64,6 +64,12 @@ The installed application then launched visibly in the normal Windows session. A
 
 The automated test posted a normal Windows close message to the Electron window, then checked process paths and listener ports. It did not click the product/customer/sale forms, visually inspect the renderer, disconnect the physical network, reboot Windows, or use a clean Windows machine. The restricted test account could not launch Chromium's GPU child; the normal Windows session completed the installed test. The process-console defect is closed by this QA, but the client release gates in this report remain open.
 
+## Purchase/check tester rebuild, 2026-09-25
+
+The current installer is `release/installer/Electricity-Accountant-Trial-Setup.exe`, **152,706,662 bytes**, SHA-256 **7E37D8829B88C814673F7FB1F67F6F766972D2E62A017073387EBBDBC88B7D8A**. It was copied to `E:\program\Electricity-Accountant-Trial-Setup.exe`; the source and destination hashes matched. The Arabic client guide was copied beside it.
+
+This build includes the purchase receiving-store and cross-store check changes. TypeScript, ESLint, Electron tests (25/25), the production renderer build, Electron package, and NSIS installer build passed. The offline PostgreSQL feature suite passed **57/57** after its store-context assertion was updated to cover the new two-store scenario. The actual installer passed normal-session installed QA: visible launch with zero new console windows, trial login, local transactions, second-instance focus without duplicate service PIDs, three close/reopen cycles with zero residual trial processes, persistence, backup restore, and financial verification (`ok`, zero issues). Physical testing on 5–10 separate PCs has not been performed; each installation keeps its own LocalAppData database.
+
 ## Release gate
 
 Do not mark this trial READY until a clean Windows machine runs the interactive installer with no external prerequisites, completes visible in-app transactions and PDF export, survives a real Windows reboot, works with internet physically disconnected, and the full server regression failures are resolved or explicitly adjudicated without weakening tests. No Prompt 5 work is included here.

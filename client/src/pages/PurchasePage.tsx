@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js'
 import { KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { apiFetch, storeScopedApiFetch } from '../api'
+import { apiFetch } from '../api'
 import { SupplierPaymentEditor } from '../components/SupplierPaymentEditor'
 import { DialogCloseButton } from '../components/DialogCloseButton'
 import { PurchaseConfirmation } from '../components/PurchaseConfirmation'
@@ -75,6 +75,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
   onDraftStateChange: (active: boolean) => void
 }) {
   const [params] = useSearchParams()
+  const [purchaseStoreId, setPurchaseStoreId] = useState(configuredStoreId ?? '')
   const [step, setStep] = useState<'items' | 'payment'>('items')
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -99,19 +100,19 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
   const [error, setError] = useState<string | null>(null)
   const [savedPurchase, setSavedPurchase] = useState<SavedPurchase | null>(null)
   const searchId = useRef(0)
+  const purchaseStoreIdRef = useRef(purchaseStoreId)
   const manualNameInputRef = useRef<HTMLInputElement>(null)
-  const store = stores.find((item) => item.id === configuredStoreId)
-  const needsStore = !configuredStoreId
+  const store = stores.find((item) => item.id === purchaseStoreId)
+  const needsStore = !purchaseStoreId
   const scopedFetch = useCallback((path: string, init?: RequestInit) => {
-    if (window.desktop) return storeScopedApiFetch(path, init)
-    if (!configuredStoreId) throw new Error('اختر المتجر المستلم أولاً')
+    if (!purchaseStoreId) throw new Error('اختر المتجر المستلم أولاً')
     const headers = new Headers(init?.headers)
-    headers.set('X-Store-Id', configuredStoreId)
+    headers.set('X-Store-Id', purchaseStoreId)
     return apiFetch(path, { ...init, headers })
-  }, [configuredStoreId])
+  }, [purchaseStoreId])
 
   useEffect(() => {
-    if (!configuredStoreId) return
+    if (!purchaseStoreId) return
     const controller = new AbortController()
     Promise.all([
       scopedFetch('/suppliers', { signal: controller.signal }),
@@ -124,23 +125,24 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
       const supplierBody = await supplierResponse.json() as { suppliers: Supplier[] }
       const checkBody = await checkResponse.json() as { checks: TransferableCheck[] }
       const categoryBody = await categoryResponse.json() as { categories: Category[] }
+      if (controller.signal.aborted) return
       setSuppliers(supplierBody.suppliers)
       setCategories(categoryBody.categories)
       setChecks(checkBody.checks.filter((check) => check.status === 'pending' && !check.supplier_id))
     }).catch((caught) => {
-      if (caught instanceof DOMException && caught.name === 'AbortError') return
+      if (controller.signal.aborted || (caught instanceof DOMException && caught.name === 'AbortError')) return
       setError(caught instanceof Error ? caught.message : 'تعذر تحميل بيانات الشراء')
     })
     return () => controller.abort()
-  }, [configuredStoreId, scopedFetch])
+  }, [purchaseStoreId, scopedFetch])
 
   useEffect(() => {
-    if (!configuredStoreId) {
+    if (!purchaseStoreId) {
       setCategoryProducts([])
       return
     }
     const controller = new AbortController()
-    const query = new URLSearchParams({ storeId: configuredStoreId })
+    const query = new URLSearchParams({ storeId: purchaseStoreId })
     if (selectedCategoryId) query.set('categoryId', selectedCategoryId)
     setLoadingCatalog(true)
     apiFetch(`/products?${query}`, { signal: controller.signal })
@@ -148,14 +150,14 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
         if (!response.ok) throw new Error(await responseError(response))
         return response.json() as Promise<{ products: Product[] }>
       })
-      .then((body) => setCategoryProducts(body.products))
+      .then((body) => { if (!controller.signal.aborted) setCategoryProducts(body.products) })
       .catch((caught) => {
-        if (caught instanceof DOMException && caught.name === 'AbortError') return
+        if (controller.signal.aborted || (caught instanceof DOMException && caught.name === 'AbortError')) return
         setError(caught instanceof Error ? caught.message : 'تعذر تحميل أصناف التصنيف')
       })
-      .finally(() => setLoadingCatalog(false))
+      .finally(() => { if (!controller.signal.aborted) setLoadingCatalog(false) })
     return () => controller.abort()
-  }, [configuredStoreId, selectedCategoryId])
+  }, [purchaseStoreId, selectedCategoryId])
 
   useEffect(() => {
     if (!showCatalog) return undefined
@@ -176,30 +178,33 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
   }, [])
 
   const scanBarcode = useCallback(async (barcode: string) => {
-    if (!configuredStoreId) return
+    if (!purchaseStoreId) return
+    const scannedStoreId = purchaseStoreId
     setSearching(true)
     try {
-      const response = await apiFetch(`/products?barcode=${encodeURIComponent(barcode)}&storeId=${configuredStoreId}`)
+      const response = await apiFetch(`/products?barcode=${encodeURIComponent(barcode)}&storeId=${purchaseStoreId}`)
       if (!response.ok) throw new Error(await responseError(response))
       const body = await response.json() as { products: Product[] }
+      if (scannedStoreId !== purchaseStoreIdRef.current) return
       const product = body.products.find((item) => item.barcode === barcode)
       if (!product) throw new Error(`لا يوجد صنف يحمل الباركود ${barcode}`)
       addProduct(product)
     } catch (caught) {
+      if (scannedStoreId !== purchaseStoreIdRef.current) return
       setError(caught instanceof Error ? caught.message : 'تعذر البحث عن الباركود')
-    } finally { setSearching(false) }
-  }, [addProduct, configuredStoreId])
-  useBarcodeScanner({ enabled: Boolean(configuredStoreId) && step === 'items', onScan: scanBarcode })
+    } finally { if (scannedStoreId === purchaseStoreIdRef.current) setSearching(false) }
+  }, [addProduct, purchaseStoreId])
+  useBarcodeScanner({ enabled: Boolean(purchaseStoreId) && step === 'items', onScan: scanBarcode })
 
   useEffect(() => {
     const term = search.trim()
     const requestId = ++searchId.current
-    if (!term || !configuredStoreId) { setResults([]); return }
+    if (!term || !purchaseStoreId) { setResults([]); return }
     const controller = new AbortController()
     const timer = window.setTimeout(async () => {
       setSearching(true)
       try {
-        const suffix = `&storeId=${encodeURIComponent(configuredStoreId)}`
+        const suffix = `&storeId=${encodeURIComponent(purchaseStoreId)}`
         const [byName, byBarcode] = await Promise.all([
           apiFetch(`/products?name=${encodeURIComponent(term)}${suffix}`, { signal: controller.signal }),
           apiFetch(`/products?barcode=${encodeURIComponent(term)}${suffix}`, { signal: controller.signal }),
@@ -215,7 +220,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
       } finally { if (requestId === searchId.current) setSearching(false) }
     }, 250)
     return () => { window.clearTimeout(timer); controller.abort() }
-  }, [configuredStoreId, search])
+  }, [purchaseStoreId, search])
 
   const lineTotals = useMemo(() => lines.map((line) => calculateLine(line)), [lines])
   const manualDraftTotal = useMemo(() => calculateLine(manualDraft), [manualDraft])
@@ -229,11 +234,11 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
     : lineTotals.reduce<Decimal>((sum, value) => sum.plus(value!), new PurchaseDecimal(0))
   const paid = useMemo(() => supplierPaymentsTotal(payments, checks), [payments, checks])
   const remaining = total && paid ? total.minus(paid) : null
-  const canContinueToPayment = Boolean(configuredStoreId && supplierId && businessDate
+  const canContinueToPayment = Boolean(purchaseStoreId && supplierId && businessDate
     && lines.length && total !== null && !saving)
   const canSave = Boolean(canContinueToPayment && paid !== null && !remaining?.lessThan(0))
   const itemBlockers = [
-    !configuredStoreId ? 'اختر المتجر المستلم أولاً.' : null,
+    !purchaseStoreId ? 'اختر المتجر المستلم أولاً.' : null,
     !supplierId ? 'اختر المورد.' : null,
     !businessDate ? 'اختر تاريخ الشراء.' : null,
     !lines.length ? 'أضف صنفاً واحداً على الأقل إلى الفاتورة.' : null,
@@ -248,6 +253,34 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
     || payments.length || notes.trim())
   useEffect(() => onDraftStateChange(hasDraft), [hasDraft, onDraftStateChange])
   useEffect(() => () => onDraftStateChange(false), [onDraftStateChange])
+
+  function selectPurchaseStore(nextStoreId: string) {
+    if (saving || nextStoreId === purchaseStoreId || !stores.some((item) => item.id === nextStoreId)) return
+    const invoiceStarted = Boolean(documentNumber.trim() || businessDate !== currentBusinessDate()
+      || lines.length || manualDraftTouched
+      || payments.length || notes.trim())
+    if (invoiceStarted && !window.confirm('تغيير المحل المستلم سيحذف بنود الفاتورة والدفعات غير المحفوظة. هل تريد المتابعة؟')) return
+
+    purchaseStoreIdRef.current = nextStoreId
+    setPurchaseStoreId(nextStoreId)
+    setStep('items')
+    setDocumentNumber('')
+    setBusinessDate(currentBusinessDate())
+    setNotes('')
+    setLines([])
+    setManualDraft(newManualPurchaseDraft())
+    setManualDraftAttempted(false)
+    setPayments([])
+    setChecks([])
+    setSelectedCategoryId('')
+    setCategoryProducts([])
+    setShowCatalog(false)
+    setSearch('')
+    setSearching(false)
+    setResults([])
+    setMessage(null)
+    setError(null)
+  }
 
   function updateLine(lineId: string, values: Partial<PurchaseLine>) {
     setLines((current) => current.map((line) => line.id === lineId ? { ...line, ...values } : line))
@@ -295,7 +328,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
   }
 
   async function save() {
-    if (!canSave || !configuredStoreId) return
+    if (!canSave || !purchaseStoreId) return
     setSaving(true); setError(null); setMessage('جارٍ حفظ الشراء والمخزون والحسابات…')
     try {
       const response = await scopedFetch('/purchases', {
@@ -342,9 +375,16 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
           ? <button className="inline-flex min-h-11 items-center rounded-xl bg-white px-5 font-black ring-1 ring-slate-300 hover:bg-slate-100" onClick={() => setStep('items')} type="button">العودة إلى الأصناف</button>
           : <Link className="inline-flex min-h-11 items-center rounded-xl bg-rose-100 px-5 font-black text-rose-900 hover:bg-rose-200" to="/purchase-returns">مرتجع مشتريات</Link>}
       </div>
+      <label className="mt-5 block max-w-md rounded-2xl border border-violet-200 bg-violet-50 p-4 font-black text-violet-950">
+        <span className="mb-2 block">المحل المستلم للمشتريات</span>
+        <select className={inputClass} disabled={saving} onChange={(event) => selectPurchaseStore(event.target.value)} value={purchaseStoreId}>
+          {stores.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+        <span className="mt-2 block text-sm font-bold text-violet-800">تُسجّل الفاتورة والمخزون والدفعات على المحل المختار.</span>
+      </label>
       {message && <p className="mt-5 rounded-xl bg-emerald-50 p-4 text-lg font-black text-emerald-900" role="status">{message}</p>}
       {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-lg font-black text-rose-900" role="alert">{error}</p>}
-      {savedPurchase && <PurchaseConfirmation onClose={() => setSavedPurchase(null)} purchase={savedPurchase} />}
+      {savedPurchase && <PurchaseConfirmation onClose={() => setSavedPurchase(null)} purchase={savedPurchase} storeName={stores.find((item) => item.id === savedPurchase.store_id)?.name ?? 'المحل المختار'} />}
       <div className="mt-5 grid items-start gap-5 min-[1150px]:grid-cols-[20rem_minmax(0,1fr)]" dir="ltr">
         <aside aria-label="ملخص فاتورة الشراء المباشر" aria-live="polite" className="order-2 rounded-3xl border-2 border-violet-200 bg-white p-5 shadow-lg shadow-violet-900/5 min-[1150px]:sticky min-[1150px]:top-4 min-[1150px]:order-1" dir="rtl">
           <p className="text-sm font-black text-violet-700">{step === 'items' ? 'ملخص الأصناف' : 'ملخص الدفع'}</p>

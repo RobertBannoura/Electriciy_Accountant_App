@@ -45,6 +45,42 @@ test(
       const stores = await api('/stores', { token })
       assert.equal(stores.response.status, 200)
       const storeId = stores.body.stores[0].id
+      const otherStoreId = stores.body.stores[1]?.id
+      assert.ok(otherStoreId, 'Check filtering requires two stores')
+
+      await t.test('checks can be listed across stores or filtered to either store', async () => {
+        const first = await createContext({ customerDebt: '50' })
+        const second = await createContext({ customerDebt: '50', debtStoreId: otherStoreId })
+        const search = `scope-${runId}`
+        const firstCheckId = await receiveCheck(first.customerId, { amount: '10', label: `${search}-first` })
+        const secondCheckId = await receiveCheck(second.customerId, {
+          amount: '10', label: `${search}-second`, checkStoreId: otherStoreId,
+        })
+        const path = `/checks?search=${encodeURIComponent(search)}`
+
+        const local = await api(path, { token, storeId })
+        assert.equal(local.response.status, 200)
+        assert.deepEqual(local.body.checks.map((check) => check.id), [firstCheckId])
+
+        const combined = await api(`${path}&storeId=all`, { token, storeId })
+        assert.equal(combined.response.status, 200)
+        assert.deepEqual(new Set(combined.body.checks.map((check) => check.id)), new Set([firstCheckId, secondCheckId]))
+        assert.ok(combined.body.checks.every((check) => check.store_id && check.store_name))
+
+        const other = await api(`${path}&storeId=${otherStoreId}`, { token, storeId })
+        assert.equal(other.response.status, 200)
+        assert.deepEqual(other.body.checks.map((check) => check.id), [secondCheckId])
+
+        const invalid = await api(`${path}&storeId=invalid`, { token, storeId })
+        assert.equal(invalid.response.status, 400)
+        assert.equal(invalid.body.error.code, 'INVALID_CHECK_STORE_FILTER')
+
+        const cleared = await api(`/checks/${secondCheckId}/clear`, {
+          token, storeId: otherStoreId, method: 'POST',
+        })
+        assert.equal(cleared.response.status, 200)
+        assert.equal(await checkStatus(secondCheckId), 'cleared')
+      })
 
       await t.test('customer receipt 5000 -> 3000 and clear has no second financial effect', async () => {
         const context = await createContext({ customerDebt: '5000' })
@@ -232,7 +268,7 @@ test(
         }
       })
 
-      await t.test('all Group 6 accounting records retain one correct store context', async () => {
+      await t.test('all Group 6 accounting records retain their correct store contexts', async () => {
         const customerIds = [...trackedCustomerIds]
         const supplierIds = [...trackedSupplierIds]
         const checkIds = [...trackedCheckIds]
@@ -244,7 +280,10 @@ test(
           pool.query("SELECT COUNT(*)::INTEGER AS count FROM financial_movements WHERE source_type LIKE 'check%' AND source_id = ANY($1::BIGINT[])", [checkIds]),
           pool.query("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name IN ('customers', 'suppliers') AND column_name = 'store_id'"),
         ])
-        for (const result of [checks, customerLedger, supplierLedger]) assert.deepEqual(result.rows, [{ store_id: storeId }])
+        for (const result of [checks, customerLedger]) {
+          assert.deepEqual(new Set(result.rows.map((row) => row.store_id)), new Set([storeId, otherStoreId]))
+        }
+        assert.deepEqual(supplierLedger.rows, [{ store_id: storeId }])
         assert.equal(paymentRows.rows[0].count, 0, 'physical checks must remain in checks, not duplicate payments')
         assert.equal(cashRows.rows[0].count, 0, 'check lifecycle must not create cash movements')
         assert.deepEqual(partyColumns.rows, [], 'customers and suppliers remain business-wide')
@@ -293,20 +332,20 @@ test(
         assert.equal((await api('/checks/reminders', { token, storeId })).body.reminders.bounced.some(({ id }) => id === day2Id), false)
       })
 
-      async function createContext({ customerDebt = '0', supplierDebt = '0' } = {}) {
+      async function createContext({ customerDebt = '0', supplierDebt = '0', debtStoreId = storeId } = {}) {
         const suffix = `${runId}-${trackedCustomerIds.size + 1}`
         const customerId = (await pool.query('INSERT INTO customers (name) VALUES ($1) RETURNING id::TEXT AS id', [`Group 6 QA customer ${suffix}`])).rows[0].id
         const supplierId = (await pool.query('INSERT INTO suppliers (name) VALUES ($1) RETURNING id::TEXT AS id', [`Group 6 QA supplier ${suffix}`])).rows[0].id
         trackedCustomerIds.add(customerId)
         trackedSupplierIds.add(supplierId)
-        if (customerDebt !== '0') await pool.query("INSERT INTO customer_ledger (store_id, customer_id, direction, amount_ils, occurred_at, source_type) VALUES ($1, $2, 'debit', $3, NOW(), 'group6_test_debt')", [storeId, customerId, customerDebt])
-        if (supplierDebt !== '0') await pool.query("INSERT INTO supplier_ledger (store_id, supplier_id, direction, amount_ils, occurred_at, source_type) VALUES ($1, $2, 'credit', $3, NOW(), 'group6_test_debt')", [storeId, supplierId, supplierDebt])
+        if (customerDebt !== '0') await pool.query("INSERT INTO customer_ledger (store_id, customer_id, direction, amount_ils, occurred_at, source_type) VALUES ($1, $2, 'debit', $3, NOW(), 'group6_test_debt')", [debtStoreId, customerId, customerDebt])
+        if (supplierDebt !== '0') await pool.query("INSERT INTO supplier_ledger (store_id, supplier_id, direction, amount_ils, occurred_at, source_type) VALUES ($1, $2, 'credit', $3, NOW(), 'group6_test_debt')", [debtStoreId, supplierId, supplierDebt])
         return { customerId, supplierId }
       }
 
-      async function receiveCheck(customerId, { amount, label, dueDate = '2026-12-31', giro = false }) {
+      async function receiveCheck(customerId, { amount, label, dueDate = '2026-12-31', giro = false, checkStoreId = storeId }) {
         const result = await api(`/customers/${customerId}/payments`, {
-          token, storeId, method: 'POST',
+          token, storeId: checkStoreId, method: 'POST',
           body: { payments: [{
             method: 'check', currency: 'ILS', amount, checkNumber: `${label}-${runId}`,
             dueDate, notes: 'Group 6 PostgreSQL approval QA', isGiro: giro,

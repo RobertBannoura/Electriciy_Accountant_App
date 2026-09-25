@@ -9,11 +9,11 @@
 | Filename | `Electricity-Accountant-Trial-Setup.exe` |
 | Path | `release/installer/Electricity-Accountant-Trial-Setup.exe` |
 | Version | `0.1.1` |
-| Size | `152,705,913` bytes |
-| SHA-256 | `8B963205DA821E9AE1C7D8881BA1DDA3139A5B878EC1BD6DA83ACE0CC5FC95F7` |
+| Size | `152,706,662` bytes |
+| SHA-256 | `7E37D8829B88C814673F7FB1F67F6F766972D2E62A017073387EBBDBC88B7D8A` |
 | Signature | Unsigned (`NotSigned`) |
 
-The size and hash were recalculated after the Windows process-lifecycle fix. This exact rebuilt installer passed installed-build open/close/reopen QA. The generated binary is ignored by Git. Prompt 4's QA record refers to the earlier installer and remains as historical evidence.
+The size and hash were recalculated after the purchase/check tester changes. This exact rebuilt installer passed installed-build open/close/reopen QA and was copied, with a matching hash, to `E:\program`. The generated binary is ignored by Git. Earlier QA artifacts remain historical evidence.
 
 ## Architecture and bundled runtime
 
@@ -42,6 +42,8 @@ ElectricityAccountantTrial\
 ```
 
 `config/runtime.json` stores random local database credentials, a runtime token, and the selected database/backend ports. PostgreSQL and Express bind only to `127.0.0.1`. The trial does not assume port 5432 is free: it selects local ports, persists them, and replaces a colliding port on a later launch. Stale process information and an unclean database shutdown are handled during startup. The renderer receives only its local API port through the restricted preload; the package creates no LAN listener.
+
+There is no activation or device-count limit in this offline build. The same installer can be tested on multiple Windows PCs; each PC initializes its own independent local database. Data is not shared automatically between devices.
 
 ## Trial authentication and offline isolation
 

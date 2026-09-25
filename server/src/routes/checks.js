@@ -26,6 +26,22 @@ checksRouter.use(requireStore)
 
 checksRouter.get('/', async (request, response) => {
   const pagination = parsePagination(request.query)
+  let storeFilterId = request.storeId
+  if (request.query.storeId === 'all') {
+    storeFilterId = null
+  } else if (request.query.storeId !== undefined) {
+    storeFilterId = parseId(request.query.storeId)
+    if (!storeFilterId) {
+      throw new AppError('معرّف المتجر غير صالح', 400, 'INVALID_CHECK_STORE_FILTER')
+    }
+    const store = await query(
+      'SELECT id FROM stores WHERE id = $1::BIGINT AND is_active = TRUE',
+      [storeFilterId],
+    )
+    if (store.rowCount === 0) {
+      throw new AppError('المتجر غير موجود أو غير فعّال', 404, 'STORE_NOT_FOUND')
+    }
+  }
   const requestedStatus = normalizeOptionalText(request.query.status, 20)
   if (request.query.status && !CUSTOMER_CHECK_STATUSES.has(requestedStatus)) {
     throw new AppError('حالة الشيك غير صالحة', 400, 'INVALID_CHECK_STATUS')
@@ -51,6 +67,8 @@ checksRouter.get('/', async (request, response) => {
     `
       SELECT
         checks.id::TEXT AS id,
+        checks.store_id::TEXT AS store_id,
+        stores.name AS store_name,
         checks.check_number,
         checks.amount::TEXT AS amount,
         checks.currency_code,
@@ -72,9 +90,10 @@ checksRouter.get('/', async (request, response) => {
         customers.id::TEXT AS customer_id,
         customers.name AS customer_name
       FROM checks
+      INNER JOIN stores ON stores.id = checks.store_id
       LEFT JOIN customers ON customers.id = checks.customer_id
       LEFT JOIN suppliers ON suppliers.id = checks.supplier_id
-      WHERE checks.store_id = $1::BIGINT
+      WHERE ($1::BIGINT IS NULL OR checks.store_id = $1::BIGINT)
         AND (
           (checks.direction = 'inflow' AND checks.customer_id IS NOT NULL)
           OR checks.is_owner_issued = TRUE
@@ -93,7 +112,7 @@ checksRouter.get('/', async (request, response) => {
       LIMIT $5::INTEGER OFFSET $6::INTEGER
     `,
     [
-      request.storeId,
+      storeFilterId,
       requestedStatus,
       search,
       supplierAssigned,
