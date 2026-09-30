@@ -28,7 +28,22 @@ export async function createCustomerReturn({ databasePool = pool, input, storeId
       throw new AppError('فاتورة البيع الأصلية غير موجودة في هذا المتجر', 404, 'SALE_NOT_FOUND')
     }
     const sale = saleResult.rows[0]
+    if (input.partyId && input.partyId !== (sale.customer_id ?? 'cash')) {
+      throw new AppError('الفاتورة لا تخص الطرف المحدد للمرتجع', 409, 'RETURN_PARTY_MISMATCH')
+    }
+    if (sale.customer_id) {
+      // Payments in either store lock this shared customer before checking debt.
+      // Hold the same lock until the return credit is committed.
+      await client.query('SELECT id FROM customers WHERE id = $1::BIGINT FOR UPDATE', [sale.customer_id])
+    }
     const itemIds = input.items.map((item) => item.sourceItemId)
+    await client.query(
+      `SELECT id FROM products
+       WHERE id IN (SELECT product_id FROM sale_items
+                    WHERE sale_id = $1::BIGINT AND id = ANY($2::BIGINT[]))
+       ORDER BY id FOR UPDATE`,
+      [sale.id, itemIds],
+    )
     const itemResult = await client.query(
       `SELECT item.id::TEXT AS id, item.product_id::TEXT AS product_id,
         item.description, item.quantity::TEXT AS quantity,
@@ -40,7 +55,7 @@ export async function createCustomerReturn({ databasePool = pool, input, storeId
        INNER JOIN store_inventory AS inventory
          ON inventory.store_id = $2::BIGINT AND inventory.product_id = item.product_id
        WHERE item.sale_id = $1::BIGINT AND item.id = ANY($3::BIGINT[])
-       ORDER BY item.id
+       ORDER BY item.product_id, item.id
        FOR UPDATE OF item, products, inventory`,
       [sale.id, storeId, itemIds],
     )

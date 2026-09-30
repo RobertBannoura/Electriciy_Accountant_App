@@ -18,7 +18,7 @@ pushRouter.get('/status', async (request, response) => {
   const [preferencesResult, subscriptionsResult] = await Promise.all([
     query(
       `SELECT sale_created, customer_payment, purchase_created,
-        supplier_payment, check_due, check_bounced
+        supplier_payment, check_due, check_bounced, customer_reminder
        FROM push_notification_preferences WHERE user_id = $1::BIGINT`,
       [userId],
     ),
@@ -47,8 +47,8 @@ pushRouter.put('/settings', async (request, response) => {
       WITH updated AS (
         INSERT INTO push_notification_preferences (
           user_id, sale_created, customer_payment, purchase_created,
-          supplier_payment, check_due, check_bounced
-        ) VALUES ($1::BIGINT, $2, $3, $4, $5, $6, $7)
+          supplier_payment, check_due, check_bounced, customer_reminder
+        ) VALUES ($1::BIGINT, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (user_id) DO UPDATE SET
           sale_created = EXCLUDED.sale_created,
           customer_payment = EXCLUDED.customer_payment,
@@ -56,9 +56,10 @@ pushRouter.put('/settings', async (request, response) => {
           supplier_payment = EXCLUDED.supplier_payment,
           check_due = EXCLUDED.check_due,
           check_bounced = EXCLUDED.check_bounced,
+          customer_reminder = EXCLUDED.customer_reminder,
           updated_at = NOW()
         RETURNING user_id, sale_created, customer_payment, purchase_created,
-          supplier_payment, check_due, check_bounced
+          supplier_payment, check_due, check_bounced, customer_reminder
       ), audit AS (
         INSERT INTO audit_log (
           actor_user_id, action, entity_type, entity_id, new_values
@@ -69,7 +70,7 @@ pushRouter.put('/settings', async (request, response) => {
         RETURNING 1
       )
       SELECT updated.sale_created, updated.customer_payment, updated.purchase_created,
-        updated.supplier_payment, updated.check_due, updated.check_bounced
+        updated.supplier_payment, updated.check_due, updated.check_bounced, updated.customer_reminder
       FROM updated CROSS JOIN audit
     `,
     [userId, ...values],

@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../api'
+import { Link } from 'react-router-dom'
 import { isValidEan13 } from '../barcodes/ean13'
 import { BarcodePreview } from '../components/BarcodePreview'
 import { DialogCloseButton } from '../components/DialogCloseButton'
@@ -181,6 +182,7 @@ export function ProductsPage({
 
   return (
     <section>
+      <Link className="mb-4 flex min-h-12 items-center justify-between rounded-xl bg-teal-50 px-4 font-black text-teal-800" to="/catalog-manage">كتالوج العملاء · صور الأصناف وعرضها<span aria-hidden="true">←</span></Link>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="hidden font-bold text-teal-700 sm:block">المخزون حسب المتجر</p>
@@ -302,6 +304,7 @@ export function ProductsPage({
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0">
                     <h2 className="text-xl font-black">{product.name}</h2>
+                    <Link className="mt-2 inline-block font-bold text-teal-700" to={`/catalog-manage?productId=${product.id}`}>صور الكتالوج</Link>
                     <p className="mt-1 text-slate-600">{product.category_name} · {product.sale_unit}</p>
                     {product.barcode && <p className="mt-1 font-mono text-sm text-slate-500" dir="ltr">{product.barcode}</p>}
                   </div>

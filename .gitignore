@@ -32,5 +32,6 @@ electricity-accountant-*-manual.json
 *.dump
 *.sql.gz
 /backups/
+/server/data/
 pgdata/
 *-pgdata/

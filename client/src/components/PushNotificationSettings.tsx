@@ -8,6 +8,7 @@ const categoryLabels = {
   supplier_payment: 'دفعات الموردين',
   check_due: 'الشيكات المستحقة اليوم',
   check_bounced: 'الشيكات المرتجعة',
+  customer_reminder: 'وعود الدفع وحدود ديون العملاء — تذكير يومي',
 } as const
 
 type Category = keyof typeof categoryLabels
@@ -26,6 +27,7 @@ const defaultSettings: NotificationSettings = {
   supplier_payment: true,
   check_due: true,
   check_bounced: true,
+  customer_reminder: true,
 }
 
 async function errorMessage(response: Response) {
@@ -194,4 +196,3 @@ function decodeVapidPublicKey(value: string) {
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
   return bytes
 }
-

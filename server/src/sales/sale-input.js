@@ -2,6 +2,7 @@ import Decimal from 'decimal.js'
 import {
   isHalfShekelAmount,
   normalizeDecimal,
+  normalizeOptionalText,
   normalizeRequiredText,
   parseId,
 } from '../products/product-input.js'
@@ -57,6 +58,9 @@ export function parseSaleInput(body) {
   const businessDateValue = body?.businessDate ?? body?.date
   const customerId = parseOptionalId(body?.customerId)
   const customerProjectId = parseOptionalId(body?.customerProjectId)
+  const customerName = normalizeOptionalText(body?.customerName, 150)
+  const customerProjectName = normalizeOptionalText(body?.customerProjectName, 150)
+  const receiverName = normalizeOptionalText(body?.receiverName, 150)
   const invoiceDiscount = parseMoney(body?.invoiceDiscount, { optionalZero: true })
   const parsedPayments = parseSalePayments(body?.payments)
 
@@ -68,11 +72,26 @@ export function parseSaleInput(body) {
     return { error: 'تاريخ الفاتورة غير صالح ويجب أن يكون بصيغة YYYY-MM-DD' }
   }
   if (customerId === undefined) return { error: 'معرّف العميل غير صالح' }
+  for (const [raw, normalized] of [[body?.customerName, customerName], [body?.customerProjectName, customerProjectName]]) {
+    if (raw != null && raw !== '' && (typeof raw !== 'string' || (raw.trim() && !normalized))) {
+      return { error: 'اسم العميل أو المشروع يجب أن يكون نصاً بحد أقصى 150 حرفاً' }
+    }
+  }
+  if (body?.receiverName != null && body.receiverName !== ''
+    && (typeof body.receiverName !== 'string' || (body.receiverName.trim() && !receiverName))) {
+    return { error: 'اسم المستلم يجب أن يكون نصاً بحد أقصى 150 حرفاً' }
+  }
+  if ((customerId && customerName) || (customerProjectId && customerProjectName)) {
+    return { error: 'أرسل معرّف السجل المختار أو اسماً جديداً فقط' }
+  }
   if (customerProjectId === undefined) {
     return { error: 'معرّف مشروع العميل غير صالح' }
   }
   if (customerProjectId && !customerId) {
     return { error: 'يجب اختيار العميل عند اختيار مشروع له' }
+  }
+  if (customerProjectName && !customerId && !customerName) {
+    return { error: 'يجب اختيار العميل أو كتابة اسمه عند إضافة مشروع' }
   }
   if (invoiceDiscount === undefined) {
     return { error: 'خصم الفاتورة يجب أن يكون مبلغاً موجباً أو صفراً وبمضاعفات ₪0.50' }
@@ -120,6 +139,9 @@ export function parseSaleInput(body) {
       businessDate: businessDateValue,
       customerId,
       customerProjectId,
+      receiverName,
+      ...(customerName ? { customerName } : {}),
+      ...(customerProjectName ? { customerProjectName } : {}),
       invoiceDiscount,
       items,
       payments: parsedPayments.value,

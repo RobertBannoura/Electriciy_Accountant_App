@@ -37,9 +37,15 @@ test('customer payment requires at least one real payment row', () => {
   assert.match(parseCustomerPaymentInput({ payments: [] }).error, /طريقة دفع/)
 })
 
-function fakeDatabase({ balance = '1000', failOnBank = false } = {}) {
+test('customer payment validates the optional promise version', () => {
+  const payments = [{ method: 'cash', currency: 'ILS', amount: '10' }]
+  assert.equal(parseCustomerPaymentInput({ payments, completePromiseVersion: '3' }).value.completePromiseVersion, '3')
+  assert.match(parseCustomerPaymentInput({ payments, completePromiseVersion: 'bad' }).error, /نسخة وعد الدفع/)
+})
+
+function fakeDatabase({ balance = '1000', failOnBank = false, promiseVersion = '3' } = {}) {
   const state = {
-    commands: [], payments: [], checks: [], cash: [], bank: [], ledger: [], released: false,
+    commands: [], payments: [], checks: [], cash: [], bank: [], ledger: [], promiseUpdates: [], released: false,
   }
   const client = {
     async query(sql, params = []) {
@@ -56,6 +62,10 @@ function fakeDatabase({ balance = '1000', failOnBank = false } = {}) {
       }
       if (statement.includes('FROM customer_balances')) {
         return { rowCount: 1, rows: [{ balance_ils: balance }] }
+      }
+      if (statement.startsWith('UPDATE customers SET payment_promise_date = NULL')) {
+        state.promiseUpdates.push(params)
+        return { rowCount: params[1] === promiseVersion ? 1 : 0, rows: [] }
       }
       if (statement.startsWith('INSERT INTO payments')) {
         state.payments.push(params)
@@ -168,6 +178,43 @@ test('failure in any financial ledger rolls the entire customer payment back', a
     }),
     /bank write failed/,
   )
+  assert.equal(state.commands.at(-1), 'ROLLBACK')
+  assert.ok(!state.commands.includes('COMMIT'))
+})
+
+test('recording a payment and ending its promise happens in one transaction', async () => {
+  const { databasePool, state } = fakeDatabase()
+  const result = await createCustomerPayment({
+    databasePool, customerId: '9', input: { ...mixedInput, completePromiseVersion: '3' },
+    storeId: '2', userId: '5',
+  })
+
+  assert.equal(result.promise_completed, true)
+  assert.deepEqual(state.promiseUpdates, [['9', '3']])
+  assert.equal(state.payments.length, 2)
+  assert.equal(state.commands.at(-1), 'COMMIT')
+})
+
+test('a changed promise prevents the payment from being recorded', async () => {
+  const { databasePool, state } = fakeDatabase()
+  await assert.rejects(createCustomerPayment({
+    databasePool, customerId: '9', input: { ...mixedInput, completePromiseVersion: '2' },
+    storeId: '2', userId: '5',
+  }), (error) => error?.code === 'PAYMENT_PROMISE_CHANGED')
+
+  assert.equal(state.payments.length, 0)
+  assert.equal(state.ledger.length, 0)
+  assert.equal(state.commands.at(-1), 'ROLLBACK')
+})
+
+test('a failed payment also rolls back promise completion', async () => {
+  const { databasePool, state } = fakeDatabase({ failOnBank: true })
+  await assert.rejects(createCustomerPayment({
+    databasePool, customerId: '9', input: { ...mixedInput, completePromiseVersion: '3' },
+    storeId: '2', userId: '5',
+  }), /bank write failed/)
+
+  assert.deepEqual(state.promiseUpdates, [['9', '3']])
   assert.equal(state.commands.at(-1), 'ROLLBACK')
   assert.ok(!state.commands.includes('COMMIT'))
 })

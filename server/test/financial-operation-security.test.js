@@ -51,6 +51,16 @@ test('a concurrent or retried operation cannot create a second financial effect'
   )
 })
 
+test('a claimed operation exposes its database id for manual movement linkage', async () => {
+  const id = await claimFinancialOperation({
+    async query() { return { rowCount: 1, rows: [{ id: '42' }] } },
+  }, {
+    userId: '7',
+    operation: { requestId: 'manual-1', scope: 'inventory:adjust', requestHash: 'a'.repeat(64) },
+  })
+  assert.equal(id, '42')
+})
+
 test('the replay claim remains in the same transaction as every audited writer', async () => {
   const { readFile } = await import('node:fs/promises')
   const files = [

@@ -51,8 +51,13 @@ select {
   touch-action: manipulation;
 }
 
-:where(a, button):focus-visible {
+#root :is(a, button, summary, [tabindex]):focus-visible {
   outline: 3px solid #14b8a6;
+  outline-offset: 2px;
+}
+
+#root :is(input, textarea, select):focus-visible {
+  outline: 3px solid #0d9488;
   outline-offset: 2px;
 }
 
@@ -202,6 +207,12 @@ html[data-connection='offline'] a[href*='/payment'] {
   }
 }
 
+.statement-table .statement-date-row th {
+  background: #e2e8f0;
+  padding: 0.5rem 0.75rem;
+  text-align: right;
+}
+
 @media print {
   body * {
     visibility: hidden;
@@ -278,6 +289,10 @@ html[data-connection='offline'] a[href*='/payment'] {
   .statement-table th {
     background: #f1f5f9 !important;
     font-weight: 900;
+  }
+
+  .statement-table .statement-date-row th {
+    background: #e2e8f0 !important;
   }
 
   .statement-table small {

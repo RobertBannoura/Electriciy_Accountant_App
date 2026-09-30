@@ -19,15 +19,22 @@ export const BACKUP_CONTENTS = Object.freeze([
   'checks',
   'expenses',
   'important-settings',
+  'order-photo-metadata',
+  'catalog-metadata',
 ])
 
 // The object keys are part of the portable backup format. The table names are
 // server-owned constants and are never accepted from a request.
 export const backupTables = Object.freeze([
   { key: 'stores', table: 'stores', orderBy: 'id' },
+  { key: 'orderPhotos', table: 'daily_order_photos', orderBy: 'id' },
   { key: 'expenseCategories', table: 'expense_categories', orderBy: 'sort_order, name' },
   { key: 'categories', table: 'categories', orderBy: 'id' },
   { key: 'products', table: 'products', orderBy: 'id' },
+  { key: 'catalogEntries', table: 'catalog_entries', orderBy: 'product_id' },
+  { key: 'catalogPhotos', table: 'catalog_photos', orderBy: 'id' },
+  { key: 'catalogPhotoLinks', table: 'catalog_photo_links', orderBy: 'product_id, photo_id' },
+  { key: 'catalogSettings', table: 'catalog_settings', orderBy: 'id' },
   { key: 'barcodes', table: 'barcodes', orderBy: 'id' },
   { key: 'inventory', table: 'store_inventory', orderBy: 'store_id, product_id' },
   { key: 'customers', table: 'customers', orderBy: 'id' },
@@ -396,7 +403,8 @@ export async function restoreBackup(
 
     for (const definition of backupTables) {
       if (definition.key === 'inventory' || definition.key === 'expenseCategories'
-        || definition.key === 'notificationPreferences') continue
+        || definition.key === 'notificationPreferences' || definition.key === 'catalogEntries'
+        || definition.key === 'catalogSettings' || definition.key === 'catalogPhotoLinks') continue
       await synchronizeIdentitySequence(client, definition.table)
     }
     for (const sequence of customSequences) {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { apiFetch } from '../api'
 import { DateField } from '../components/DateField'
 import { SalesReportList } from '../components/SalesReportList'
@@ -260,6 +260,7 @@ function ReportDetail({ report, selected }: { report: ReportResponse; selected: 
         <h2 className="text-2xl font-black">حركة الأموال</h2>
         <div className="mt-4"><MetricRow label="الداخل — ₪" value={formatIls(s.inflow_ils)} /><MetricRow label="الخارج — ₪" value={formatIls(s.outflow_ils)} /><MetricRow label="صافي الحركة — ₪" strong value={formatIls(s.net_ils)} /></div>
         {s.cash_movements.filter((row) => row.currency_code !== 'ILS').map((row) => <MetricRow key={row.currency_code} label={`صافي الصندوق — ${row.currency_code}`} value={formatCurrencyAmount(row.net, row.currency_code)} />)}
+        <Link className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-teal-700 px-5 font-black text-white hover:bg-teal-800" to="/money">فتح صفحة الحسابات</Link>
       </>}
 
       {selected === 'checks' && <>

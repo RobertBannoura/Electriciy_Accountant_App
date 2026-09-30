@@ -70,6 +70,18 @@ export async function createCustomerPayment({
       )
     }
 
+    if (input.completePromiseVersion) {
+      const promiseResult = await client.query(`
+        UPDATE customers SET payment_promise_date = NULL, payment_promise_note = NULL,
+          payment_promise_version = payment_promise_version + 1
+        WHERE id = $1::BIGINT AND is_active = TRUE
+          AND payment_promise_version = $2::BIGINT AND payment_promise_date IS NOT NULL
+      `, [customerId, input.completePromiseVersion])
+      if (promiseResult.rowCount === 0) {
+        throw new AppError('تم تغيير وعد الدفع. حدّث التذكيرات وحاول مرة أخرى.', 409, 'PAYMENT_PROMISE_CHANGED')
+      }
+    }
+
     const customer = customerResult.rows[0]
     const savedPayments = []
     for (const payment of input.payments) {
@@ -119,6 +131,7 @@ export async function createCustomerPayment({
       total_ils: total.toFixed(),
       balance_before_ils: balanceBefore.toFixed(),
       balance_after_ils: balanceAfter.toFixed(),
+      promise_completed: Boolean(input.completePromiseVersion),
       payments: savedPayments,
     }
   } catch (error) {

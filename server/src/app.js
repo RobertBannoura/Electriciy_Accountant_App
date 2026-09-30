@@ -30,6 +30,9 @@ import { salesRouter } from './routes/sales.js'
 import { storesRouter } from './routes/stores.js'
 import { suppliersRouter } from './routes/suppliers.js'
 import { verificationRouter } from './routes/verification.js'
+import { orderPhotosRouter } from './routes/order-photos.js'
+import { catalogRouter } from './routes/catalog.js'
+import { catalogAdminRouter } from './routes/catalog-admin.js'
 
 export const app = express()
 const normalJsonBoundary = createJsonComplexityGuard({ maxDepth: 32, maxNodes: 20_000 })
@@ -107,6 +110,7 @@ app.use('/api/auth', express.json({ limit: '1mb' }), normalJsonBoundary, authRou
 app.use('/api/backups', requireAuth, requireAdmin, express.json({ limit: '100mb' }), backupJsonBoundary, backupsRouter)
 app.use(express.json({ limit: '1mb' }))
 app.use(normalJsonBoundary)
+app.use('/api/catalog', catalogRouter)
 app.use('/api', requireAuth)
 app.use('/api', requireAdmin)
 app.use('/api/stores', storesRouter)
@@ -123,6 +127,8 @@ app.use('/api/maintenance', maintenanceRouter)
 app.use('/api/sales', salesRouter)
 app.use('/api/suppliers', suppliersRouter)
 app.use('/api/verification', verificationRouter)
+app.use('/api/order-photos', orderPhotosRouter)
+app.use('/api/catalog-admin', catalogAdminRouter)
 
 app.use(notFoundHandler)
 app.use(errorHandler)

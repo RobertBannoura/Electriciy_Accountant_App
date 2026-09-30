@@ -22,6 +22,7 @@ salesRouter.get('/:saleId', async (request, response) => {
   const result = await query(
     `SELECT sale.id::TEXT AS id, sale.document_number AS invoice_number,
        sale.business_date::TEXT AS business_date, customers.name AS customer_name,
+       sale.receiver_name,
        sale.items_subtotal::TEXT AS items_subtotal,
        sale.invoice_discount::TEXT AS invoice_discount,
        sale.total::TEXT AS total, sale.paid_total::TEXT AS paid_total,
@@ -41,7 +42,20 @@ salesRouter.get('/:saleId', async (request, response) => {
      FROM sale_items WHERE sale_id = $1::BIGINT ORDER BY id`,
     [saleId],
   )
-  response.json({ sale: { ...result.rows[0], items: items.rows } })
+  const returns = await query(
+    `SELECT r.id::TEXT AS id, r.document_number,
+       r.business_date::TEXT AS business_date, r.total::TEXT AS total,
+       COALESCE((SELECT JSONB_AGG(JSONB_BUILD_OBJECT(
+         'description', i.description, 'quantity', i.quantity::TEXT,
+         'total', i.line_total::TEXT
+       ) ORDER BY i.id) FROM customer_return_items i
+         WHERE i.customer_return_id = r.id), '[]'::JSONB) AS items
+     FROM customer_returns r
+     WHERE r.sale_id = $1::BIGINT AND r.store_id = $2::BIGINT
+     ORDER BY r.business_date, r.id`,
+    [saleId, request.storeId],
+  )
+  response.json({ sale: { ...result.rows[0], items: items.rows, returns: returns.rows } })
 })
 
 salesRouter.post('/', requireFinancialRequestId, async (request, response) => {

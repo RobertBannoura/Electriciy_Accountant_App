@@ -39,7 +39,11 @@ function createDeviceSettingsStore(userDataDirectory) {
         && (typeof settings.backupDirectory !== 'string' || !path.isAbsolute(settings.backupDirectory))) {
         throw new TypeError()
       }
-      if (settings.lastAutomaticBackupDate !== undefined
+      if (settings.monthlyBackupDirectory !== undefined
+        && (typeof settings.monthlyBackupDirectory !== 'string' || !path.isAbsolute(settings.monthlyBackupDirectory))) {
+        throw new TypeError()
+      }
+      if (settings.lastAutomaticBackupDate != null
         && (typeof settings.lastAutomaticBackupDate !== 'string'
           || !localDatePattern.test(settings.lastAutomaticBackupDate))) {
         throw new TypeError()
@@ -87,6 +91,7 @@ function createDeviceSettingsStore(userDataDirectory) {
     const settings = await readSettings()
     return Object.freeze({
       directory: settings.backupDirectory ?? null,
+      monthlyDirectory: settings.monthlyBackupDirectory ?? null,
       lastAutomaticBackupDate: settings.lastAutomaticBackupDate ?? null,
     })
   }
@@ -101,7 +106,21 @@ function createDeviceSettingsStore(userDataDirectory) {
       throw new TypeError('مجلد النسخ الاحتياطي غير صالح أو يشير إلى رابط')
     }
     const canonicalDirectory = await fs.realpath(resolved)
-    await updateSettings({ backupDirectory: canonicalDirectory })
+    await updateSettings({ backupDirectory: canonicalDirectory, lastAutomaticBackupDate: null })
+    return Object.freeze({ directory: canonicalDirectory })
+  }
+
+  async function setMonthlyBackupDirectory(directory) {
+    if (typeof directory !== 'string' || !path.isAbsolute(directory)) {
+      throw new TypeError('مجلد النسخ الشهرية غير صالح')
+    }
+    const resolved = path.resolve(directory)
+    const stats = await fs.lstat(resolved)
+    if (!stats.isDirectory() || stats.isSymbolicLink()) {
+      throw new TypeError('مجلد النسخ الشهرية غير صالح أو يشير إلى رابط')
+    }
+    const canonicalDirectory = await fs.realpath(resolved)
+    await updateSettings({ monthlyBackupDirectory: canonicalDirectory })
     return Object.freeze({ directory: canonicalDirectory })
   }
 
@@ -118,6 +137,7 @@ function createDeviceSettingsStore(userDataDirectory) {
     setStoreAssignment,
     getBackupSettings,
     setBackupDirectory,
+    setMonthlyBackupDirectory,
     setLastAutomaticBackupDate,
   })
 }

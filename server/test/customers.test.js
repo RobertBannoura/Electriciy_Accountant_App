@@ -36,6 +36,20 @@ test('customer projects require a name because they always belong to a customer'
   })
 })
 
+test('customer debt limits accept optional nonnegative decimal amounts without rounding', () => {
+  for (const limit of ['0', '0.01', '1500', '2500.50', '999999999999.99']) {
+    assert.equal(parseCustomerInput({ name: 'عميل', debtLimitIls: limit }).value.debtLimitIls, limit)
+  }
+  for (const limit of [null, '', '   ']) {
+    assert.equal(parseCustomerInput({ name: 'عميل', debtLimitIls: limit }).value.debtLimitIls, null)
+  }
+  assert.equal(Object.hasOwn(parseCustomerInput({ name: 'عميل' }).value, 'debtLimitIls'), false)
+  assert.equal(parseCustomerInput({ name: 'عميل', debtLimitIls: ' 500.50 ' }).value.debtLimitIls, '500.50')
+  for (const limit of ['-1', '1.001', '1e3', 'NaN', 'Infinity', '1000000000000', '01', 100, false, [], {}, undefined]) {
+    assert.ok(parseCustomerInput({ name: 'عميل', debtLimitIls: limit }).error, `Reject ${String(limit)}`)
+  }
+})
+
 test('sales may select a real customer project or keep project_id null', async () => {
   const foundation = await readFile(
     new URL('../db/migrations/0001_foundational_schema.sql', import.meta.url),
@@ -65,7 +79,7 @@ test('customer API uses a global directory and derives one ILS balance with opti
   assert.match(source, /\$2::BIGINT IS NULL OR sales\.store_id = \$2::BIGINT/)
   assert.doesNotMatch(source, /WHERE customers\.store_id/)
   assert.doesNotMatch(source, /customer_ledger\.currency_code/)
-  assert.doesNotMatch(source, /SET[^;]*balance/is)
+  assert.doesNotMatch(source, /\b(?:SET|,)\s*balance(?:_ils)?\s*=/i)
 })
 
 test('customer schema supports anonymous paid sales but requires customers for tracked records', async () => {

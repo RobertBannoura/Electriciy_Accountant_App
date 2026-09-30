@@ -505,7 +505,7 @@ test(
           `/customers/${customer.id}/statement?from=${today}&to=${today}`,
           { storeId: salam.id },
         )).body.statement
-        reconcileStatement(all, '1000', '1300')
+        reconcileStatement(all, '1200', '1300')
         const sourceTypes = new Set(all.entries.map((entry) => entry.source_type))
         for (const type of ['sale', 'sale_payment', 'sale_check', 'check_bounce', 'customer_return', 'maintenance', 'maintenance_payment', 'payment', 'correction']) {
           assert.ok(sourceTypes.has(type), `Missing customer statement source ${type}`)
@@ -520,7 +520,7 @@ test(
           { storeId: salam.id },
         )).body.statement
         reconcileStatement(salamOnly, '1000', '1140')
-        reconcileStatement(showroomOnly, '0', '160')
+        reconcileStatement(showroomOnly, '200', '160')
 
         const projectOneStatement = (await api(
           `/customers/${customer.id}/statement?from=${today}&to=${today}&projectId=${projectOne.id}`,
@@ -531,9 +531,19 @@ test(
           { storeId: salam.id },
         )).body.statement
         reconcileStatement(projectOneStatement, '0', '150')
-        reconcileStatement(projectTwoStatement, '0', '150')
+        reconcileStatement(projectTwoStatement, '200', '150')
         assert.equal(projectOneStatement.project.name, 'مشروع السلام')
         assert.equal(projectTwoStatement.project.name, 'مشروع المعرض')
+
+        const dated = (await api(
+          `/customers/${customer.id}/statement?from=${priorDate}&to=${today}`,
+          { storeId: salam.id },
+        )).body.statement
+        reconcileStatement(dated, '0', '1300')
+        assert.equal(dated.entries.find((entry) => entry.source_type === 'sale' && entry.source_id === saleTwo.id)?.date, priorDate)
+        assert.equal(dated.entries.find((entry) => entry.source_type === 'sale_payment' && entry.source_id === saleTwo.payments[0].id)?.date, today)
+        assert.ok(dated.entries.findIndex((entry) => entry.source_type === 'sale' && entry.source_id === saleTwo.id)
+          < dated.entries.findIndex((entry) => entry.source_type === 'sale_payment' && entry.source_id === saleTwo.payments[0].id))
       })
 
       await t.test('supplier statements reconcile purchases, item prices, checks, returns, and stores exactly', async () => {
@@ -547,6 +557,8 @@ test(
           assert.ok(types.has(type), `Missing supplier statement source ${type}`)
         }
         const purchaseEntries = all.entries.filter((entry) => entry.source_type === 'purchase')
+        assert.equal(purchaseEntries.find((entry) => entry.source_id === purchaseTwo.id)?.date, priorDate)
+        assert.equal(all.entries.find((entry) => entry.source_type === 'purchase_payment' && entry.source_id === purchaseTwo.payments[0].id)?.date, priorDate)
         assert.deepEqual(purchaseEntries.map((entry) => ({
           product: entry.purchase_items[0].product,
           quantity: normalized(entry.purchase_items[0].quantity),
@@ -779,6 +791,7 @@ function allNotificationSettings(enabled) {
     supplier_payment: enabled,
     check_due: enabled,
     check_bounced: enabled,
+    customer_reminder: enabled,
   }
 }
 
@@ -815,6 +828,9 @@ function assertCheck(actual, count, amount) {
 
 function reconcileStatement(statement, opening, closing) {
   money(statement.opening_balance, opening)
+  assert.equal(new Set(statement.entries.map((entry) => entry.id)).size, statement.entries.length)
+  assert.deepEqual(statement.entries.map((entry) => entry.date),
+    statement.entries.map((entry) => entry.date).sort())
   let running = new D(opening)
   for (const entry of statement.entries) {
     running = running.plus(entry.debit).minus(entry.credit)
@@ -826,6 +842,9 @@ function reconcileStatement(statement, opening, closing) {
 
 function reconcileSupplierStatement(statement, opening, closing) {
   money(statement.opening_balance, opening)
+  assert.equal(new Set(statement.entries.map((entry) => entry.id)).size, statement.entries.length)
+  assert.deepEqual(statement.entries.map((entry) => entry.date),
+    statement.entries.map((entry) => entry.date).sort())
   let running = new D(opening)
   for (const entry of statement.entries) {
     running = running.plus(entry.credit).minus(entry.debit)

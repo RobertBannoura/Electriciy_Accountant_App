@@ -11,6 +11,7 @@ import { Store } from '../types'
 import { formatCurrencyAmount, formatDecimal } from '../money-display'
 import { AccountStatementDialog } from '../components/AccountStatementDialog'
 import { DialogCloseButton } from '../components/DialogCloseButton'
+import { PaymentPromiseDialog } from '../components/PaymentPromiseDialog'
 
 type StoreBalance = { store_id: string; store_name: string; amount_ils: string }
 type CustomerSummary = {
@@ -20,6 +21,9 @@ type CustomerSummary = {
   address: string | null
   notes: string | null
   balance_ils: string
+  debt_limit_ils: string | null
+  payment_promise_date: string | null
+  payment_promise_note: string | null
 }
 type Sale = {
   id: string
@@ -101,7 +105,7 @@ type CustomerDetail = CustomerSummary & {
   selected_project_id: string | null
   selected_store_id: string | null
 }
-type CustomerForm = { name: string; phone: string; address: string; notes: string }
+type CustomerForm = { name: string; phone: string; address: string; notes: string; debtLimitIls: string }
 
 const inputClass =
   'min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100'
@@ -232,6 +236,7 @@ export function CustomersPage({
                 <div className="min-w-0 overflow-hidden">
                   <p className="truncate text-lg font-black text-slate-950 transition-colors group-hover:text-teal-700 sm:text-xl" title={customer.name}>{customer.name}</p>
                   <p className="mt-1 truncate text-sm text-slate-600 sm:text-base">{customer.phone ?? 'لا يوجد رقم هاتف'}{customer.address ? ` · ${customer.address}` : ''}</p>
+                  {customer.debt_limit_ils != null && <p className="mt-1 text-sm font-bold text-slate-600">حد الدين: ₪{formatDecimal(customer.debt_limit_ils)}</p>}
                 </div>
                 <div className="flex shrink-0 items-center gap-2 sm:flex-wrap sm:gap-3">
                   <IlsBalance amount={customer.balance_ils} />
@@ -279,6 +284,7 @@ export function CustomerDetailPage({
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [selectedActivityStoreId, setSelectedActivityStoreId] = useState('')
   const [showStatement, setShowStatement] = useState(false)
+  const [showPromise, setShowPromise] = useState(false)
 
   const loadCustomer = useCallback(async () => {
     if (!operatingStoreId || !customerId) return
@@ -325,6 +331,8 @@ export function CustomerDetailPage({
           <div>
             <p className="text-sm font-bold text-slate-600">الرصيد الحالي</p>
             <div className="mt-2"><IlsBalance amount={customer.balance_ils} /></div>
+            <p className="mt-3 text-sm font-bold text-slate-600">حد الدين: {customer.debt_limit_ils != null ? `₪${formatDecimal(customer.debt_limit_ils)}` : 'غير محدد'}</p>
+            {customer.payment_promise_date && <p className="mt-2 font-bold text-amber-800">وعد بالدفع: {customer.payment_promise_date}</p>}
             {customer.store_balances.length > 1 && <StoreBreakdown balances={customer.store_balances} />}
           </div>
         </div>
@@ -332,6 +340,7 @@ export function CustomerDetailPage({
       </header>
 
       <div className="mt-5 flex flex-wrap gap-3 print:hidden">
+        <button className="min-h-12 rounded-xl border border-amber-300 bg-amber-50 px-5 font-black text-amber-950" onClick={() => setShowPromise(true)} type="button">{customer.payment_promise_date ? 'تغيير موعد الدفع' : 'وعد بالدفع'}</button>
         <Link className="hidden min-h-12 items-center rounded-xl bg-teal-700 px-5 font-black text-white hover:bg-teal-800 sm:inline-flex" to={`/sale?customerId=${customer.id}&storeId=${operatingStoreId}`}>بيع جديد</Link>
         <Link className="hidden min-h-12 items-center rounded-xl bg-amber-400 px-5 font-black text-slate-950 hover:bg-amber-300 sm:inline-flex" to={`/maintenance?customerId=${customer.id}`}>صيانة جديدة</Link>
         {!readOnly && <Link className="inline-flex min-h-12 items-center rounded-xl bg-teal-700 px-5 font-black text-white hover:bg-teal-800" to={`/customers/${customer.id}/payment?storeId=${operatingStoreId}`}>تسجيل دفعة</Link>}
@@ -378,6 +387,7 @@ export function CustomerDetailPage({
         <DetailSection title={selectedProjectId ? 'حركات حساب المشروع' : 'أحدث حركات الحساب لكل المشاريع'}><MovementsList items={customer.recent_movements} /></DetailSection>
       </div>
 
+      {showPromise && <PaymentPromiseDialog customer={customer} initialDate={customer.payment_promise_date ?? ''} initialNote={customer.payment_promise_note ?? ''} onClose={() => setShowPromise(false)} onSaved={() => { setShowPromise(false); void loadCustomer() }} storeId={operatingStoreId} />}
       {!readOnly && editing && <CustomerEditor customer={customer} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); void loadCustomer() }} storeId={operatingStoreId} />}
       {!readOnly && addingProject && <ProjectEditor customerId={customer.id} onClose={() => setAddingProject(false)} onSaved={() => { setAddingProject(false); void loadCustomer() }} storeId={operatingStoreId} />}
       {showStatement && <AccountStatementDialog initialProjectId={selectedProjectId} initialStoreId={selectedActivityStoreId} kind="customer" onClose={() => setShowStatement(false)} operatingStoreId={operatingStoreId} partyId={customer.id} projects={customer.projects} stores={stores} />}
@@ -386,7 +396,7 @@ export function CustomerDetailPage({
 }
 
 function CustomerEditor({ customer, storeId, onClose, onSaved }: { customer: CustomerSummary | null; storeId: string; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState<CustomerForm>({ name: customer?.name ?? '', phone: customer?.phone ?? '', address: customer?.address ?? '', notes: customer?.notes ?? '' })
+  const [form, setForm] = useState<CustomerForm>({ name: customer?.name ?? '', phone: customer?.phone ?? '', address: customer?.address ?? '', notes: customer?.notes ?? '', debtLimitIls: customer?.debt_limit_ils ?? '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -415,6 +425,8 @@ function CustomerEditor({ customer, storeId, onClose, onSaved }: { customer: Cus
         <Field label="الاسم *"><input autoFocus className={inputClass} maxLength={150} onChange={(event) => setForm({ ...form, name: event.target.value })} required value={form.name} /></Field>
         <Field label="رقم الهاتف"><input className={inputClass} dir="ltr" maxLength={50} onChange={(event) => setForm({ ...form, phone: event.target.value })} type="tel" value={form.phone} /></Field>
         <Field label="العنوان"><input className={inputClass} maxLength={500} onChange={(event) => setForm({ ...form, address: event.target.value })} value={form.address} /></Field>
+        <Field label="حد الدين بالشيكل — اختياري"><input aria-describedby="debt-limit-help" className={inputClass} dir="ltr" inputMode="decimal" max="999999999999.99" min="0" onChange={(event) => setForm({ ...form, debtLimitIls: event.target.value })} step="0.01" type="number" value={form.debtLimitIls} /></Field>
+        <p className="text-sm font-bold text-slate-600" id="debt-limit-help">يظهر تذكير للتواصل مع العميل في الرئيسية عندما يبلغ إجمالي دينه في كل المحلات هذا الحد أو يتجاوزه. اتركه فارغاً لإلغاء التذكير. الحد صفر يعني التذكير عند وجود أي دين.</p>
         <Field label="ملاحظات — اختياري"><textarea className={`${inputClass} min-h-28 py-3`} maxLength={2000} onChange={(event) => setForm({ ...form, notes: event.target.value })} value={form.notes} /></Field>
         <p className="rounded-xl bg-slate-50 p-3 text-sm font-bold text-slate-600">رصيد العميل يُحسب من دفتر الحساب ولا يوجد له حقل تعديل.</p>
         {error && <p className="rounded-xl bg-rose-50 p-3 font-bold text-rose-800" role="alert">{error}</p>}

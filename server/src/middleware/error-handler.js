@@ -43,19 +43,22 @@ export function notFoundHandler(request, _response, next) {
 
 export function errorHandler(error, request, response, _next) {
   const isKnownError = error instanceof AppError
+  const isTransactionConflict = error?.code === '40P01' || error?.code === '40001'
   const requestBodyError = Object.hasOwn(requestBodyErrors, error?.type)
     ? requestBodyErrors[error.type]
     : undefined
   const isSafeClientError = Boolean(requestBodyError)
   const statusCode = isKnownError
     ? error.statusCode
-    : (requestBodyError?.statusCode ?? 500)
+    : (requestBodyError?.statusCode ?? (isTransactionConflict ? 503 : 500))
   const code = isKnownError
     ? error.code
-    : (requestBodyError?.code ?? 'INTERNAL_ERROR')
+    : (requestBodyError?.code ?? (isTransactionConflict ? 'CONCURRENT_OPERATION_RETRY' : 'INTERNAL_ERROR'))
   const message = isKnownError
     ? error.message
-    : (requestBodyError?.message ?? 'حدث خطأ داخلي في الخادم')
+    : (requestBodyError?.message ?? (isTransactionConflict
+      ? 'تعارضت عمليتان متزامنتان. أعد المحاولة بنفس الطلب.'
+      : 'حدث خطأ داخلي في الخادم'))
 
   if (isSafeClientError || (isKnownError && requestBoundaryErrorCodes.has(error.code))) {
     logSecurityEvent('warn', 'malformed_request_rejected', {
@@ -80,6 +83,13 @@ export function errorHandler(error, request, response, _next) {
       statusCode,
       storeId: request.storeId,
       userId: request.auth?.user?.id,
+    })
+  } else if (isTransactionConflict) {
+    logSecurityEvent('warn', 'transaction_conflict', {
+      ...securityRequestContext(request),
+      outcome: 'failure',
+      reason: code,
+      statusCode,
     })
   } else if (!isKnownError) {
     logSecurityEvent('error', 'internal_error', {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiFetch } from '../api'
 import { SaleInvoiceViewer } from '../components/SaleInvoiceViewer'
+import { CustomerDebtReminders } from '../components/CustomerDebtReminders'
 import { formatDecimal } from '../money-display'
 
 type ReminderCheck = {
@@ -234,6 +235,10 @@ export function HomePage({ isOnline, readOnly = false, storeId }: { isOnline: bo
         <p className="text-base font-bold text-teal-700">{readOnly ? 'عرض ومتابعة' : 'القائمة الرئيسية'}</p>
         <h1 className="mt-1 text-3xl font-black sm:text-4xl">{readOnly ? 'نظرة سريعة' : 'ماذا تريد أن تفعل؟'}</h1>
       </div>
+
+      <CustomerDebtReminders isOnline={isOnline} storeId={storeId} />
+      <Link className="mb-4 flex min-h-20 items-center justify-between gap-4 rounded-2xl border border-teal-200 bg-teal-50 px-5 py-4 text-teal-950" to="/order-photos"><span><span className="block text-xl font-black">صور الطلبات اليومية</span><span className="mt-1 block text-sm">التقط صورة أو ارفع صور اليوم من الهاتف</span></span><span className="text-3xl" aria-hidden="true">＋</span></Link>
+      <Link className="mb-7 block rounded-2xl border border-stone-200 bg-white px-5 py-4 text-slate-900" to="/catalog-manage"><span className="block text-xl font-black">كتالوج العملاء</span><span className="mt-1 block text-sm text-slate-500">صور الإنارة والأصناف المختارة من المحلين</span></Link>
 
       <div className="hidden grid-cols-2 gap-4 sm:grid sm:gap-6">
         {homeActions.map((action) => (

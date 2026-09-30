@@ -25,7 +25,7 @@ export function financialOperation(request, scope, payload) {
 }
 
 export async function claimFinancialOperation(client, { userId, operation }) {
-  if (!operation) return
+  if (!operation) return null
 
   const inserted = await client.query(
     `
@@ -37,7 +37,7 @@ export async function claimFinancialOperation(client, { userId, operation }) {
     `,
     [userId, operation.scope, operation.requestId, operation.requestHash],
   )
-  if (inserted.rowCount === 1) return
+  if (inserted.rowCount === 1) return inserted.rows[0].id
 
   const existing = await client.query(
     `

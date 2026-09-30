@@ -66,6 +66,9 @@ function fakeDatabase({ failBank = false } = {}) {
       state.commands.push(statement)
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(statement)) return { rowCount: null, rows: [] }
       if (statement.startsWith('SELECT id FROM stores')) return { rowCount: 1, rows: [{ id: '2' }] }
+      if (statement.startsWith('SELECT id FROM products WHERE id = ANY')) {
+        return { rowCount: params[0].length, rows: params[0].map((id) => ({ id })) }
+      }
       if (statement.includes('FROM checks') && statement.includes('FOR UPDATE')) {
         return { rowCount: 1, rows: [{ id: '31', check_number: 'CUS-31', amount: '25' }] }
       }
@@ -128,6 +131,9 @@ function fakeDatabase({ failBank = false } = {}) {
 test('purchase creation commits inventory, latest cost, debt, and mixed payments atomically', async () => {
   const { databasePool, state } = fakeDatabase()
   const purchase = await createPurchase({ databasePool, input: purchaseInput, storeId: '2', userId: '5' })
+
+  assert.ok(state.commands.findIndex((sql) => sql.startsWith('SELECT id FROM products WHERE id = ANY'))
+    < state.commands.findIndex((sql) => sql.includes('FROM store_inventory AS inventory')))
 
   assert.equal(purchase.total, '100')
   assert.equal(purchase.paid_total, '70')

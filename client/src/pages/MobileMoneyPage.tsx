@@ -68,9 +68,9 @@ export function MobileMoneyPage({ stores }: { stores: Store[] }) {
   return (
     <section aria-labelledby="money-title">
       <div className="hidden rounded-3xl bg-gradient-to-br from-teal-700 to-emerald-600 p-5 text-white shadow-lg shadow-teal-900/15 sm:block">
-        <p className="text-sm font-black text-teal-100">عرض مالي فقط</p>
+        <p className="text-sm font-black text-teal-100">حركة الأموال</p>
         <h1 className="hidden text-3xl font-black sm:mt-1 sm:block" id="money-title">الحسابات</h1>
-        <p className="mt-2 text-sm font-bold text-teal-50/85">تابع الداخل والخارج وصافي الحركة دون إدخال عمليات من الهاتف.</p>
+        <p className="mt-2 text-sm font-bold text-teal-50/85">تابع الأموال الداخلة والخارجة وصافي الحركة حسب الفترة والمحل.</p>
       </div>
 
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

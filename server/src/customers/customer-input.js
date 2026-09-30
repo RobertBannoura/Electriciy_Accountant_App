@@ -22,7 +22,19 @@ export function parseCustomerInput(body) {
     return { error: 'الملاحظات تتجاوز 2000 حرف' }
   }
 
-  return { value: { name, phone, address, notes } }
+  const value = { name, phone, address, notes }
+  if (Object.hasOwn(body, 'debtLimitIls')) {
+    const rawLimit = body.debtLimitIls
+    const limit = typeof rawLimit === 'string' ? rawLimit.trim() : rawLimit
+    if (limit === null || limit === '') {
+      value.debtLimitIls = null
+    } else if (typeof limit === 'string' && /^(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?$/.test(limit)) {
+      value.debtLimitIls = limit
+    } else {
+      return { error: 'حد الدين يجب أن يكون مبلغاً غير سالب بالشيكل وبحد أقصى منزلتين عشريتين و999999999999.99' }
+    }
+  }
+  return { value }
 }
 
 export function parseCustomerProjectInput(body) {

@@ -8,6 +8,7 @@ Scope: every HTTP route mounted by `server/src/app.js` and every method declared
 - `GET /api/health*` and the two login entry points are the only public routes.
 - `GET /api/auth/me` and `POST /api/auth/logout` authenticate inside the auth router.
 - `/api/backups/*` is protected before its larger JSON parser runs.
+- `/api/catalog/*` requires a separate, read-only catalog session with a 12-hour expiry. It exposes only published product presentation fields and photos. Starting customer mode revokes the current admin session; catalog tokens cannot authenticate to admin routes.
 - Every other `/api/*` route passes through both `requireAuth` and `requireAdmin` before its router. `requireAuth` also rejects expired/revoked sessions and inactive or non-admin users.
 - `requireStore` parses `X-Store-Id`, requires an existing active store, and writes the validated value to `request.storeId`. Store-scoped writers use that server value.
 - Financial writes additionally require `X-Request-Id`. The normalized operation hash and request ID are claimed in the same PostgreSQL transaction as the accounting effects, preventing concurrent/retried replay while allowing a failed transaction to be retried safely with the same ID.
@@ -19,6 +20,21 @@ Scope: every HTTP route mounted by `server/src/app.js` and every method declared
 | Method | Path | Authentication required? | Role required? | Store context required? | Business-wide or store-scoped? | Read or write? | Sensitive data? |
 |---|---|---|---|---|---|---|---|
 | GET | /api/health | No | None | No | Public system status | Read | No |
+| GET | /api/catalog | Yes | Catalog session | No | Selected products | Read | Customer-safe fields only |
+| GET | /api/catalog/filters | Yes | Catalog session | No | Selected products | Read | Shop/category names |
+| GET | /api/catalog/settings | Yes | Catalog session | No | Catalog | Read | Selling-price default |
+| GET | /api/catalog/photos/:photoId/image | Yes | Catalog session | No | Published products | Read | Catalog photos only |
+| DELETE | /api/catalog/session | Yes | Catalog session | No | Current session | Write | Revocation |
+| GET | /api/catalog-admin | Yes | admin | No | Products | Read | Catalog management |
+| GET | /api/catalog-admin/filters | Yes | admin | No | Products | Read | Shop/category names |
+| GET | /api/catalog-admin/settings | Yes | admin | No | Catalog | Read | Default preference |
+| PUT | /api/catalog-admin/settings | Yes | admin | No | Catalog | Write | Default preference |
+| POST | /api/catalog-admin/session | Yes | admin | No | Current session | Write | Revoke admin session and issue catalog token |
+| GET | /api/catalog-admin/photos/:photoId/image | Yes | admin | No | Products | Read | Catalog photos |
+| PUT | /api/catalog-admin/:productId | Yes | admin | No | Products | Write | Publication and description |
+| PUT | /api/catalog-admin/:productId/photos/:uploadId | Yes | admin | No | Products | Write | Catalog image upload |
+| PUT | /api/catalog-admin/:productId/shared-photos/:photoId | Yes | admin | No | Products | Write | Reuse an existing catalog photo |
+| DELETE | /api/catalog-admin/:productId/photos/:photoId | Yes | admin | No | Products | Write | Hide catalog image |
 | GET | /api/health/readiness | No | None | No | Public system status | Read | Low: DB availability only |
 | POST | /api/auth/login | No | None | No | Account-wide | Auth/session write | Yes: password input and session token output |
 | GET | /api/auth/me | Yes | admin | No | Account-wide | Read | Yes: admin identity |
@@ -40,6 +56,14 @@ Scope: every HTTP route mounted by `server/src/app.js` and every method declared
 | POST | /api/checks/:checkId/stop-bounced-reminder | Yes | admin | Yes | Store-scoped | Write | Yes: check follow-up state |
 | POST | /api/checks/:checkId/transfer | Yes | admin | Yes | Store-scoped | Financial write | Critical: check ownership and supplier ledger |
 | GET | /api/customers | Yes | admin | Yes, operating context | Business-wide identity | Read | Yes: contact and balance data |
+| GET | /api/customers/sale-search | Yes | admin | Yes, operating context | Business-wide identity, ranked name suggestions | Read | Yes: customer names and phone numbers |
+| GET | /api/order-photos | Yes | admin | Yes | Selected store and day | Read | Yes: private order photo metadata |
+| PUT | /api/order-photos/:uploadId | Yes | admin | Yes | Selected store, idempotent upload UUID | Write | Yes: image bytes, validated and re-encoded |
+| GET | /api/order-photos/:photoId/image | Yes | admin | Yes | Photo must belong to selected store | Read | Yes: private image bytes |
+| GET | /api/customers/debt-reminders | Yes | admin | Yes, operating context | Business-wide debt and per-customer limits | Read | Yes: contact, debt and limit data |
+| GET | /api/customers/reminders | Yes | admin | Yes, operating context | Business-wide debt and payment promises | Read | Yes: contact and financial reminders |
+| PUT | /api/customers/:customerId/payment-promise | Yes | admin | Yes, operating context | Business-wide customer | Write | Yes: payment promise date and note |
+| POST | /api/customers/:customerId/payment-promise/complete | Yes | admin | Yes, operating context | Business-wide customer, version checked | Write | Yes: closes reminder without changing ledger |
 | POST | /api/customers | Yes | admin | Yes, operating context | Business-wide identity | Write | Yes: contact data |
 | GET | /api/customers/:customerId/statement | Yes | admin | Yes, operating context; optional validated activity-store filter | Business-wide, optionally store-filtered | Read | Critical: account statement |
 | GET | /api/customers/:customerId | Yes | admin | Yes, operating context; optional validated activity-store filter | Business-wide, optionally store-filtered | Read | Critical: contact and financial history |

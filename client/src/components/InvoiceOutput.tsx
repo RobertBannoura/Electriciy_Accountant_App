@@ -8,11 +8,19 @@ export type SavedInvoice = {
   invoice_number: string
   business_date: string
   customer_name: string | null
+  receiver_name: string | null
   items_subtotal: string
   invoice_discount: string
   total: string
   paid_total: string
   remaining_due: string
+  returns?: Array<{
+    id: string
+    document_number: string
+    business_date: string
+    total: string
+    items: Array<{ description: string; quantity: string; total: string }>
+  }>
   items: Array<{
     id: string
     description: string
@@ -35,14 +43,16 @@ export function InvoiceOutput({ invoice, onClose, celebrate = false }: { invoice
           <DialogCloseButton onClick={onClose} />
         </div>
         <div className="mb-5 print:hidden">
-          <DocumentOutputActions allowReceipt createPdf={async (size) => (await import('../pdf-documents')).createInvoicePdf(invoice, size)} documentRef={documentRef} fileName={`فاتورة-${invoice.invoice_number}`} />
+          <DocumentOutputActions allowReceipt createPdf={async (size) => (await import('../pdf-documents')).createInvoicePdf(invoice, size)} documentRef={documentRef} fileName={`طلبية-تسعير-${invoice.invoice_number}`} />
         </div>
         <article className="invoice-print-area print-document bg-white p-5" dir="rtl" ref={documentRef}>
           <header className="document-header border-b-2 border-slate-900 pb-4 text-right">
-            <p className="text-sm font-black text-slate-500">نظام إدارة الحسابات والمتجر</p>
-            <div className="receipt-stack mt-1 flex items-start justify-between gap-4">
-              <div><h1 className="text-3xl font-black">فاتورة بيع</h1><p className="mt-2 font-bold">رقم الفاتورة: <span dir="ltr">{invoice.invoice_number}</span></p></div>
-              <div className="receipt-stack text-left font-bold"><p>التاريخ: {invoice.business_date}</p><p className="mt-1">العميل: {invoice.customer_name ?? 'بدون عميل'}</p></div>
+            <h1 className="text-center text-3xl font-black">طلبية تسعير</h1>
+            <div className="receipt-stack mt-3 grid grid-cols-2 gap-2 text-sm font-bold sm:grid-cols-4">
+              <p>رقم الطلبية: <span dir="ltr">{invoice.invoice_number}</span></p>
+              <p>التاريخ: {invoice.business_date}</p>
+              <p>العميل: {invoice.customer_name ?? 'بدون عميل'}</p>
+              <p>المستلم: {invoice.receiver_name ?? ''}</p>
             </div>
           </header>
           <table className="statement-table mt-5 w-full border-collapse text-right">
@@ -51,11 +61,23 @@ export function InvoiceOutput({ invoice, onClose, celebrate = false }: { invoice
           </table>
           <footer className="document-footer mr-auto mt-5 max-w-sm border-t-2 border-slate-900 pt-3 font-bold">
             <p className="flex justify-between gap-4"><span>المجموع</span><ReceiptMoney value={invoice.items_subtotal} /></p>
-            <p className="mt-2 flex justify-between gap-4"><span>خصم الفاتورة</span><ReceiptMoney value={invoice.invoice_discount} /></p>
+            <p className="mt-2 flex justify-between gap-4"><span>خصم الطلبية</span><ReceiptMoney value={invoice.invoice_discount} /></p>
             <p className="mt-2 flex justify-between gap-4 text-xl font-black"><span>الإجمالي</span><ReceiptMoney value={invoice.total} /></p>
             <p className="mt-2 flex justify-between gap-4"><span>المدفوع</span><ReceiptMoney value={invoice.paid_total} /></p>
             <p className="mt-2 flex justify-between gap-4"><span>المتبقي</span><ReceiptMoney value={invoice.remaining_due} /></p>
           </footer>
+          {!!invoice.returns?.length && <section className="mt-6 border-t-2 border-slate-900 pt-3">
+            <h2 className="text-lg font-black">حركات المرتجع على الفاتورة</h2>
+            <p className="mt-1 text-sm">المبالغ أعلاه تخص الفاتورة الأصلية. المرتجعات أدناه حركات مستقلة في كشف الحساب.</p>
+            <table className="statement-table mt-3 w-full text-right">
+              <thead><tr><th>مستند المرتجع</th><th>تاريخ المرتجع</th><th>الأصناف المرتجعة</th><th>قيمة المرتجع</th></tr></thead>
+              <tbody>{invoice.returns.map((movement) => <tr key={movement.id}>
+                <td>{movement.document_number}</td><td>{movement.business_date}</td>
+                <td>{movement.items.map((item, index) => <p key={index}>{item.description} × {formatQuantity(item.quantity)}</p>)}</td>
+                <td><ReceiptMoney value={movement.total} /></td>
+              </tr>)}</tbody>
+            </table>
+          </section>}
           <p className="mt-7 border-t border-slate-300 pt-3 text-center text-sm font-bold">شكراً لتعاملكم معنا</p>
         </article>
         <div className="sticky bottom-0 mt-5 flex justify-center border-t border-slate-200 bg-white/95 p-3 backdrop-blur-sm print:hidden">

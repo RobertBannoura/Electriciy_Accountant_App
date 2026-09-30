@@ -14,11 +14,19 @@ declare global {
       setStoreAssignment: (storeId: string) => Promise<{ storeId: string }>
       getBackupStatus: () => Promise<{
         directory: string | null
+        monthlyDirectory: string | null
         lastAutomaticBackupDate: string | null
         today: string
+        dailyBackupDue: boolean
         automaticBackupDue: boolean
+        monthlyBackupDue: boolean
       }>
       chooseBackupDirectory: () => Promise<{
+        selected: boolean
+        canceled: boolean
+        directory?: string
+      }>
+      chooseMonthlyBackupDirectory: () => Promise<{
         selected: boolean
         canceled: boolean
         directory?: string
@@ -28,6 +36,7 @@ declare global {
         skipped: boolean
         reason?: string
         path?: string
+        monthlyPath?: string
       }>
       selectBackupFile: () => Promise<{
         selected: boolean
@@ -37,7 +46,7 @@ declare global {
         backup?: unknown
       }>
       showNotification: (options: {
-        kind: 'checks_due' | 'checks_bounced'
+        kind: 'checks_due' | 'checks_bounced' | 'customer_reminders'
         count: number
       }) => Promise<{ shown: boolean }>
       savePdf: (options: { fileName: string; pageSize: 'A4' | '80mm' }) => Promise<{

@@ -88,6 +88,13 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
   const [notes, setNotes] = useState('')
   const [search, setSearch] = useState('')
   const [results, setResults] = useState<Product[]>([])
+  const [productSearchOpen, setProductSearchOpen] = useState(true)
+  const [activeProductIndex, setActiveProductIndex] = useState(-1)
+  useEffect(() => {
+    if (productSearchOpen && activeProductIndex >= 0 && results[activeProductIndex]) {
+      document.getElementById(`purchase-product-option-${results[activeProductIndex].id}`)?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [activeProductIndex, productSearchOpen, results])
   const [lines, setLines] = useState<PurchaseLine[]>([])
   const [manualDraft, setManualDraft] = useState<PurchaseLine>(newManualPurchaseDraft)
   const [manualDraftAttempted, setManualDraftAttempted] = useState(false)
@@ -104,6 +111,11 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
   const manualNameInputRef = useRef<HTMLInputElement>(null)
   const store = stores.find((item) => item.id === purchaseStoreId)
   const needsStore = !purchaseStoreId
+  useEffect(() => {
+    if (step !== 'payment') return
+    const frame = window.requestAnimationFrame(() => document.getElementById('supplier-payment-first-option')?.focus())
+    return () => window.cancelAnimationFrame(frame)
+  }, [step])
   const scopedFetch = useCallback((path: string, init?: RequestInit) => {
     if (!purchaseStoreId) throw new Error('اختر المتجر المستلم أولاً')
     const headers = new Headers(init?.headers)
@@ -174,6 +186,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
     }])
     setSearch('')
     setResults([])
+    setSearching(false)
     setMessage(`تمت إضافة ${product.name}`)
   }, [])
 
@@ -199,7 +212,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
   useEffect(() => {
     const term = search.trim()
     const requestId = ++searchId.current
-    if (!term || !purchaseStoreId) { setResults([]); return }
+    if (!term || !purchaseStoreId) { setResults([]); setSearching(false); return }
     const controller = new AbortController()
     const timer = window.setTimeout(async () => {
       setSearching(true)
@@ -415,7 +428,24 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
       </div>
       <div className="relative mt-5 rounded-3xl border-2 border-violet-200 bg-white p-5 shadow-sm">
         <h2 className="text-2xl font-black">الأصناف</h2>
-        <input className={`${inputClass} mt-4`} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => {
+        <input aria-activedescendant={productSearchOpen && !searching && results[activeProductIndex] ? `purchase-product-option-${results[activeProductIndex].id}` : undefined} aria-autocomplete="list" aria-controls={results.length ? 'purchase-product-options' : undefined} aria-expanded={Boolean(search.trim() && productSearchOpen && !searching && results.length)} aria-label="ابحث عن صنف للشراء" autoComplete="off" className={`${inputClass} mt-4`} id="purchase-product-search" onChange={(event) => { setSearch(event.target.value); setResults([]); setSearching(Boolean(event.target.value.trim())); setProductSearchOpen(true); setActiveProductIndex(-1) }} onFocus={() => setProductSearchOpen(true)} onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            if (!search.trim() || !results.length || searching) return
+            event.preventDefault()
+            setProductSearchOpen(true)
+            setActiveProductIndex((index) => {
+              return event.key === 'ArrowDown'
+                ? (index + 1) % results.length
+                : (index <= 0 ? results.length - 1 : index - 1)
+            })
+            return
+          }
+          if (event.key === 'Escape' && productSearchOpen) {
+            event.preventDefault()
+            setProductSearchOpen(false)
+            setActiveProductIndex(-1)
+            return
+          }
           if (event.key !== 'Enter') return
 
           const term = search.trim()
@@ -423,7 +453,8 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
 
           const exactBarcodeMatch = results.find((product) => product.barcode === term)
           const singleResult = results.length === 1 ? results[0] : null
-          const matchedProduct = exactBarcodeMatch ?? singleResult
+          const highlightedResult = productSearchOpen && !searching ? results[activeProductIndex] : null
+          const matchedProduct = highlightedResult ?? exactBarcodeMatch ?? singleResult
 
           event.preventDefault()
           event.stopPropagation()
@@ -433,13 +464,13 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
           }
 
           if (/^\d{4,}$/.test(term)) void scanBarcode(term)
-        }} placeholder="امسح الباركود أو ابحث باسم الصنف" value={search} />
+        }} placeholder="امسح الباركود أو ابحث باسم الصنف" role="combobox" value={search} />
         <p className="mt-2 text-sm font-bold text-slate-500">ابحث في المخزون، أو اكتب الصنف مباشرة في السطر الجاهز داخل الجدول.</p>
         {searching && <p className="mt-2 font-bold text-slate-500">جارٍ البحث…</p>}
-        {results.length > 0 && (
-          <div className="mt-2 divide-y rounded-2xl border bg-white shadow-xl">
-            {results.map((product) => (
-              <button className="flex w-full items-center justify-between gap-4 p-4 text-right hover:bg-violet-50" key={product.id} onClick={() => addProduct(product)} type="button">
+        {search.trim() && productSearchOpen && results.length > 0 && !searching && (
+          <div className="mt-2 max-h-96 divide-y overflow-y-auto rounded-2xl border bg-white shadow-xl" id="purchase-product-options" role="listbox">
+            {results.map((product, index) => (
+              <button aria-selected={activeProductIndex === index} className={`flex w-full items-center justify-between gap-4 p-4 text-right hover:bg-violet-50 ${activeProductIndex === index ? 'bg-violet-50' : ''}`} id={`purchase-product-option-${product.id}`} key={product.id} onClick={() => { addProduct(product); document.getElementById('purchase-product-search')?.focus() }} onFocus={() => setActiveProductIndex(index)} onMouseEnter={() => setActiveProductIndex(index)} role="option" type="button">
                 <span className="font-black">{product.name}</span>
                 <span className="text-slate-600">{product.barcode ?? 'دون باركود'} · آخر شراء {product.current_purchase_price === null ? '—' : `₪${formatDecimal(product.current_purchase_price)}`}</span>
               </button>

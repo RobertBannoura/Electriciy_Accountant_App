@@ -228,6 +228,34 @@ test(
         assert.equal(after.manualMovementCount, before.manualMovementCount + 1)
       })
 
+      await t.test('concurrent manual movements replay once and stay in their own stores', async () => {
+        const before = await inventoryFacts(pool, product.id, storeOne.id, storeTwo.id)
+        const path = `/products/${product.id}/inventory-movements`
+        const bodyFor = (storeId) => ({
+          storeId, movementType: 'correction', quantityDelta: '1',
+          reason: 'Group 10 concurrent adjustment',
+        })
+        const repeatedId = crypto.randomUUID()
+        const [first, replay, otherStore] = await Promise.all([
+          api(path, { method: 'POST', storeId: storeOne.id, requestId: repeatedId, body: bodyFor(storeOne.id) }),
+          api(path, { method: 'POST', storeId: storeOne.id, requestId: repeatedId, body: bodyFor(storeOne.id) }),
+          api(path, { method: 'POST', storeId: storeTwo.id, requestId: crypto.randomUUID(), body: bodyFor(storeTwo.id) }),
+        ])
+        assert.deepEqual([first.response.status, replay.response.status].sort(), [201, 409])
+        assert.equal(otherStore.response.status, 201, JSON.stringify(otherStore.body))
+        const after = await inventoryFacts(pool, product.id, storeOne.id, storeTwo.id)
+        assert.equal(Number(after.storeOneQuantity), Number(before.storeOneQuantity) + 1)
+        assert.equal(Number(after.storeTwoQuantity), Number(before.storeTwoQuantity) + 1)
+        assert.equal(after.manualMovementCount, before.manualMovementCount + 2)
+        const source = await pool.query(
+          `SELECT COUNT(*)::INTEGER AS count FROM inventory_movements
+           WHERE product_id = $1::BIGINT AND source_type = 'manual_inventory'
+             AND source_id IS NOT NULL`,
+          [product.id],
+        )
+        assert.ok(source.rows[0].count >= 2)
+      })
+
       await t.test('customer/project and store/product substitutions are rejected atomically', async () => {
         const saleCount = await count(pool, 'sales')
         const wrongProject = await api('/sales', {
@@ -494,7 +522,7 @@ async function apiRequest(baseUrl, path, options) {
   if (options.token) headers.set('Authorization', `Bearer ${options.token}`)
   if (options.storeId !== undefined) headers.set('X-Store-Id', options.storeId)
   if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) {
-    headers.set('X-Request-Id', crypto.randomUUID())
+    headers.set('X-Request-Id', options.requestId ?? crypto.randomUUID())
   }
   return jsonRequest(`${baseUrl}${path}`, {
     method: options.method,

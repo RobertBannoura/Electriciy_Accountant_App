@@ -14,6 +14,7 @@ import {
 } from '../payments/payment-writer.js'
 import { calculateSale } from './sale-input.js'
 import { calculateSalePaymentBreakdown } from './sale-payment-input.js'
+import { resolveSaleParties } from './resolve-sale-parties.js'
 
 const InventoryDecimal = Decimal.clone({
   precision: 100,
@@ -32,11 +33,21 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
     if (storeResult.rowCount === 0) {
       throw new AppError('المتجر غير موجود أو غير فعال', 404, 'STORE_NOT_FOUND')
     }
+    const parties = await resolveSaleParties(client, input)
+    input = { ...input, customerId: parties.customerId, customerProjectId: parties.customerProjectId }
     await requireCustomerAndProject(client, input.customerId, input.customerProjectId)
 
     const productIds = [...new Set(
       input.items.filter((item) => item.productId !== null).map((item) => item.productId),
     )]
+    if (productIds.length > 0) {
+      // Match product edits and manual adjustments: product rows first, then
+      // store inventory rows. Sort locks to avoid opposite-order deadlocks.
+      await client.query(
+        'SELECT id FROM products WHERE id = ANY($1::BIGINT[]) ORDER BY id FOR UPDATE',
+        [productIds],
+      )
+    }
     const productResult = productIds.length === 0
       ? { rowCount: 0, rows: [] }
       : await client.query(
@@ -163,11 +174,11 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
           store_id, customer_id, customer_project_id, document_number,
           business_date, status, currency_code, items_subtotal,
           invoice_discount, total, paid_total, remaining_due,
-          cost_total, gross_profit, created_by_user_id
+          cost_total, gross_profit, created_by_user_id, receiver_name
         ) VALUES (
           $1::BIGINT, $2::BIGINT, $3::BIGINT, $4, $5::DATE,
           'recorded', 'ILS', $6::NUMERIC, $7::NUMERIC, $8::NUMERIC,
-          $9::NUMERIC, $10::NUMERIC, $11::NUMERIC, $12::NUMERIC, $13::BIGINT
+          $9::NUMERIC, $10::NUMERIC, $11::NUMERIC, $12::NUMERIC, $13::BIGINT, $14
         )
         RETURNING
           id::TEXT AS id,
@@ -175,6 +186,7 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
           customer_id::TEXT AS customer_id,
           customer_project_id::TEXT AS customer_project_id,
           document_number AS invoice_number,
+          receiver_name,
           business_date::TEXT AS business_date,
           status,
           currency_code,
@@ -201,6 +213,7 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
         saleCostTotal.toFixed(),
         grossProfit,
         userId,
+        input.receiverName ?? null,
       ],
     )
     const sale = saleResult.rows[0]
@@ -355,7 +368,7 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
       })
     }
     await client.query('COMMIT')
-    return { ...sale, items: savedItems, payments: savedPayments }
+    return { ...sale, customer_name: parties.customerName, items: savedItems, payments: savedPayments }
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {})
     throw translateSaleError(error)

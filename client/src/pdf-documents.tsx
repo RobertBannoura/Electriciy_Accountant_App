@@ -5,6 +5,7 @@ import notoSansHebrewRegularUrl from './assets/fonts/NotoSansHebrew-Regular.ttf?
 import notoSansArabicUrl from './assets/fonts/NotoSansArabic-Variable.ttf?url'
 import { movementSourceLabel } from './business-labels'
 import { formatDecimal, formatQuantity } from './money-display'
+import { groupStatementEntries } from './statement-groups'
 import type { SavedInvoice } from './components/InvoiceOutput'
 
 export type PdfStatementEntry = {
@@ -15,6 +16,7 @@ export type PdfStatementEntry = {
   source_id: string | null
   description: string | null
   document_number: string | null
+  original_document_number?: string | null
   project_name?: string | null
   check_number: string | null
   check_status: string | null
@@ -75,9 +77,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff', color: colors.ink, direction: 'rtl',
     fontFamily: 'NotoArabic', fontSize: 8, padding: 9,
   },
-  brand: { color: colors.muted, direction: 'rtl', fontSize: 9, fontWeight: 700, textAlign: 'right' },
-  title: { direction: 'rtl', fontSize: 22, fontWeight: 700, textAlign: 'right' },
-  receiptTitle: { direction: 'rtl', fontSize: 16, fontWeight: 700, textAlign: 'right' },
+  title: { direction: 'rtl', fontSize: 22, fontWeight: 700, textAlign: 'center' },
+  receiptTitle: { direction: 'rtl', fontSize: 16, fontWeight: 700, textAlign: 'center' },
   metaGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', marginTop: 7 },
   meta: { direction: 'rtl', fontSize: 9, marginBottom: 3, paddingLeft: 8, textAlign: 'right', width: '50%' },
   rule: { borderBottomColor: colors.ink, borderBottomWidth: 1.5, marginTop: 7 },
@@ -91,6 +92,11 @@ const styles = StyleSheet.create({
   table: { borderColor: colors.line, borderLeftWidth: 1, borderTopWidth: 1 },
   tableRow: { alignItems: 'stretch', flexDirection: 'row-reverse', minHeight: 40 },
   tableHeader: { backgroundColor: colors.soft, flexDirection: 'row-reverse', minHeight: 27 },
+  statementDate: {
+    backgroundColor: '#e2e8f0', borderBottomColor: colors.line, borderBottomWidth: 1,
+    borderRightColor: colors.line, borderRightWidth: 1,
+    minHeight: 22, paddingHorizontal: 6, paddingVertical: 4,
+  },
   cell: {
     borderBottomColor: colors.line, borderBottomWidth: 1,
     borderRightColor: colors.line, borderRightWidth: 1,
@@ -103,7 +109,6 @@ const styles = StyleSheet.create({
   itemFormula: { color: colors.muted, direction: 'ltr', fontFamily: 'NotoHebrew', fontSize: 6.2, lineHeight: 1.55, textAlign: 'right' },
   cellLtr: { direction: 'ltr', fontSize: 7.4, lineHeight: 1.45, textAlign: 'center' },
   documentNumber: { direction: 'ltr', fontSize: 7.5, lineHeight: 1.45, textAlign: 'center' },
-  documentStore: { color: colors.muted, direction: 'rtl', fontSize: 6.5, lineHeight: 1.65, marginTop: 3, textAlign: 'center' },
   moneyCell: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
   moneyValue: {
     alignItems: 'baseline', direction: 'ltr', flexDirection: 'row',
@@ -118,15 +123,15 @@ const styles = StyleSheet.create({
   },
   pageNumber: { bottom: 12, color: colors.muted, fontSize: 7, left: 28, position: 'absolute' },
   invoiceHeading: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginTop: 3 },
+  receiptInvoiceHeading: { flexDirection: 'column' },
   invoiceSummary: { borderTopColor: colors.ink, borderTopWidth: 1.5, marginLeft: '45%', marginTop: 10, paddingTop: 6 },
   summaryRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 3 },
   thanks: { borderTopColor: colors.line, borderTopWidth: 1, direction: 'rtl', marginTop: 12, paddingTop: 6, textAlign: 'center' },
 })
 
 const statementColumns = [
-  { key: 'date', label: 'التاريخ', width: '10%' },
-  { key: 'description', label: 'البيان', width: '38%' },
-  { key: 'document', label: 'المستند / المتجر', width: '16%' },
+  { key: 'description', label: 'البيان', width: '44%' },
+  { key: 'document', label: 'المستند', width: '20%' },
   { key: 'debit', label: 'مدين', width: '12%' },
   { key: 'credit', label: 'دائن', width: '12%' },
   { key: 'balance', label: 'الرصيد', width: '12%' },
@@ -195,7 +200,7 @@ function estimateStatementRowHeight(entry: PdfStatementEntry) {
   const itemNameLines = (entry.purchase_items ?? []).reduce((total, item) => {
     return total + Math.max(1, Math.ceil(normalizePdfText(item.product).length / 34))
   }, 0)
-  return 32 + (descriptionLines * 9) + (projectLines * 9) + (itemCount ? 8 : 0) + (itemNameLines * 10) + (itemCount * 9)
+  return 32 + (entry.original_document_number ? 18 : 0) + (descriptionLines * 9) + (projectLines * 9) + (itemCount ? 8 : 0) + (itemNameLines * 10) + (itemCount * 9)
 }
 
 export function statementEntryLabel(entry: PdfStatementEntry, kind: PdfAccountStatement['kind']) {
@@ -214,10 +219,8 @@ export function statementEntryLabel(entry: PdfStatementEntry, kind: PdfAccountSt
 }
 
 function StatementHeader({ statement }: { statement: PdfAccountStatement }) {
-  const customer = statement.kind === 'customer'
   return <View>
-    <Text style={styles.brand}>نظام إدارة الحسابات والمتجر</Text>
-    <Text style={styles.title}>{customer ? 'كشف حساب عميل' : 'كشف حساب مورد'}</Text>
+    <Text style={styles.title}>طلبية تسعير</Text>
     <View style={styles.metaGrid}>
       <Text style={styles.meta}>الاسم: {statement.party.name}</Text>
       <Text style={styles.meta}>الهاتف: {statement.party.phone ?? '—'}</Text>
@@ -240,16 +243,15 @@ function TableHeader({ columns }: { columns: ReadonlyArray<{ key: string; label:
 function StatementRow({ entry, kind }: { entry: PdfStatementEntry; kind: PdfAccountStatement['kind'] }) {
   const items = entry.purchase_items ?? []
   return <View style={styles.tableRow} wrap={false}>
-    <View style={[styles.cell, { width: '10%' }]}><Text style={styles.cellLtr}>{entry.date}</Text></View>
-    <View style={[styles.cell, { width: '38%' }]}>
+    <View style={[styles.cell, { width: '44%' }]}>
       <Text style={[styles.cellText, styles.bold]}>{statementEntryLabel(entry, kind)}</Text>
+      {entry.original_document_number && <Text style={styles.cellSmall}>الفاتورة الأصلية: {entry.original_document_number} — تاريخ المرتجع: {entry.date}</Text>}
       {entry.description && <Text style={styles.cellSmall}>{normalizePdfText(entry.description)}</Text>}
       {entry.project_name && <Text style={styles.cellSmall}>المشروع: {entry.project_name}</Text>}
       <PurchaseItemsList items={items} />
     </View>
-    <View style={[styles.cell, { width: '16%' }]}>
+    <View style={[styles.cell, { width: '20%' }]}>
       <Text style={styles.documentNumber}>{entry.document_number ?? `#${entry.source_id ?? entry.id}`}</Text>
-      <Text style={styles.documentStore}>{entry.store_name}</Text>
     </View>
     <View style={[styles.cell, styles.moneyCell, { width: '12%' }]}>{entry.debit === '0' ? <Text style={styles.cellLtr}>—</Text> : <MoneyValue value={entry.debit} />}</View>
     <View style={[styles.cell, styles.moneyCell, { width: '12%' }]}>{entry.credit === '0' ? <Text style={styles.cellLtr}>—</Text> : <MoneyValue value={entry.credit} />}</View>
@@ -261,14 +263,16 @@ function StatementPdfDocument({ statement }: { statement: PdfAccountStatement })
   const pages = statement.entries.reduce<PdfStatementEntry[][]>((result, entry) => {
     const estimatedHeight = estimateStatementRowHeight(entry)
     const current = result.at(-1)!
-    const currentHeight = current.reduce((height, item) => height + estimateStatementRowHeight(item), 0)
+    const currentHeight = current.reduce((height, item, index) =>
+      height + estimateStatementRowHeight(item) + (index === 0 || item.date !== current[index - 1].date ? 22 : 0), 0)
+    const dateHeight = current.length === 0 || current.at(-1)?.date !== entry.date ? 22 : 0
 
-    if (current.length && currentHeight + estimatedHeight > MAX_STATEMENT_PAGE_HEIGHT) result.push([entry])
+    if (current.length && currentHeight + dateHeight + estimatedHeight > MAX_STATEMENT_PAGE_HEIGHT) result.push([entry])
     else current.push(entry)
     return result
   }, [[]])
 
-  return <Document title={statement.kind === 'customer' ? 'كشف حساب عميل' : 'كشف حساب مورد'}>
+  return <Document title="طلبية تسعير">
     {pages.map((entries, pageIndex) => <Page key={pageIndex} size="A4" style={styles.page}>
       <StatementHeader statement={statement} />
       {pageIndex === 0 && <View style={styles.balance}>
@@ -277,7 +281,12 @@ function StatementPdfDocument({ statement }: { statement: PdfAccountStatement })
       </View>}
       <View style={[styles.table, { marginTop: pageIndex === 0 ? 0 : 8 }]}>
         <TableHeader columns={statementColumns} />
-        {entries.map((entry) => <StatementRow entry={entry} key={entry.id} kind={statement.kind} />)}
+        {groupStatementEntries(entries).map((group) => <View key={group.date}>
+          <View style={styles.statementDate} wrap={false}>
+            <Text style={[styles.rtl, styles.bold]}>{group.date}</Text>
+          </View>
+          {group.entries.map((entry) => <StatementRow entry={entry} key={entry.id} kind={statement.kind} />)}
+        </View>)}
         {!statement.entries.length && <View style={[styles.cell, { minHeight: 55, width: '100%' }]}>
           <Text style={styles.rtl}>لا توجد حركات في الفترة المحددة.</Text>
         </View>}
@@ -293,16 +302,12 @@ function StatementPdfDocument({ statement }: { statement: PdfAccountStatement })
 
 function InvoiceHeader({ invoice, receipt }: { invoice: SavedInvoice; receipt: boolean }) {
   return <>
-    <Text style={styles.brand}>نظام إدارة الحسابات والمتجر</Text>
-    <View style={styles.invoiceHeading}>
-      <View>
-        <Text style={receipt ? styles.receiptTitle : styles.title}>فاتورة بيع</Text>
-        <Text style={[styles.rtl, { marginTop: 3 }]}>رقم الفاتورة: {invoice.invoice_number}</Text>
-      </View>
-      <View>
-        <Text style={styles.rtl}>التاريخ: {invoice.business_date}</Text>
-        <Text style={[styles.rtl, { marginTop: 3 }]}>العميل: {invoice.customer_name ?? 'بدون عميل'}</Text>
-      </View>
+    <Text style={receipt ? styles.receiptTitle : styles.title}>طلبية تسعير</Text>
+    <View style={[styles.invoiceHeading, receipt ? styles.receiptInvoiceHeading : {}]}>
+      <Text style={styles.rtl}>رقم الطلبية: {invoice.invoice_number}</Text>
+      <Text style={styles.rtl}>التاريخ: {invoice.business_date}</Text>
+      <Text style={styles.rtl}>العميل: {invoice.customer_name ?? 'بدون عميل'}</Text>
+      <Text style={styles.rtl}>المستلم: {invoice.receiver_name ?? ''}</Text>
     </View>
     <View style={styles.rule} />
   </>
@@ -331,7 +336,7 @@ function InvoiceRow({ item, receipt }: { item: SavedInvoice['items'][number]; re
 function InvoicePdfDocument({ invoice, size }: { invoice: SavedInvoice; size: 'A4' | '80mm' }) {
   const receipt = size === '80mm'
   const columns = receipt ? receiptInvoiceColumns : invoiceColumns
-  return <Document title={`فاتورة ${invoice.invoice_number}`}>
+  return <Document title={`طلبية تسعير ${invoice.invoice_number}`}>
     <Page size={receipt ? [226.77, 566.93] : 'A4'} style={receipt ? styles.receiptPage : styles.page}>
       <InvoiceHeader invoice={invoice} receipt={receipt} />
       <View style={[styles.table, { marginTop: 10 }]}>
@@ -340,11 +345,20 @@ function InvoicePdfDocument({ invoice, size }: { invoice: SavedInvoice; size: 'A
       </View>
       <View style={[styles.invoiceSummary, receipt ? { marginLeft: '20%' } : {}]}>
         <SummaryRow label="المجموع" value={invoice.items_subtotal} />
-        <SummaryRow label="خصم الفاتورة" value={invoice.invoice_discount} />
+        <SummaryRow label="خصم الطلبية" value={invoice.invoice_discount} />
         <SummaryRow bold label="الإجمالي" value={invoice.total} />
         <SummaryRow label="المدفوع" value={invoice.paid_total} />
         <SummaryRow label="المتبقي" value={invoice.remaining_due} />
       </View>
+      {!!invoice.returns?.length && <View style={{ marginTop: 12 }}>
+        <Text style={[styles.rtl, styles.bold]}>حركات المرتجع على الفاتورة</Text>
+        <Text style={styles.rtl}>المبالغ أعلاه تخص الفاتورة الأصلية. المرتجعات حركات مستقلة في كشف الحساب.</Text>
+        {invoice.returns.map((movement) => <View key={movement.id} style={{ marginTop: 8 }} wrap={false}>
+          <Text style={styles.rtl}>مرتجع: {movement.document_number} — التاريخ: {movement.business_date}</Text>
+          {movement.items.map((item, index) => <Text key={index} style={styles.rtl}>{normalizePdfText(item.description)} × {formatQuantity(item.quantity)}</Text>)}
+          <SummaryRow label="قيمة المرتجع" value={movement.total} />
+        </View>)}
+      </View>}
       <Text style={styles.thanks}>شكراً لتعاملكم معنا</Text>
     </Page>
   </Document>

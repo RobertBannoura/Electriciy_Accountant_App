@@ -357,6 +357,7 @@ function backendEnvironment(config, buildId, extra = {}) {
     ELECTRON_RUN_AS_NODE: '1', NODE_ENV: 'trial', TRIAL_OFFLINE: '1',
     HOST: '127.0.0.1', PORT: String(config.backendPort),
     DATABASE_URL: databaseUrl.toString(), ELECTRON_ORIGIN: 'app://renderer',
+    PHOTO_STORAGE_DRIVER: 'local', PHOTO_STORAGE_DIR: path.join(localDataRoot(), 'photo-bucket'),
     CLIENT_ORIGIN: 'http://127.0.0.1:1', TIMEZONE: 'Asia/Hebron',
     TRIAL_RUNTIME_TOKEN: config.runtimeToken, TRIAL_BUILD_ID: buildId,
     ...extra,

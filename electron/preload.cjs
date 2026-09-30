@@ -14,6 +14,7 @@ const desktopApi = Object.freeze({
     ipcRenderer.invoke('device:set-store-assignment', storeId),
   getBackupStatus: () => ipcRenderer.invoke('backup:get-status'),
   chooseBackupDirectory: () => ipcRenderer.invoke('backup:choose-directory'),
+  chooseMonthlyBackupDirectory: () => ipcRenderer.invoke('backup:choose-monthly-directory'),
   saveBackup: (backup, automatic = false) =>
     ipcRenderer.invoke('backup:save', { backup, automatic }),
   selectBackupFile: () => ipcRenderer.invoke('backup:select-file'),

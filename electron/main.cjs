@@ -319,6 +319,21 @@ if (hasSingleInstanceLock) startupTask = app.whenReady().then(async () => {
     const saved = await deviceSettings.setBackupDirectory(selection.filePaths[0])
     return { selected: true, canceled: false, ...saved }
   })
+  ipcMain.handle('backup:choose-monthly-directory', async (event) => {
+    assertTrustedIpcSender(event)
+    const current = await deviceSettings.getBackupSettings()
+    const parent = BrowserWindow.fromWebContents(event.sender)
+    const selection = await dialog.showOpenDialog(parent, {
+      ...(current.monthlyDirectory ? { defaultPath: current.monthlyDirectory } : {}),
+      properties: ['openDirectory'],
+      title: 'اختيار مجلد النسخ الشهرية على USB',
+    })
+    if (selection.canceled || selection.filePaths.length !== 1) {
+      return { selected: false, canceled: true }
+    }
+    const saved = await deviceSettings.setMonthlyBackupDirectory(selection.filePaths[0])
+    return { selected: true, canceled: false, ...saved }
+  })
   ipcMain.handle('backup:save', (event, options) => {
     assertTrustedIpcSender(event)
     return backupFiles.saveBackup(options?.backup, { automatic: options?.automatic === true })
@@ -346,7 +361,13 @@ if (hasSingleInstanceLock) startupTask = app.whenReady().then(async () => {
     assertTrustedIpcSender(event)
     const { title, body } = desktopCheckNotification(options)
     if (!Notification.isSupported()) return { shown: false }
-    new Notification({ title, body }).show()
+    const notification = new Notification({ title, body })
+    notification.on('click', () => {
+      if (event.sender.isDestroyed()) return
+      const parent = BrowserWindow.fromWebContents(event.sender)
+      if (parent) { parent.restore(); parent.show(); parent.focus() }
+    })
+    notification.show()
     return { shown: true }
   })
   ipcMain.handle('app:save-pdf', async (event, options) => {

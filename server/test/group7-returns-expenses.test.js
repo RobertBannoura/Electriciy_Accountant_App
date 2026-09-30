@@ -137,6 +137,10 @@ test('customer return atomically restores original cost and credits the customer
   assert.ok(fake.commands.some((sql) => sql.startsWith('INSERT INTO customer_return_items')))
   assert.ok(fake.commands.some((sql) => sql.includes("'customer_return'")))
   assert.ok(fake.commands.some((sql) => sql.startsWith('INSERT INTO customer_ledger')))
+  assert.ok(fake.commands.indexOf('SELECT id FROM customers WHERE id = $1::BIGINT FOR UPDATE')
+    < fake.commands.findIndex((sql) => sql.startsWith('INSERT INTO customer_ledger')))
+  assert.ok(fake.commands.findIndex((sql) => sql.startsWith('SELECT id FROM products'))
+    < fake.commands.findIndex((sql) => sql.includes('FROM sale_items AS item')))
   assert.equal(fake.commands.at(-1), 'COMMIT')
 })
 
@@ -151,6 +155,10 @@ test('supplier return atomically reverses historical purchase cost and debits th
   assert.equal(saved.cost_variance, '0')
   assert.ok(fake.commands.some((sql) => sql.startsWith('INSERT INTO supplier_return_items')))
   assert.ok(fake.commands.some((sql) => sql.startsWith('INSERT INTO supplier_ledger')))
+  assert.ok(fake.commands.indexOf('SELECT id FROM suppliers WHERE id = $1::BIGINT FOR UPDATE')
+    < fake.commands.findIndex((sql) => sql.startsWith('INSERT INTO supplier_ledger')))
+  assert.ok(fake.commands.findIndex((sql) => sql.startsWith('SELECT id FROM products'))
+    < fake.commands.findIndex((sql) => sql.includes('FROM purchase_items AS item')))
   assert.equal(fake.commands.at(-1), 'COMMIT')
 })
 
@@ -162,6 +170,32 @@ test('cumulative returns cannot exceed the quantity on the original line', async
   }), (error) => error?.code === 'RETURN_QUANTITY_EXCEEDED')
   assert.ok(!fake.commands.some((sql) => sql.startsWith('INSERT INTO customer_returns')))
   assert.equal(fake.commands.at(-1), 'ROLLBACK')
+})
+
+test('returns reject a bill belonging to another party before writing movements', async () => {
+  for (const [kind, create] of [['customer', createCustomerReturn], ['supplier', createSupplierReturn]]) {
+    const fake = returnPool(kind)
+    await assert.rejects(create({
+      databasePool: fake.pool, storeId: '1', userId: '2',
+      input: { partyId: '99', sourceDocumentId: '10', items: [{ sourceItemId: '11', quantity: '1' }] },
+    }), (error) => error?.code === 'RETURN_PARTY_MISMATCH')
+    assert.ok(!fake.commands.some((sql) => sql.startsWith('INSERT INTO')))
+    assert.equal(fake.commands.at(-1), 'ROLLBACK')
+  }
+})
+
+test('returns accept the selected owner and validate party identifiers', async () => {
+  for (const [kind, create, partyId, sourceDocumentId, sourceItemId] of [
+    ['customer', createCustomerReturn, '3', '10', '11'],
+    ['supplier', createSupplierReturn, '4', '20', '21'],
+  ]) {
+    const parsed = parseReturnInput({ partyId, sourceDocumentId, items: [{ sourceItemId, quantity: '1' }] })
+    assert.equal(parsed.value.partyId, partyId)
+    const fake = returnPool(kind)
+    await create({ databasePool: fake.pool, storeId: '1', userId: '2', input: parsed.value })
+    assert.equal(fake.commands.at(-1), 'COMMIT')
+  }
+  assert.ok(parseReturnInput({ partyId: 'invalid', sourceDocumentId: '10', items: [{ sourceItemId: '11', quantity: '1' }] }).error)
 })
 
 test('return schema is append-only, linked, and prevents cumulative over-return', async () => {

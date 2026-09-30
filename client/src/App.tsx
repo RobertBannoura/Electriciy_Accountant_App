@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import {
   apiFetch,
   AuthUser,
@@ -17,6 +17,8 @@ import {
 } from './browser-active-store'
 import { LoginPage } from './components/LoginPage'
 import { HomePage } from './pages/HomePage'
+import { OrderPhotosPage } from './pages/OrderPhotosPage'
+import { CatalogPage } from './pages/CatalogPage'
 import { MaintenancePage } from './pages/MaintenancePage'
 import { CustomerDetailPage, CustomersPage } from './pages/CustomersPage'
 import { CustomerPaymentPage } from './pages/CustomerPaymentPage'
@@ -35,6 +37,7 @@ import { MobileFinancePage } from './pages/MobileFinancePage'
 import { FinancialVerificationPage } from './pages/FinancialVerificationPage'
 import { SaveState, Store } from './types'
 import { usePhoneWeb } from './hooks/usePhoneWeb'
+import { useArrowFieldNavigation } from './hooks/useArrowFieldNavigation'
 
 type AuthState = 'checking' | 'anonymous' | 'authenticated'
 
@@ -95,10 +98,12 @@ function AuthenticatedApplication({
     void createDailyBackupIfDue()
     const timer = window.setInterval(() => void createDailyBackupIfDue(), 60 * 60 * 1000)
     window.addEventListener('online', createDailyBackupIfDue)
+    window.addEventListener('backup-settings-changed', createDailyBackupIfDue)
     return () => {
       stopped = true
       window.clearInterval(timer)
       window.removeEventListener('online', createDailyBackupIfDue)
+      window.removeEventListener('backup-settings-changed', createDailyBackupIfDue)
     }
   }, [])
 
@@ -215,6 +220,8 @@ function AuthenticatedApplication({
             : <HomePage isOnline={isOnline} storeId={configuredStoreId} />}
         />
         <Route path="money" element={<MobileMoneyPage stores={stores} />} />
+        <Route path="catalog-manage" element={<CatalogPage admin />} />
+        <Route path="order-photos" element={<OrderPhotosPage isOnline={isOnline} key={configuredStoreId ?? 'no-store'} storeId={configuredStoreId} />} />
         <Route path="finance" element={isPhoneWeb ? <Navigate replace to="/money" /> : <MobileFinancePage isOnline={isOnline} />} />
         <Route
           path="sale"
@@ -282,7 +289,7 @@ function AuthenticatedApplication({
   )
 }
 
-function App() {
+function AdminApplication() {
   const [authState, setAuthState] = useState<AuthState>('checking')
   const [user, setUser] = useState<AuthUser | null>(null)
 
@@ -367,4 +374,8 @@ function App() {
   return <AuthenticatedApplication onLogout={logout} user={user} />
 }
 
-export default App
+export default function App() {
+  const location = useLocation()
+  useArrowFieldNavigation()
+  return location.pathname === '/catalog' ? <CatalogPage /> : <AdminApplication />
+}
