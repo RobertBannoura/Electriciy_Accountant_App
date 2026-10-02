@@ -20,7 +20,7 @@ type SalesResponse = {
   pagination: { page: number; hasMore: boolean }
 }
 
-export function SalesReportList({ from, to, storeId }: { from: string; to: string; storeId: string }) {
+export function SalesReportList({ all = false, from, to, storeId }: { all?: boolean; from: string; to: string; storeId: string }) {
   const [search, setSearch] = useState('')
   const [appliedSearch, setAppliedSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -31,7 +31,9 @@ export function SalesReportList({ from, to, storeId }: { from: string; to: strin
 
   useEffect(() => {
     const controller = new AbortController()
-    const params = new URLSearchParams({ from, to, page: String(page), limit: '50' })
+    const params = all
+      ? new URLSearchParams({ period: 'all', page: String(page), limit: '50' })
+      : new URLSearchParams({ from, to, page: String(page), limit: '50' })
     if (storeId) params.set('storeId', storeId)
     if (appliedSearch) params.set('search', appliedSearch)
     apiFetch(`/reports/sales?${params}`, { signal: controller.signal })
@@ -54,7 +56,7 @@ export function SalesReportList({ from, to, storeId }: { from: string; to: strin
         if (!controller.signal.aborted) setLoading(false)
       })
     return () => controller.abort()
-  }, [appliedSearch, from, page, storeId, to])
+  }, [all, appliedSearch, from, page, storeId, to])
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

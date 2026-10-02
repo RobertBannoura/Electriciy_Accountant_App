@@ -5,6 +5,8 @@ import { createSessionToken, hashSessionToken } from '../auth/session-token.js'
 import { AppError } from '../errors/app-error.js'
 import { catalogId, listCatalog, catalogFilters, sendCatalogImage } from '../products/catalog.js'
 import { saveCatalogPhoto } from '../photos/catalog-photos.js'
+import { getPhotoStorage } from '../photos/photo-storage.js'
+import { removePhotoObjects } from '../photos/remove-photo-objects.js'
 
 export const catalogAdminRouter = Router()
 catalogAdminRouter.get('/', async (request, response) => response.json(await listCatalog(request.query, { admin: true })))
@@ -71,16 +73,31 @@ catalogAdminRouter.delete('/:productId/photos/:photoId', async (request, respons
   const productId = catalogId(request.params.productId)
   const photoId = catalogId(request.params.photoId)
   const client = await pool.connect()
+  let restoreObjects
+  let commitStarted = false
   try {
     await client.query('BEGIN')
     await client.query('SELECT id FROM products WHERE id = $1 FOR UPDATE', [productId])
-    const photo = await client.query('UPDATE catalog_photo_links SET is_active = FALSE WHERE photo_id = $1 AND product_id = $2 RETURNING photo_id', [photoId, productId])
-    if (!photo.rowCount) throw new AppError('الصورة غير موجودة', 404, 'PHOTO_NOT_FOUND')
+    const photo = await client.query('SELECT object_key, thumbnail_key, is_active FROM catalog_photos WHERE id = $1 FOR UPDATE', [photoId])
+    if (!photo.rowCount || !photo.rows[0].is_active) throw new AppError('الصورة غير موجودة', 404, 'PHOTO_NOT_FOUND')
+    const link = await client.query('UPDATE catalog_photo_links SET is_active = FALSE WHERE photo_id = $1 AND product_id = $2 AND is_active RETURNING photo_id', [photoId, productId])
+    if (!link.rowCount) throw new AppError('الصورة غير موجودة', 404, 'PHOTO_NOT_FOUND')
+    const remaining = await client.query('SELECT 1 FROM catalog_photo_links WHERE photo_id = $1 AND is_active LIMIT 1', [photoId])
+    if (!remaining.rowCount) {
+      const storage = await getPhotoStorage()
+      restoreObjects = await removePhotoObjects(storage, [photo.rows[0].object_key, photo.rows[0].thumbnail_key])
+      await client.query('UPDATE catalog_photos SET is_active = FALSE WHERE id = $1', [photoId])
+    }
     await client.query(`UPDATE catalog_entries SET is_published = FALSE WHERE product_id = $1
       AND NOT EXISTS (SELECT 1 FROM catalog_photo_links WHERE product_id = $1 AND is_active)`, [productId])
+    commitStarted = true
     await client.query('COMMIT')
     response.json({ removed: true })
-  } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {})
+    if (!commitStarted && restoreObjects) await restoreObjects()
+    throw error
+  } finally { client.release() }
 })
 
 catalogAdminRouter.put('/:productId/shared-photos/:photoId', async (request, response) => {
@@ -91,7 +108,7 @@ catalogAdminRouter.put('/:productId/shared-photos/:photoId', async (request, res
     await client.query('BEGIN')
     const product = await client.query('SELECT id FROM products WHERE id = $1 AND is_active FOR UPDATE', [productId])
     if (!product.rowCount) throw new AppError('الصنف غير موجود', 404, 'PRODUCT_NOT_FOUND')
-    const photo = await client.query('SELECT id FROM catalog_photos WHERE id = $1', [photoId])
+    const photo = await client.query('SELECT id FROM catalog_photos WHERE id = $1 AND is_active FOR UPDATE', [photoId])
     if (!photo.rowCount) throw new AppError('الصورة غير موجودة', 404, 'PHOTO_NOT_FOUND')
     const links = await client.query('SELECT photo_id::TEXT FROM catalog_photo_links WHERE product_id = $1 AND is_active', [productId])
     if (links.rowCount >= 12 && !links.rows.some((link) => link.photo_id === photoId)) {

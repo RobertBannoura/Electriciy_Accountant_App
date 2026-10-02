@@ -8,6 +8,7 @@ type SourceItem = {
   id: string
   product_id: string | null
   description: string
+  unit_price: string
   original_quantity: string
   returnable_quantity: string
 }
@@ -168,7 +169,18 @@ function ReturnPage({ configuredStoreId, kind, onDraftStateChange }: {
         {partyId && sourcesLoaded && !loading && documents.length === 0 && <p className="font-bold text-slate-600">لا توجد فواتير قابلة للإرجاع لهذا الطرف في المتجر الحالي.</p>}
         <label className="block"><span className="mb-2 block font-black">{sourceLabel}</span><select className={inputClass} disabled={saving || !partyId || loading || (!activeStoreId && !window.desktop)} onChange={(event) => { setDocumentId(event.target.value); setQuantities({}); setSuccess(null) }} required value={documentId}><option value="">{loading ? 'جارٍ التحميل…' : 'اختر الفاتورة'}</option>{documents.map((document) => <option key={document.id} value={document.id}>{document.document_number} — {document.party_name ?? 'بيع نقدي'} — {document.business_date}</option>)}</select></label>
         {hasMoreSources && <button className="min-h-11 rounded-xl border border-slate-300 px-5 font-black" disabled={saving || loading} onClick={() => void load(sourcePage + 1, true)} type="button">تحميل فواتير أقدم</button>}
-        {selected && <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="border-b bg-slate-50 p-4 font-black">أصناف الفاتورة</div>{selected.items.map((item) => <div className="grid items-center gap-3 border-b p-4 last:border-0 sm:grid-cols-[1fr_12rem]" key={item.id}><div><p className="font-black">{item.description}</p><p className="text-sm text-slate-600">المتاح للمرتجع: {formatQuantity(item.returnable_quantity)} من أصل {formatQuantity(item.original_quantity)}</p></div><label><span className="sr-only">كمية مرتجع {item.description}</span><input className={inputClass} disabled={saving} inputMode="decimal" max={item.returnable_quantity} min="0" onChange={(event) => setQuantities((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="الكمية المرتجعة" step="0.001" value={quantities[item.id] ?? ''} /></label></div>)}</div>}
+        {selected && <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="border-b bg-slate-50 p-4 font-black">أصناف الفاتورة</div>
+          {selected.items.map((item) => <div className="grid items-center gap-3 border-b p-4 last:border-0 sm:grid-cols-[1fr_12rem]" key={item.id}>
+            <div>
+              <p className="font-black">{item.description}</p>
+              <p className="text-sm font-bold text-teal-800">{kind === 'customer' ? 'سعر البيع للوحدة' : 'سعر الشراء للوحدة'}: <span dir="ltr">₪{formatDecimal(item.unit_price)}</span></p>
+              <p className="text-sm text-slate-600">المتاح للمرتجع: {formatQuantity(item.returnable_quantity)} من أصل {formatQuantity(item.original_quantity)}</p>
+            </div>
+            <label><span className="sr-only">كمية مرتجع {item.description}</span><input className={inputClass} disabled={saving} inputMode="decimal" max={item.returnable_quantity} min="0" onChange={(event) => setQuantities((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="الكمية المرتجعة" step="0.001" value={quantities[item.id] ?? ''} /></label>
+          </div>)}
+        </div>}
+        {kind === 'customer' && selected && <p className="text-sm text-slate-600">سعر البيع المعروض هو سعر الوحدة في الفاتورة الأصلية؛ تُحتسب قيمة المرتجع بعد خصومات البند والفاتورة.</p>}
         <p className="rounded-xl bg-slate-100 p-4 text-sm font-bold">يُسجل المرتجع كحركة مستقلة بتاريخ اليوم مرتبطة بالفاتورة الأصلية. تبقى كميات الفاتورة الأصلية وأسعارها وخصوماتها ومبالغها كما هي.</p>
         {kind === 'customer' && selected?.party_name && <p className="rounded-xl bg-sky-50 p-4 text-sm font-bold text-sky-900">ينشئ المرتجع رصيداً دائناً للعميل ولا يصرف مبلغاً نقدياً تلقائياً.</p>}
         {kind === 'customer' && selected && !selected.party_name && <p className="rounded-xl bg-sky-50 p-4 text-sm font-bold text-sky-900">هذه الفاتورة غير مرتبطة بعميل؛ يُحفظ المرتجع على الفاتورة ولا ينشئ حركة في كشف حساب عميل أو يصرف نقداً تلقائياً.</p>}

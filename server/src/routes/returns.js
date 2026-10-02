@@ -35,6 +35,7 @@ returnsRouter.get('/customer/sources', async (request, response) => {
        sale.business_date::TEXT AS business_date, sale.total::TEXT AS document_total,
        customers.name AS party_name, item.id::TEXT AS item_id,
        item.product_id::TEXT AS product_id, item.description,
+       item.unit_price::TEXT AS unit_price,
        item.quantity::TEXT AS original_quantity,
        (item.quantity - COALESCE(returned.quantity, 0::NUMERIC))::TEXT AS returnable_quantity
      FROM recent_sales
@@ -74,7 +75,8 @@ returnsRouter.get('/supplier/sources', async (request, response) => {
        purchase.business_date::TEXT AS business_date,
        purchase.total::TEXT AS document_total, suppliers.name AS party_name,
        item.id::TEXT AS item_id, item.product_id::TEXT AS product_id,
-       item.description, item.quantity::TEXT AS original_quantity,
+       item.description, item.unit_cost::TEXT AS unit_price,
+       item.quantity::TEXT AS original_quantity,
        (item.quantity - COALESCE(returned.quantity, 0::NUMERIC))::TEXT AS returnable_quantity
      FROM recent_purchases
      INNER JOIN purchases AS purchase ON purchase.id = recent_purchases.id
@@ -133,6 +135,7 @@ function groupSourceDocuments(rows) {
     }
     documents.get(row.document_id).items.push({
       id: row.item_id, product_id: row.product_id, description: row.description,
+      unit_price: row.unit_price,
       original_quantity: row.original_quantity,
       returnable_quantity: row.returnable_quantity,
     })

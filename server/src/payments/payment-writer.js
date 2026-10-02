@@ -120,7 +120,7 @@ export async function insertCustomerLedgerMovement(
 ) {
   if (new LedgerDecimal(amountIls).isZero()) return
 
-  await client.query(
+  const result = await client.query(
     `
       INSERT INTO customer_ledger (
         store_id, customer_id, direction, amount_ils, occurred_at,
@@ -128,10 +128,11 @@ export async function insertCustomerLedgerMovement(
       ) VALUES (
         $1::BIGINT, $2::BIGINT, $3, $4::NUMERIC, NOW(),
         $5, $6::BIGINT, $7, $8::BIGINT
-      )
+      ) RETURNING id::TEXT AS id
     `,
     [storeId, customerId, direction, amountIls, sourceType, sourceId, notes, userId],
   )
+  return result.rows[0]?.id ?? null
 }
 
 async function insertIncomingCheck(

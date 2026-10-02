@@ -33,6 +33,7 @@ import { verificationRouter } from './routes/verification.js'
 import { orderPhotosRouter } from './routes/order-photos.js'
 import { catalogRouter } from './routes/catalog.js'
 import { catalogAdminRouter } from './routes/catalog-admin.js'
+import { excelImportsRouter } from './routes/excel-imports.js'
 
 export const app = express()
 const normalJsonBoundary = createJsonComplexityGuard({ maxDepth: 32, maxNodes: 20_000 })
@@ -82,6 +83,7 @@ app.use(
       'X-Confirm-Restore',
       'X-Request-Id',
     ],
+    exposedHeaders: ['X-Session-Expires-At'],
   }),
 )
 app.use('/api/health', healthRouter)
@@ -108,6 +110,7 @@ if (env.offlineTrial) {
 }
 app.use('/api/auth', express.json({ limit: '1mb' }), normalJsonBoundary, authRouter)
 app.use('/api/backups', requireAuth, requireAdmin, express.json({ limit: '100mb' }), backupJsonBoundary, backupsRouter)
+app.use('/api/excel-imports', requireAuth, requireAdmin, express.json({ limit: '60mb' }), normalJsonBoundary, excelImportsRouter)
 app.use(express.json({ limit: '1mb' }))
 app.use(normalJsonBoundary)
 app.use('/api/catalog', catalogRouter)

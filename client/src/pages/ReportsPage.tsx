@@ -8,7 +8,7 @@ import { Store } from '../types'
 
 type ReportKey = 'sales' | 'purchases' | 'profit' | 'expenses' | 'customerDebt'
   | 'supplierDebt' | 'inventory' | 'money' | 'checks' | 'comparison'
-type PeriodKey = 'today' | 'week' | 'month' | 'custom'
+type PeriodKey = 'today' | 'month' | 'all' | 'custom'
 const reportKeys: ReportKey[] = ['sales', 'purchases', 'profit', 'expenses', 'customerDebt', 'supplierDebt', 'inventory', 'money', 'checks', 'comparison']
 
 type CashMovement = { currency_code: string; inflow: string; outflow: string; net: string }
@@ -66,17 +66,9 @@ function businessToday() {
   return `${value('year')}-${value('month')}-${value('day')}`
 }
 
-function shiftDate(value: string, days: number) {
-  const date = new Date(`${value}T00:00:00Z`)
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
-}
-
-function periodDates(period: Exclude<PeriodKey, 'custom'>, today = businessToday()) {
+function periodDates(period: 'today' | 'month', today = businessToday()) {
   if (period === 'today') return { from: today, to: today }
-  if (period === 'month') return { from: `${today.slice(0, 7)}-01`, to: today }
-  const weekday = new Date(`${today}T00:00:00Z`).getUTCDay()
-  return { from: shiftDate(today, -weekday), to: today }
+  return { from: `${today.slice(0, 7)}-01`, to: today }
 }
 
 async function reportError(response: Response) {
@@ -91,8 +83,8 @@ async function reportError(response: Response) {
 
 export function ReportsPage({ stores }: { stores: Store[] }) {
   const [searchParams] = useSearchParams()
-  const initialDates = periodDates('month')
-  const [period, setPeriod] = useState<PeriodKey>('month')
+  const initialDates = periodDates('today')
+  const [period, setPeriod] = useState<PeriodKey>('today')
   const [from, setFrom] = useState(initialDates.from)
   const [to, setTo] = useState(initialDates.to)
   const [storeId, setStoreId] = useState('')
@@ -108,7 +100,9 @@ export function ReportsPage({ stores }: { stores: Store[] }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    const search = new URLSearchParams({ from, to })
+    const search = period === 'all'
+      ? new URLSearchParams({ period: 'all' })
+      : new URLSearchParams({ from, to })
     if (storeId) search.set('storeId', storeId)
     setLoading(true)
     apiFetch(`/reports?${search}`, { signal: controller.signal })
@@ -128,9 +122,13 @@ export function ReportsPage({ stores }: { stores: Store[] }) {
         if (!controller.signal.aborted) setLoading(false)
       })
     return () => controller.abort()
-  }, [from, storeId, to])
+  }, [from, period, storeId, to])
 
   function choosePeriod(nextPeriod: Exclude<PeriodKey, 'custom'>) {
+    if (nextPeriod === 'all') {
+      setPeriod('all')
+      return
+    }
     const dates = periodDates(nextPeriod)
     setPeriod(nextPeriod)
     setFrom(dates.from)
@@ -167,7 +165,7 @@ export function ReportsPage({ stores }: { stores: Store[] }) {
       <section className="mt-7 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" aria-label="مرشحات التقارير">
         <div className="flex flex-wrap gap-2">
           {([
-            ['today', 'اليوم'], ['week', 'هذا الأسبوع'], ['month', 'هذا الشهر'], ['custom', 'فترة مخصصة'],
+            ['today', 'اليوم'], ['month', 'هذا الشهر'], ['all', 'الكل'], ['custom', 'فترة مخصصة'],
           ] as const).map(([key, label]) => (
             <button
               className={`min-h-11 rounded-xl px-4 font-black ${period === key ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
@@ -186,15 +184,19 @@ export function ReportsPage({ stores }: { stores: Store[] }) {
               {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
             </select>
           </label>
-          <DateField label="من" max={to} onChange={(value) => { setPeriod('custom'); setFrom(value) }} value={from} />
-          <DateField label="إلى" min={from} onChange={(value) => { setPeriod('custom'); setTo(value) }} value={to} />
+          {period === 'all'
+            ? <p className="self-center font-bold text-slate-600 sm:col-span-2">كل السجلات</p>
+            : <>
+              <DateField label="من" max={to} onChange={(value) => { setPeriod('custom'); setFrom(value) }} value={from} />
+              <DateField label="إلى" min={from} onChange={(value) => { setPeriod('custom'); setTo(value) }} value={to} />
+            </>}
         </div>
       </section>
 
       {error && <p className="mt-5 rounded-2xl bg-rose-50 p-4 font-bold text-rose-800" role="alert">{error}</p>}
       {loading && <p className="mt-5 rounded-2xl bg-teal-50 p-4 font-bold text-teal-900" role="status">جارٍ إعداد التقرير…</p>}
 
-      {report && (
+      {report && !loading && !error && (
         <>
           <div className="mt-7 grid grid-cols-2 gap-3 lg:grid-cols-5">
             {cards.map((card) => (
@@ -213,7 +215,7 @@ export function ReportsPage({ stores }: { stores: Store[] }) {
           <ReportDetail report={report} selected={selected} />
         </>
       )}
-      {selected === 'sales' && <SalesReportList from={from} key={`${from}:${to}:${storeId}`} storeId={storeId} to={to} />}
+      {selected === 'sales' && <SalesReportList all={period === 'all'} from={from} key={`${period}:${from}:${to}:${storeId}`} storeId={storeId} to={to} />}
     </section>
   )
 }

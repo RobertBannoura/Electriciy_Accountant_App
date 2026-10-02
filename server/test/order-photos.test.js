@@ -6,6 +6,7 @@ import test from 'node:test'
 import sharp from 'sharp'
 import { normalizePhoto, parsePhotoDate } from '../src/photos/order-photos.js'
 import { createLocalPhotoStorage, s3PhotoConfiguration, photoMedia } from '../src/photos/photo-storage.js'
+import { removePhotoObjects } from '../src/photos/remove-photo-objects.js'
 
 test('custom photo buckets reject missing or mismatched credential pairs', () => {
   const base = { PHOTO_S3_BUCKET: 'test-bucket', PHOTO_S3_ENDPOINT: 'https://t3.storageapi.dev' }
@@ -90,4 +91,19 @@ test('local photo bucket reads only server-generated keys', async () => {
     await storage.remove(key)
     await assert.rejects(storage.get(key), { code: 'ENOENT' })
   } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('a failed two-object deletion restores the full image', async () => {
+  const objects = new Map([['full', Buffer.from('full bytes')], ['thumb', Buffer.from('thumb bytes')]])
+  const storage = {
+    async get(key) { return objects.get(key) },
+    async put(key, bytes) { objects.set(key, bytes) },
+    async remove(key) {
+      if (key === 'thumb') throw new Error('bucket unavailable')
+      objects.delete(key)
+    },
+  }
+  await assert.rejects(removePhotoObjects(storage, ['full', 'thumb']), /bucket unavailable/)
+  assert.equal(objects.get('full').toString(), 'full bytes')
+  assert.equal(objects.get('thumb').toString(), 'thumb bytes')
 })

@@ -219,6 +219,12 @@ export function SettingsPage({
         <BackupSettings />
       </div>
 
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <h2 className="text-xl font-black">استيراد Excel</h2>
+        <p className="mt-2 text-slate-600">راجع العملاء والأرصدة والحركات التاريخية قبل الترحيل.</p>
+        <Link className="mt-4 inline-flex rounded-xl bg-teal-700 px-6 py-3 font-bold text-white" to="/excel-import">فتح الاستيراد</Link>
+      </div>
+
       {window.desktop && (
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <h2 className="text-xl font-black">إعداد هذا الجهاز</h2>

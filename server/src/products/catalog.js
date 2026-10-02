@@ -12,7 +12,7 @@ export function catalogId(value) {
 
 const visible = `p.is_active AND EXISTS (SELECT 1 FROM store_inventory i JOIN stores s ON s.id = i.store_id
   WHERE i.product_id = p.id AND i.is_active AND s.is_active)`
-const published = `COALESCE(e.is_published, FALSE) AND EXISTS (SELECT 1 FROM catalog_photo_links pl WHERE pl.product_id = p.id AND pl.is_active)`
+const published = `COALESCE(e.is_published, FALSE) AND EXISTS (SELECT 1 FROM catalog_photo_links pl JOIN catalog_photos cp ON cp.id = pl.photo_id WHERE pl.product_id = p.id AND pl.is_active AND cp.is_active)`
 
 export async function listCatalog(parameters, { admin = false } = {}) {
   const pagination = parsePagination(parameters, { defaultLimit: 24, maxLimit: 48 })
@@ -26,7 +26,7 @@ export async function listCatalog(parameters, { admin = false } = {}) {
   const result = await query(`SELECT p.id::TEXT, p.name, p.unit_name, p.default_sale_price::TEXT AS sale_price,
       c.name AS category_name, c.id::TEXT AS category_id, COALESCE(e.description, '') AS description,
       ${admin ? 'COALESCE(e.is_published, FALSE) AS is_published,' : ''}
-      ARRAY(SELECT pl.photo_id::TEXT FROM catalog_photo_links pl WHERE pl.product_id = p.id AND pl.is_active ORDER BY pl.photo_id) AS photo_ids,
+      ARRAY(SELECT pl.photo_id::TEXT FROM catalog_photo_links pl JOIN catalog_photos cp ON cp.id = pl.photo_id WHERE pl.product_id = p.id AND pl.is_active AND cp.is_active ORDER BY pl.photo_id) AS photo_ids,
       (SELECT json_agg(json_build_object('id', s.id::TEXT, 'name', s.name) ORDER BY s.id)
         FROM store_inventory i JOIN stores s ON s.id = i.store_id
         WHERE i.product_id = p.id AND i.is_active AND s.is_active) AS stores
@@ -61,7 +61,7 @@ export async function sendCatalogImage(request, response, { admin = false } = {}
     throw new AppError('حجم الصورة غير صالح', 400, 'INVALID_PHOTO_SIZE')
   }
   const result = await query(`SELECT cp.object_key, cp.thumbnail_key FROM catalog_photos cp
-    WHERE cp.id = $1 AND EXISTS (SELECT 1 FROM catalog_photo_links pl
+    WHERE cp.id = $1 AND cp.is_active AND EXISTS (SELECT 1 FROM catalog_photo_links pl
       JOIN products p ON p.id = pl.product_id LEFT JOIN catalog_entries e ON e.product_id = p.id
       WHERE pl.photo_id = cp.id AND pl.is_active AND ${visible} ${admin ? '' : `AND ${published}`})`, [id])
   if (!result.rowCount) throw new AppError('الصورة غير موجودة', 404, 'PHOTO_NOT_FOUND')

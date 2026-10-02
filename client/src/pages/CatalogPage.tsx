@@ -179,9 +179,9 @@ function ItemDialog({ item, admin, prices, onClose }: { item: Item; admin: boole
     } catch (caught) { setError((caught as Error).message) } finally { setBusy(false) }
   }
   async function remove() {
-    if (!active) return
+    if (!active || !window.confirm('حذف الصورة من هذا الصنف؟ ستبقى في الأصناف الأخرى إذا كانت مستخدمة فيها.')) return
     setBusy(true); setError(''); setStatus('')
-    try { await request(`/${item.id}/photos/${active}`, true, { method: 'DELETE' }); await refresh(); setStatus('تمت إزالة الصورة من العرض') }
+    try { await request(`/${item.id}/photos/${active}`, true, { method: 'DELETE' }); await refresh(); setStatus('تم حذف الصورة من هذا الصنف') }
     catch (caught) { setError((caught as Error).message) } finally { setBusy(false) }
   }
   async function reuse(photoId: string) {

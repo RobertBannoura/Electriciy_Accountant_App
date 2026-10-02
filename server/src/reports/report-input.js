@@ -8,8 +8,15 @@ function isCalendarDate(value) {
 }
 
 export function parseReportFilters(query, today = currentBusinessDate()) {
-  const from = query?.from ?? `${today.slice(0, 7)}-01`
-  const to = query?.to ?? today
+  const all = query?.period === 'all'
+  if (query?.period !== undefined && !all) {
+    return { error: 'فترة التقرير غير صالحة' }
+  }
+  if (all && (query?.from !== undefined || query?.to !== undefined)) {
+    return { error: 'فترة التقرير غير صالحة' }
+  }
+  const from = all ? '0001-01-01' : query?.from ?? `${today.slice(0, 7)}-01`
+  const to = all ? '9999-12-31' : query?.to ?? today
   const storeId = query?.storeId === undefined || query.storeId === ''
     ? null
     : parseStoreId(query.storeId)
@@ -21,7 +28,7 @@ export function parseReportFilters(query, today = currentBusinessDate()) {
     return { error: 'بداية فترة التقرير يجب ألا تكون بعد نهايتها' }
   }
   const rangeDays = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000
-  if (rangeDays > 366) {
+  if (!all && rangeDays > 366) {
     return { error: 'فترة التقرير الواحدة يجب ألا تتجاوز سنة' }
   }
   if (query?.storeId !== undefined && query.storeId !== '' && !storeId) {

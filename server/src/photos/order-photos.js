@@ -43,14 +43,16 @@ export async function saveOrderPhoto({ uploadId, storeId, date, bytes, userId, d
   try {
     await client.query('BEGIN')
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [uploadId])
-    const existing = await client.query(`SELECT ${photoColumns}, content_hash FROM daily_order_photos WHERE upload_id = $1::UUID`, [uploadId])
+    const existing = await client.query(`SELECT ${photoColumns}, content_hash, deleted_at FROM daily_order_photos WHERE upload_id = $1::UUID`, [uploadId])
     if (existing.rowCount) {
       const photo = existing.rows[0]
+      if (photo.deleted_at) throw new AppError('هذه الصورة محذوفة ولا يمكن إعادة رفعها بنفس المعرّف', 409, 'PHOTO_UPLOAD_DELETED')
       if (photo.store_id !== storeId || photo.business_date !== date || photo.content_hash !== contentHash) {
         throw new AppError('معرّف الرفع مستخدم لصورة أخرى', 409, 'PHOTO_UPLOAD_CONFLICT')
       }
       await client.query('ROLLBACK')
       delete photo.content_hash
+      delete photo.deleted_at
       return { photo, created: false }
     }
     const normalized = await normalizePhoto(bytes)

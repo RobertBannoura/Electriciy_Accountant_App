@@ -29,7 +29,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false)
+  const [rememberMe, setRememberMe] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const canSubmit = Boolean(username.trim() && password && !isSubmitting)

@@ -21,6 +21,7 @@ export const BACKUP_CONTENTS = Object.freeze([
   'important-settings',
   'order-photo-metadata',
   'catalog-metadata',
+  'excel-import-batches',
 ])
 
 // The object keys are part of the portable backup format. The table names are
@@ -55,6 +56,8 @@ export const backupTables = Object.freeze([
   { key: 'inventoryMovements', table: 'inventory_movements', orderBy: 'id' },
   { key: 'inventoryCostMovements', table: 'inventory_cost_movements', orderBy: 'id' },
   { key: 'customerLedger', table: 'customer_ledger', orderBy: 'id' },
+  { key: 'excelImportBatches', table: 'excel_import_batches', orderBy: 'id' },
+  { key: 'excelImportCustomers', table: 'excel_import_customers', orderBy: 'id' },
   { key: 'supplierLedger', table: 'supplier_ledger', orderBy: 'id' },
   { key: 'financialMovements', table: 'financial_movements', orderBy: 'id' },
   { key: 'bankMovements', table: 'bank_movements', orderBy: 'id' },

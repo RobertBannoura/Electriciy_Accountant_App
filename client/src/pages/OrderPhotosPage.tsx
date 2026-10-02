@@ -32,6 +32,7 @@ export function OrderPhotosPage({ storeId, isOnline }: { storeId: string | null;
   const [uploads, setUploads] = useState<Upload[]>([])
   const [uploading, setUploading] = useState(false)
   const [viewing, setViewing] = useState<OrderPhoto | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const camera = useRef<HTMLInputElement>(null)
   const gallery = useRef<HTMLInputElement>(null)
   const running = useRef(false)
@@ -57,10 +58,8 @@ export function OrderPhotosPage({ storeId, isOnline }: { storeId: string | null;
 
   useEffect(() => {
     const controller = new AbortController()
-    void load(controller.signal)
-    const refresh = () => { if (!running.current) void load(controller.signal) }
-    window.addEventListener('focus', refresh)
-    return () => { controller.abort(); viewVersion.current += 1; window.removeEventListener('focus', refresh) }
+    if (document.visibilityState === 'visible' && isOnline) void load(controller.signal)
+    return () => { controller.abort(); viewVersion.current += 1 }
   }, [load, isOnline])
   useEffect(() => {
     if (!uploading) return
@@ -100,6 +99,19 @@ export function OrderPhotosPage({ storeId, isOnline }: { storeId: string | null;
     setUploads((current) => [...current.filter((row) => row.status !== 'done'), ...items])
     void send(items.filter((item) => item.status === 'waiting'))
   }
+  async function remove(photo: OrderPhoto) {
+    if (!storeId || !isOnline || deleting || !window.confirm('حذف هذه الصورة نهائياً من صور الطلبات والتخزين؟')) return
+    setDeleting(true)
+    setError(null)
+    try {
+      const response = await apiFetch(`/order-photos/${photo.id}`, { method: 'DELETE', headers: { 'X-Store-Id': storeId } })
+      if (!response.ok) throw new Error(await message(response))
+      setViewing(null)
+      setPhotos((current) => current.filter((row) => row.id !== photo.id))
+      setUploads((current) => current.filter((row) => row.id !== photo.upload_id))
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'تعذّر حذف الصورة') }
+    finally { setDeleting(false) }
+  }
   const disabled = !storeId || !isOnline || uploading
   return <section>
     <header className="mb-5"><h1 className="text-3xl font-black">صور الطلبات اليومية</h1><p className="mt-2 text-slate-600">التقط صورة أو اختر صوراً من الهاتف؛ يبدأ الرفع مباشرة.</p></header>
@@ -116,7 +128,7 @@ export function OrderPhotosPage({ storeId, isOnline }: { storeId: string | null;
       <input accept="image/*" capture="environment" className="hidden" onChange={(event) => { selected(event.target.files); event.target.value = '' }} ref={camera} type="file" />
       <input accept="image/*" className="hidden" multiple onChange={(event) => { selected(event.target.files); event.target.value = '' }} ref={gallery} type="file" />
       <p className="mt-3 text-sm text-slate-500">حتى 20 صورة في المرة، وبحد أقصى 25 ميغابايت للصورة. تُحفظ تحت التاريخ والمحل المحددين.</p>
-      {!isOnline && <p className="mt-3 font-bold text-rose-800">يلزم الاتصال بالخادم لرفع الصور.</p>}
+      {!isOnline && <p className="mt-3 font-bold text-rose-800">يلزم الاتصال بالخادم لرفع الصور أو حذفها.</p>}
     </div>
     {uploads.length > 0 && <div aria-live="polite" className="mt-4 space-y-2 rounded-2xl bg-white p-4">
       <p className="font-black">{uploading ? 'جارٍ الرفع… أبقِ الصفحة مفتوحة حتى يكتمل.' : `تم رفع ${uploads.filter((row) => row.status === 'done').length} من ${uploads.length} صور`}</p>
@@ -135,7 +147,7 @@ export function OrderPhotosPage({ storeId, isOnline }: { storeId: string | null;
       <span className="block px-3 py-2 text-sm font-bold text-slate-600">{new Intl.DateTimeFormat('ar-PS', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Hebron' }).format(new Date(photo.created_at))}</span>
     </button>)}</div>}
     {nextCursor && <button className="mt-4 min-h-12 w-full rounded-xl border border-teal-200 bg-white font-bold text-teal-800" disabled={loading || uploading} onClick={() => void load(undefined, nextCursor)} type="button">عرض المزيد</button>}
-    {viewing && storeId && <PhotoViewer onClose={() => setViewing(null)} photo={viewing} storeId={storeId} />}
+    {viewing && storeId && <PhotoViewer deleting={deleting} error={error} isOnline={isOnline} onClose={() => setViewing(null)} onDelete={() => void remove(viewing)} photo={viewing} storeId={storeId} />}
   </section>
 }
 
@@ -162,12 +174,12 @@ function ProtectedPhoto({ photoId, storeId, full = false }: { photoId: string; s
   if (!url) return <span className="grid min-h-32 place-items-center bg-slate-100 text-sm text-slate-500">جارٍ تحميل الصورة…</span>
   return <img alt={`صورة طلب ${photoId}`} className={full ? 'max-h-[78dvh] w-full object-contain' : 'aspect-square w-full object-cover'} src={url} />
 }
-function PhotoViewer({ photo, storeId, onClose }: { photo: OrderPhoto; storeId: string; onClose: () => void }) {
+function PhotoViewer({ photo, storeId, deleting, error, isOnline, onClose, onDelete }: { photo: OrderPhoto; storeId: string; deleting: boolean; error: string | null; isOnline: boolean; onClose: () => void; onDelete: () => void }) {
   useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
     window.addEventListener('keydown', close)
     return () => window.removeEventListener('keydown', close)
   }, [onClose])
-  return <div aria-label="صورة الطلب" aria-modal="true" className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/80 p-3" role="dialog"><div className="w-full max-w-5xl rounded-2xl bg-white p-3"><div className="mb-3 flex items-center justify-between"><p className="font-black">صورة الطلب — {photo.business_date}</p><DialogCloseButton onClick={onClose} /></div><ProtectedPhoto full photoId={photo.id} storeId={storeId} /></div></div>
+  return <div aria-label="صورة الطلب" aria-modal="true" className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/80 p-3" role="dialog"><div className="w-full max-w-5xl rounded-2xl bg-white p-3"><div className="mb-3 flex items-center justify-between"><p className="font-black">صورة الطلب — {photo.business_date}</p><DialogCloseButton onClick={onClose} /></div><ProtectedPhoto full photoId={photo.id} storeId={storeId} /><button className="mt-3 min-h-11 rounded-xl px-4 font-bold text-rose-700 disabled:opacity-50" disabled={deleting || !isOnline} onClick={onDelete} type="button">{deleting ? 'جارٍ الحذف…' : 'حذف الصورة'}</button>{error && <p className="mt-2 rounded-xl bg-rose-50 p-3 font-bold text-rose-800" role="alert">{error}</p>}</div></div>
 }
 function CameraIcon() { return <svg aria-hidden="true" className="mx-auto size-8" fill="none" viewBox="0 0 24 24"><path d="M3 7h4l2-3h6l2 3h4v13H3V7Zm13 6a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg> }

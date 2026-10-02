@@ -99,6 +99,7 @@ test('successful login returns a no-store opaque token and supports explicit 30-
       assert.equal(body.user.role, 'admin')
 
       const insert = calls.find((call) => call.text.includes('INSERT INTO auth_sessions'))
+      assert.match(insert.text, /expires_at, remember_me/)
       assert.match(insert.params[1], /^[a-f0-9]{64}$/)
       assert.notEqual(insert.params[1], body.token)
       assert.equal(insert.params[5], '12 hours')
@@ -211,6 +212,98 @@ test('expired and disabled-account sessions are rejected by server-side predicat
       assert.match(authenticationQuery.text, /sessions\.expires_at > NOW\(\)/)
       assert.match(authenticationQuery.text, /users\.is_active = TRUE/)
       assert.match(authenticationQuery.text, /INNER JOIN users/)
+    },
+  )
+})
+
+test('remembered sessions renew on an authenticated request near expiry and throttle activity writes', async () => {
+  const token = createSessionToken()
+  const session = {
+    expiresAt: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000),
+    lastSeenAt: new Date(),
+    rememberMe: true,
+  }
+  const writes = []
+  const dbQuery = async (text, params) => {
+    if (text.includes('UPDATE auth_sessions')) {
+      writes.push({ text, params })
+      session.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      session.lastSeenAt = new Date()
+      return { rowCount: 1, rows: [{ expires_at: session.expiresAt }] }
+    }
+    return {
+      rowCount: 1,
+      rows: [{
+        session_id: '44', user_id: '7', username: 'admin',
+        display_name: 'Admin', role: 'admin',
+        expires_at: session.expiresAt,
+        last_seen_at: session.lastSeenAt,
+        remember_me: session.rememberMe,
+      }],
+    }
+  }
+  const authenticate = createRequireAuth({ dbQuery })
+
+  await withServer(
+    (app) => {
+      app.get('/protected', authenticate, (_request, response) => response.json({ ok: true }))
+      app.post('/logout', authenticate, (_request, response) => response.sendStatus(204))
+    },
+    async (baseUrl) => {
+      const headers = { Authorization: `Bearer ${token}` }
+      const early = await fetch(`${baseUrl}/protected`, { headers })
+      assert.equal(early.status, 200)
+      assert.equal(writes.length, 0)
+
+      session.expiresAt = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000)
+      const first = await fetch(`${baseUrl}/protected`, { headers })
+      assert.equal(first.status, 200)
+      assert.equal(first.headers.get('x-session-expires-at'), session.expiresAt.toISOString())
+      assert.equal(writes.length, 1)
+      assert.match(writes[0].text, /INTERVAL '7 days'/)
+      assert.match(writes[0].text, /INTERVAL '20 minutes'/)
+      assert.deepEqual(writes[0].params, ['44'])
+
+      await fetch(`${baseUrl}/protected`, { headers })
+      assert.equal(writes.length, 1)
+
+      session.lastSeenAt = new Date(Date.now() - 21 * 60 * 1000)
+      await fetch(`${baseUrl}/protected`, { headers })
+      assert.equal(writes.length, 2)
+
+      await fetch(`${baseUrl}/logout`, { method: 'POST', headers })
+      assert.equal(writes.length, 2)
+    },
+  )
+})
+
+test('non-remembered sessions never receive a 30-day renewal', async () => {
+  const token = createSessionToken()
+  let updates = 0
+  const dbQuery = async (text) => {
+    if (text.includes('UPDATE auth_sessions')) {
+      updates += 1
+      return { rowCount: 1, rows: [{ expires_at: new Date() }] }
+    }
+    return {
+      rowCount: 1,
+      rows: [{
+        session_id: '45', user_id: '7', username: 'admin',
+        display_name: 'Admin', role: 'admin',
+        expires_at: new Date(Date.now() + 60 * 60 * 1000),
+        last_seen_at: new Date(),
+        remember_me: false,
+      }],
+    }
+  }
+  await withServer(
+    (app) => app.get('/protected', createRequireAuth({ dbQuery }), (_request, response) => response.json({ ok: true })),
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/protected`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      assert.equal(response.status, 200)
+      assert.equal(updates, 0)
     },
   )
 })

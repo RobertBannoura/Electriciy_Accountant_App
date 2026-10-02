@@ -14,6 +14,8 @@ const requiredTables = [
   'customer_projects',
   'customers',
   'expenses',
+  'excel_import_batches',
+  'excel_import_customers',
   'expense_categories',
   'financial_movements',
   'inventory_cost_movements',

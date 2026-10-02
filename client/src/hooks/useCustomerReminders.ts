@@ -39,19 +39,15 @@ export function useCustomerReminders(storeId: string | null, isOnline: boolean) 
     const controller = new AbortController()
     let busy = false
     const refresh = async () => {
-      if (busy) return
+      if (busy || document.visibilityState !== 'visible' || !isOnline) return
       busy = true
       try { await load(controller.signal) } finally { busy = false }
     }
     void refresh()
-    window.addEventListener('focus', refresh)
     window.addEventListener(customerRemindersChanged, refresh)
-    const timer = window.setInterval(() => void refresh(), 60_000)
     return () => {
       controller.abort()
-      window.removeEventListener('focus', refresh)
       window.removeEventListener(customerRemindersChanged, refresh)
-      window.clearInterval(timer)
     }
   }, [load, isOnline, location.key])
   return { data, error }

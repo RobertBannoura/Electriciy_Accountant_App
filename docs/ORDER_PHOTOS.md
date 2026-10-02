@@ -81,7 +81,9 @@ The first active photo is the cover. Removing the last photo hides the product.
 Use **استخدام صور صنف آخر** in an item's editor to reuse photos across models.
 Search for the source item and select its photos. Every model keeps its own name,
 price and description. Photo links share the same stored object; removing a link
-only affects that model, and repeated linking does not create duplicates.
+only affects that model while another active link exists. Removing the final
+link deletes the full image and thumbnail from storage. Repeated linking does
+not create duplicates.
 
 The administrator chooses the saved selling-price default (initially hidden).
 Every fresh catalog opening uses it; the catalog's show/hide switch changes only
@@ -95,8 +97,9 @@ and cannot access admin endpoints. This is not a public website or shareable lin
 Do not leave other already-open admin screens on a device handed to a customer.
 
 Catalog records/settings are included in database backups; catalog sessions are
-not. Image bytes remain in the bucket and need their own backup. Removed images
-are hidden rather than destroyed, preserving consistency with older backups.
+not. Image bytes need their own backup. Deleting the final catalog use or a
+daily order photo also deletes its stored image bytes. A database backup made
+before deletion may refer to objects that no longer exist.
 
 Database backups include photo metadata, **not image bytes**. Back up the local
 photo directory separately or enable bucket backup/versioning. Restore metadata

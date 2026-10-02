@@ -161,6 +161,24 @@ export function clearAuthToken() {
   try { localStorage.removeItem(rememberedSessionTokenKey) } catch { /* Storage is optional. */ }
 }
 
+function updateRememberedSessionExpiry(token: string, expiresAt: string | null) {
+  if (!expiresAt || !Number.isFinite(Date.parse(expiresAt))) return
+  try {
+    const value = localStorage.getItem(rememberedSessionTokenKey)
+    if (!value) return
+    const session = JSON.parse(value) as Partial<RememberedSession>
+    if (session.token !== token || typeof session.expiresAt !== 'string') return
+    if (Date.parse(expiresAt) > Date.parse(session.expiresAt)) {
+      localStorage.setItem(rememberedSessionTokenKey, JSON.stringify({
+        token,
+        expiresAt,
+      } satisfies RememberedSession))
+    }
+  } catch {
+    // Persistent storage is optional.
+  }
+}
+
 export function readCachedAuthUser(): AuthUser | null {
   try {
     const value = localStorage.getItem(cachedUserKey)
@@ -219,7 +237,10 @@ export function apiFetch(path: string, init?: RequestInit) {
     if (mutationIdentity && response.status < 500) {
       markFinancialRequestCompleted(mutationIdentity.storageKey, mutationIdentity.requestId)
     }
-    if (response.status === 401) {
+    if (token && response.ok) {
+      updateRememberedSessionExpiry(token, response.headers.get('X-Session-Expires-At'))
+    }
+    if (response.status === 401 && token === getAuthToken()) {
       clearAuthToken()
       window.dispatchEvent(new Event('auth:expired'))
     }

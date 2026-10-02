@@ -35,6 +35,7 @@ import { SupplierDetailPage, SuppliersPage } from './pages/SuppliersPage'
 import { MobileMoneyPage } from './pages/MobileMoneyPage'
 import { MobileFinancePage } from './pages/MobileFinancePage'
 import { FinancialVerificationPage } from './pages/FinancialVerificationPage'
+import { ExcelImportPage } from './pages/ExcelImportPage'
 import { SaveState, Store } from './types'
 import { usePhoneWeb } from './hooks/usePhoneWeb'
 import { useArrowFieldNavigation } from './hooks/useArrowFieldNavigation'
@@ -270,6 +271,7 @@ function AuthenticatedApplication({
         <Route path="expenses" element={isPhoneWeb ? <Navigate replace to="/money" /> : <ExpensesPage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />} />
         <Route path="reports" element={<ReportsPage stores={stores} />} />
         <Route path="financial-verification" element={<FinancialVerificationPage />} />
+        <Route path="excel-import" element={isPhoneWeb ? <Navigate replace to="/settings" /> : <ExcelImportPage storeId={configuredStoreId} />} />
         <Route
           path="settings"
           element={isPhoneWeb ? <Navigate replace to="/products" /> : (

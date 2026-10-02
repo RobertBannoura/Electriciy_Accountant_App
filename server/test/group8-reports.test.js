@@ -12,12 +12,18 @@ test('report filters accept valid ranges and optional bigint store identity', ()
     parseReportFilters({}, '2026-09-09'),
     { value: { from: '2026-09-01', to: '2026-09-09', storeId: null } },
   )
+  assert.deepEqual(
+    parseReportFilters({ period: 'all', storeId: '12' }, '2026-09-09'),
+    { value: { from: '0001-01-01', to: '9999-12-31', storeId: '12' } },
+  )
 })
 
 test('report filters reject impossible dates, reversed ranges, and unsafe stores', () => {
   assert.match(parseReportFilters({ from: '2026-02-30', to: '2026-03-01' }).error, /فترة/)
   assert.match(parseReportFilters({ from: '2026-09-10', to: '2026-09-09' }).error, /بداية/)
   assert.match(parseReportFilters({ from: '2026-09-01', to: '2026-09-09', storeId: '1 OR 1=1' }).error, /متجر/)
+  assert.match(parseReportFilters({ period: 'all', from: '2025-01-01' }).error, /فترة/)
+  assert.match(parseReportFilters({ period: 'week' }).error, /فترة/)
 })
 
 test('simple reports use immutable sale cost snapshots and subtract explicit returns', async () => {
@@ -41,9 +47,11 @@ test('reports page stays compact and home keeps eight actions ahead of summaries
   for (const label of ['المبيعات', 'المشتريات', 'الأرباح', 'المصاريف', 'ديون العملاء', 'ديون الموردين', 'المخزون', 'حركة الأموال', 'الشيكات', 'مقارنة المحلين']) {
     assert.match(page, new RegExp(label))
   }
-  for (const label of ['اليوم', 'هذا الأسبوع', 'هذا الشهر', 'فترة مخصصة', 'الكل']) {
+  for (const label of ['اليوم', 'هذا الشهر', 'فترة مخصصة', 'الكل']) {
     assert.match(page, new RegExp(label))
   }
+  assert.doesNotMatch(page, /هذا الأسبوع/)
+  assert.match(page, /useState<PeriodKey>\('today'\)/)
   for (const label of ['تكلفة البضاعة', 'الربح الإجمالي', 'صافي الربح']) {
     assert.match(page, new RegExp(label))
   }

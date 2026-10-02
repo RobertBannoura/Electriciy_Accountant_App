@@ -8,6 +8,7 @@ Scope: every HTTP route mounted by `server/src/app.js` and every method declared
 - `GET /api/health*` and the two login entry points are the only public routes.
 - `GET /api/auth/me` and `POST /api/auth/logout` authenticate inside the auth router.
 - `/api/backups/*` is protected before its larger JSON parser runs.
+- `/api/excel-imports/*` is protected by `requireAuth` and `requireAdmin` before its workbook JSON parser runs.
 - `/api/catalog/*` requires a separate, read-only catalog session with a 12-hour expiry. It exposes only published product presentation fields and photos. Starting customer mode revokes the current admin session; catalog tokens cannot authenticate to admin routes.
 - Every other `/api/*` route passes through both `requireAuth` and `requireAdmin` before its router. `requireAuth` also rejects expired/revoked sessions and inactive or non-admin users.
 - `requireStore` parses `X-Store-Id`, requires an existing active store, and writes the validated value to `request.storeId`. Store-scoped writers use that server value.
@@ -57,9 +58,17 @@ Scope: every HTTP route mounted by `server/src/app.js` and every method declared
 | POST | /api/checks/:checkId/transfer | Yes | admin | Yes | Store-scoped | Financial write | Critical: check ownership and supplier ledger |
 | GET | /api/customers | Yes | admin | Yes, operating context | Business-wide identity | Read | Yes: contact and balance data |
 | GET | /api/customers/sale-search | Yes | admin | Yes, operating context | Business-wide identity, ranked name suggestions | Read | Yes: customer names and phone numbers |
+| GET | /api/customers/:customerId/sales | Yes | admin | Yes, operating context | Business-wide customer activity | Read | Yes: sales history |
 | GET | /api/order-photos | Yes | admin | Yes | Selected store and day | Read | Yes: private order photo metadata |
 | PUT | /api/order-photos/:uploadId | Yes | admin | Yes | Selected store, idempotent upload UUID | Write | Yes: image bytes, validated and re-encoded |
 | GET | /api/order-photos/:photoId/image | Yes | admin | Yes | Photo must belong to selected store | Read | Yes: private image bytes |
+| DELETE | /api/order-photos/:photoId | Yes | admin | Yes | Selected store | Write | Yes: private photo deletion |
+| GET | /api/excel-imports | Yes | admin | Yes | Selected store | Read | Critical: import batch log |
+| POST | /api/excel-imports | Yes | admin | Yes | Selected store | Staging write | Critical: complete workbook |
+| GET | /api/excel-imports/:batchId | Yes | admin | Yes | Selected store | Read | Critical: historical financial data |
+| PATCH | /api/excel-imports/:batchId/review | Yes | admin | Yes | Selected store | Review write | Critical: customer matches and issue decisions |
+| POST | /api/excel-imports/:batchId/commit | Yes | admin | Yes | Selected store | Financial write | Critical: customer opening balances |
+| POST | /api/excel-imports/:batchId/rollback | Yes | admin | Yes | Selected store | Financial reversal | Critical: customer balances |
 | GET | /api/customers/debt-reminders | Yes | admin | Yes, operating context | Business-wide debt and per-customer limits | Read | Yes: contact, debt and limit data |
 | GET | /api/customers/reminders | Yes | admin | Yes, operating context | Business-wide debt and payment promises | Read | Yes: contact and financial reminders |
 | PUT | /api/customers/:customerId/payment-promise | Yes | admin | Yes, operating context | Business-wide customer | Write | Yes: payment promise date and note |

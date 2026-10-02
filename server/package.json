@@ -19,12 +19,14 @@
     "push:generate-vapid": "node src/notifications/generate-vapid-keys.js"
   },
   "dependencies": {
+    "@xmldom/xmldom": "^0.9.12",
     "@aws-sdk/client-s3": "^3.1141.0",
     "cors": "^2.8.5",
     "decimal.js": "^10.6.0",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
     "express-rate-limit": "^8.7.0",
+    "fflate": "^0.8.3",
     "helmet": "^8.1.0",
     "pg": "^8.16.3",
     "sharp": "^0.35.5",

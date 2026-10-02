@@ -162,8 +162,8 @@ export function createAuthRouter({
     const sessionResult = await dbQuery(
       `
         WITH new_session AS (
-          INSERT INTO auth_sessions (user_id, token_hash, expires_at)
-          VALUES ($1::BIGINT, $2, NOW() + $6::INTERVAL)
+          INSERT INTO auth_sessions (user_id, token_hash, expires_at, remember_me)
+          VALUES ($1::BIGINT, $2, NOW() + $6::INTERVAL, $7::BOOLEAN)
           RETURNING expires_at
         ), audit AS (
           INSERT INTO audit_log (

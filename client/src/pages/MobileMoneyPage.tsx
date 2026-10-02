@@ -4,7 +4,7 @@ import { apiFetch } from '../api'
 import { formatCurrencyAmount, formatIls } from '../money-display'
 import { Store } from '../types'
 
-type Period = 'today' | 'week' | 'month'
+type Period = 'today' | 'month' | 'all'
 type MoneyReport = {
   filters: { from: string; to: string; store_id: string | null }
   summary: {
@@ -23,22 +23,14 @@ function businessToday() {
   return `${value('year')}-${value('month')}-${value('day')}`
 }
 
-function shiftDate(value: string, days: number) {
-  const date = new Date(`${value}T00:00:00Z`)
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
-}
-
-function periodDates(period: Period) {
+function periodDates(period: Exclude<Period, 'all'>) {
   const today = businessToday()
   if (period === 'today') return { from: today, to: today }
-  if (period === 'month') return { from: `${today.slice(0, 7)}-01`, to: today }
-  const weekday = new Date(`${today}T00:00:00Z`).getUTCDay()
-  return { from: shiftDate(today, -weekday), to: today }
+  return { from: `${today.slice(0, 7)}-01`, to: today }
 }
 
 export function MobileMoneyPage({ stores }: { stores: Store[] }) {
-  const [period, setPeriod] = useState<Period>('month')
+  const [period, setPeriod] = useState<Period>('today')
   const [storeId, setStoreId] = useState('')
   const [report, setReport] = useState<MoneyReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -46,8 +38,9 @@ export function MobileMoneyPage({ stores }: { stores: Store[] }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    const dates = periodDates(period)
-    const search = new URLSearchParams(dates)
+    const search = period === 'all'
+      ? new URLSearchParams({ period: 'all' })
+      : new URLSearchParams(periodDates(period))
     if (storeId) search.set('storeId', storeId)
     setLoading(true)
     setError(null)
@@ -75,7 +68,7 @@ export function MobileMoneyPage({ stores }: { stores: Store[] }) {
 
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-3 gap-2">
-          {([['today', 'اليوم'], ['week', 'الأسبوع'], ['month', 'الشهر']] as const).map(([key, label]) => (
+          {([['today', 'اليوم'], ['month', 'الشهر'], ['all', 'الكل']] as const).map(([key, label]) => (
             <button aria-pressed={period === key} className={`min-h-11 rounded-xl px-2 text-sm font-black ${period === key ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-700'}`} key={key} onClick={() => setPeriod(key)} type="button">{label}</button>
           ))}
         </div>
@@ -89,7 +82,7 @@ export function MobileMoneyPage({ stores }: { stores: Store[] }) {
         <div className="mt-4 grid grid-cols-2 gap-3">
           <MoneyCard label="الأموال الداخلة" tone="in" value={formatIls(report.summary.inflow_ils)} />
           <MoneyCard label="الأموال الخارجة" tone="out" value={formatIls(report.summary.outflow_ils)} />
-          <article className="col-span-2 rounded-2xl border border-teal-600 bg-teal-700 p-5 text-white shadow-sm shadow-teal-900/10"><p className="text-sm font-black text-teal-100">صافي الحركة</p><p className="mt-2 text-3xl font-black" dir="ltr">{formatIls(report.summary.net_ils)}</p><p className="mt-2 text-xs font-bold text-teal-100/80">من {report.filters.from} إلى {report.filters.to}</p></article>
+          <article className="col-span-2 rounded-2xl border border-teal-600 bg-teal-700 p-5 text-white shadow-sm shadow-teal-900/10"><p className="text-sm font-black text-teal-100">صافي الحركة</p><p className="mt-2 text-3xl font-black" dir="ltr">{formatIls(report.summary.net_ils)}</p><p className="mt-2 text-xs font-bold text-teal-100/80">{period === 'all' ? 'كل السجلات' : `من ${report.filters.from} إلى ${report.filters.to}`}</p></article>
         </div>
         {report.summary.cash_movements.length > 0 && <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><h2 className="border-b border-slate-200 bg-slate-50 p-4 text-lg font-black">الحركة حسب العملة</h2>{report.summary.cash_movements.map((row) => <div className="grid grid-cols-3 gap-2 border-b border-slate-100 p-4 text-center last:border-0" key={row.currency_code}><div><p className="text-xs font-bold text-slate-500">داخل</p><p className="mt-1 font-black" dir="ltr">{formatCurrencyAmount(row.inflow, row.currency_code)}</p></div><div><p className="text-xs font-bold text-slate-500">خارج</p><p className="mt-1 font-black" dir="ltr">{formatCurrencyAmount(row.outflow, row.currency_code)}</p></div><div><p className="text-xs font-bold text-slate-500">الصافي</p><p className="mt-1 font-black" dir="ltr">{formatCurrencyAmount(row.net, row.currency_code)}</p></div></div>)}</section>}
       </>}
