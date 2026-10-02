@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import test, { after, before } from 'node:test'
 import { app } from '../src/app.js'
+import { errorHandler } from '../src/middleware/error-handler.js'
 
 let server
 let baseUrl
@@ -152,6 +153,22 @@ test('API responses are never stored by browser or intermediary caches', async (
   assert.equal(healthResponse.headers.get('cache-control'), 'no-store')
   assert.equal(protectedResponse.status, 401)
   assert.equal(protectedResponse.headers.get('cache-control'), 'no-store')
+})
+
+test('transaction deadlocks and serialization conflicts are retryable', () => {
+  for (const pgCode of ['40P01', '40001']) {
+    let status
+    let body
+    errorHandler({ code: pgCode }, {
+      method: 'POST', path: '/api/sales', originalUrl: '/api/sales',
+      get: () => undefined,
+    }, {
+      status(value) { status = value; return this },
+      json(value) { body = value },
+    })
+    assert.equal(status, 503)
+    assert.equal(body.error.code, 'CONCURRENT_OPERATION_RETRY')
+  }
 })
 
 test('rejects invalid request identifiers before they can reach logs or audit storage', async () => {

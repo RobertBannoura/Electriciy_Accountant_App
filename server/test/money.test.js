@@ -7,6 +7,7 @@ import {
   SUPPORTED_CURRENCIES,
   convertForeignToIls,
   createPaymentMoneySnapshot,
+  formatMoneyDisplay,
   isValidIlsStep,
   roundIlsToHalfShekel,
 } from '../src/money/money.js'
@@ -74,6 +75,16 @@ test('converts foreign payments with decimal arithmetic and no implicit rounding
     convertForeignToIls('12345678901234567890.12345', veryPreciseRate),
     convertForeignToIls('12345678901234567890.12345', veryPreciseRate),
   )
+})
+
+test('limits displayed money without changing exact foreign conversion', () => {
+  const payment = createPaymentMoneySnapshot({
+    currency: 'USD', originalAmount: '1', exchangeRate: '3.123456789012',
+  })
+  assert.equal(payment.convertedIlsAmount, '3.123456789012')
+  assert.equal(formatMoneyDisplay(payment.convertedIlsAmount), '3.12')
+  assert.equal(formatMoneyDisplay('0.000000034234234'), '<0.01')
+  assert.equal(formatMoneyDisplay('0.5'), '0.50')
 })
 
 test('rejects unsafe Number values, negative payments, and invalid rates', () => {

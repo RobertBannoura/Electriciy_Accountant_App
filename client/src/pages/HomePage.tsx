@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiFetch } from '../api'
+import { SaleInvoiceViewer } from '../components/SaleInvoiceViewer'
+import { CustomerDebtReminders } from '../components/CustomerDebtReminders'
 import { formatDecimal } from '../money-display'
 
 type ReminderCheck = {
@@ -131,6 +133,7 @@ export function HomePage({ isOnline, readOnly = false, storeId }: { isOnline: bo
   const [actingId, setActingId] = useState<string | null>(null)
   const [summary, setSummary] = useState<HomeSummary | null>(null)
   const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [viewingSale, setViewingSale] = useState<{ id: string; storeId: string } | null>(null)
 
   const loadSummary = useCallback(async (signal?: AbortSignal) => {
     if (!storeId) {
@@ -233,6 +236,10 @@ export function HomePage({ isOnline, readOnly = false, storeId }: { isOnline: bo
         <h1 className="mt-1 text-3xl font-black sm:text-4xl">{readOnly ? 'نظرة سريعة' : 'ماذا تريد أن تفعل؟'}</h1>
       </div>
 
+      <CustomerDebtReminders isOnline={isOnline} storeId={storeId} />
+      <Link className="mb-4 flex min-h-20 items-center justify-between gap-4 rounded-2xl border border-teal-200 bg-teal-50 px-5 py-4 text-teal-950" to="/order-photos"><span><span className="block text-xl font-black">صور الطلبات اليومية</span><span className="mt-1 block text-sm">التقط صورة أو ارفع صور اليوم من الهاتف</span></span><span className="text-3xl" aria-hidden="true">＋</span></Link>
+      <Link className="mb-7 block rounded-2xl border border-stone-200 bg-white px-5 py-4 text-slate-900" to="/catalog-manage"><span className="block text-xl font-black">كتالوج العملاء</span><span className="mt-1 block text-sm text-slate-500">صور الإنارة والأصناف المختارة من المحلين</span></Link>
+
       <div className="hidden grid-cols-2 gap-4 sm:grid sm:gap-6">
         {homeActions.map((action) => (
           <Link
@@ -271,7 +278,10 @@ export function HomePage({ isOnline, readOnly = false, storeId }: { isOnline: bo
 
       {summary && (
         <section className="mt-7" aria-labelledby="recent-activity-title">
-          <h2 className="text-xl font-black" id="recent-activity-title">النشاط الأخير</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-black" id="recent-activity-title">النشاط الأخير</h2>
+            <Link className="font-black text-teal-700 hover:text-teal-900" to="/reports?section=sales">كل فواتير المبيعات</Link>
+          </div>
           <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             {summary.recent_activity.length === 0 ? (
               <p className="p-5 font-bold text-slate-500">لا يوجد نشاط حديث.</p>
@@ -281,12 +291,17 @@ export function HomePage({ isOnline, readOnly = false, storeId }: { isOnline: bo
                   <p className="font-black">{activityLabel(activity.kind)}</p>
                   <p className="mt-1 text-sm font-bold text-slate-500">{activity.document_number} · {localDate(activity.business_date)}</p>
                 </div>
-                <p className="shrink-0 font-black" dir="ltr">₪{formatDecimal(activity.amount)}</p>
+                <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
+                  <p className="font-black" dir="ltr">₪{formatDecimal(activity.amount)}</p>
+                  {activity.kind === 'sale' && storeId && <button className="min-h-11 rounded-xl bg-teal-50 px-4 font-black text-teal-800 hover:bg-teal-100" onClick={() => setViewingSale({ id: activity.id, storeId })} type="button">عرض الفاتورة</button>}
+                </div>
               </article>
             ))}
           </div>
         </section>
       )}
+
+      {viewingSale && <SaleInvoiceViewer key={`${viewingSale.storeId}:${viewingSale.id}`} onClose={() => setViewingSale(null)} saleId={viewingSale.id} storeId={viewingSale.storeId} />}
 
       {reminders && reminders.due_today.length > 0 && (
         <p className="mb-5 mt-7 rounded-2xl border border-sky-300 bg-sky-50 p-4 font-black text-sky-950" role="status">

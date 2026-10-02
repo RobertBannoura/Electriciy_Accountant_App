@@ -1,4 +1,6 @@
 import { Router } from 'express'
+import { rankNameMatches } from '../customers/name-matching.js'
+import { getCustomerReminders, parsePaymentPromise, parsePromiseVersion } from '../customers/customer-reminders.js'
 import { query } from '../db/pool.js'
 import { AppError } from '../errors/app-error.js'
 import { requireStore } from '../middleware/require-store.js'
@@ -40,6 +42,9 @@ customersRouter.get('/', async (request, response) => {
         customers.phone,
         customers.address,
         customers.notes,
+        customers.payment_promise_date::TEXT AS payment_promise_date,
+        customers.payment_promise_note,
+        customers.debt_limit_ils::TEXT AS debt_limit_ils,
         customers.created_at,
         customer_balances.balance_ils::TEXT AS balance_ils
       FROM customers
@@ -60,6 +65,69 @@ customersRouter.get('/', async (request, response) => {
   response.json({ customers: result.rows })
 })
 
+customersRouter.get('/sale-search', async (request, response) => {
+  const search = normalizeOptionalText(request.query.search, 150)
+  if (request.query.search && !search) {
+    throw new AppError('نص البحث غير صالح', 400, 'INVALID_CUSTOMER_SEARCH')
+  }
+  // Rank before limiting so customers outside the directory's first 500 are searchable.
+  const result = await query(`
+    SELECT id::TEXT AS id, name, phone FROM customers
+    WHERE is_active = TRUE ORDER BY name, id
+  `)
+  response.json({ customers: rankNameMatches(result.rows, search ?? '').slice(0, 50) })
+})
+
+customersRouter.get('/reminders', async (_request, response) => {
+  response.json(await getCustomerReminders())
+})
+
+customersRouter.put('/:customerId/payment-promise', async (request, response) => {
+  const customerId = requireCustomerId(request.params.customerId)
+  const parsed = parsePaymentPromise(request.body)
+  if (parsed.error) throw new AppError(parsed.error, 400, 'INVALID_PAYMENT_PROMISE')
+  const result = await query(`
+    UPDATE customers SET payment_promise_date = $2::DATE, payment_promise_note = $3,
+      payment_promise_version = payment_promise_version + 1
+    WHERE id = $1::BIGINT AND is_active = TRUE
+    RETURNING payment_promise_date::TEXT, payment_promise_note, payment_promise_version::TEXT
+  `, [customerId, parsed.value.date, parsed.value.note])
+  if (!result.rowCount) throw new AppError('العميل غير موجود', 404, 'CUSTOMER_NOT_FOUND')
+  response.json({ promise: result.rows[0] })
+})
+
+customersRouter.post('/:customerId/payment-promise/complete', async (request, response) => {
+  const customerId = requireCustomerId(request.params.customerId)
+  const version = parsePromiseVersion(request.body?.version)
+  if (!version) throw new AppError('نسخة التذكير غير صالحة', 400, 'INVALID_PROMISE_VERSION')
+  const result = await query(`
+    UPDATE customers SET payment_promise_date = NULL, payment_promise_note = NULL,
+      payment_promise_version = payment_promise_version + 1
+    WHERE id = $1::BIGINT AND is_active = TRUE AND payment_promise_version = $2::BIGINT
+      AND payment_promise_date IS NOT NULL
+    RETURNING id::TEXT
+  `, [customerId, version])
+  if (!result.rowCount) throw new AppError('تم تغيير التذكير. حدّث الصفحة وحاول مرة أخرى.', 409, 'PAYMENT_PROMISE_CHANGED')
+  response.json({ completed: true })
+})
+
+customersRouter.get('/debt-reminders', async (_request, response) => {
+  const result = await query(`
+    SELECT customers.id::TEXT AS id, customers.name, customers.phone,
+           customers.debt_limit_ils::TEXT AS debt_limit_ils,
+           customer_balances.balance_ils::TEXT AS balance_ils
+    FROM customers
+    INNER JOIN customer_balances ON customer_balances.customer_id = customers.id
+    WHERE customers.is_active = TRUE
+      AND customers.debt_limit_ils IS NOT NULL
+      AND customer_balances.balance_ils > 0
+      AND customer_balances.balance_ils >= customers.debt_limit_ils
+    ORDER BY customer_balances.balance_ils - customers.debt_limit_ils DESC,
+             customers.name, customers.id
+  `)
+  response.json({ customers: result.rows })
+})
+
 customersRouter.post('/', async (request, response) => {
   const parsed = parseCustomerInput(request.body)
   if (parsed.error) {
@@ -68,15 +136,17 @@ customersRouter.post('/', async (request, response) => {
 
   const result = await query(
     `
-      INSERT INTO customers (name, phone, address, notes)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id::TEXT AS id, name, phone, address, notes, created_at
+      INSERT INTO customers (name, phone, address, notes, debt_limit_ils)
+      VALUES ($1, $2, $3, $4, $5::NUMERIC)
+      RETURNING id::TEXT AS id, name, phone, address, notes, created_at,
+                debt_limit_ils::TEXT AS debt_limit_ils
     `,
     [
       parsed.value.name,
       parsed.value.phone,
       parsed.value.address,
       parsed.value.notes,
+      parsed.value.debtLimitIls ?? null,
     ],
   )
 
@@ -142,6 +212,9 @@ customersRouter.get('/:customerId', async (request, response) => {
         customers.phone,
         customers.address,
         customers.notes,
+        customers.payment_promise_date::TEXT AS payment_promise_date,
+        customers.payment_promise_note,
+        customers.debt_limit_ils::TEXT AS debt_limit_ils,
         customers.created_at,
         customer_balances.balance_ils::TEXT AS balance_ils
       FROM customers
@@ -348,9 +421,11 @@ customersRouter.patch('/:customerId', async (request, response) => {
   const result = await query(
     `
       UPDATE customers
-      SET name = $1, phone = $2, address = $3, notes = $4
+      SET name = $1, phone = $2, address = $3, notes = $4,
+          debt_limit_ils = CASE WHEN $6::BOOLEAN THEN $7::NUMERIC ELSE debt_limit_ils END
       WHERE id = $5::BIGINT AND is_active = TRUE
-      RETURNING id::TEXT AS id, name, phone, address, notes, created_at
+      RETURNING id::TEXT AS id, name, phone, address, notes, created_at,
+                debt_limit_ils::TEXT AS debt_limit_ils
     `,
     [
       parsed.value.name,
@@ -358,6 +433,8 @@ customersRouter.patch('/:customerId', async (request, response) => {
       parsed.value.address,
       parsed.value.notes,
       customerId,
+      Object.hasOwn(parsed.value, 'debtLimitIls'),
+      parsed.value.debtLimitIls ?? null,
     ],
   )
   if (result.rowCount === 0) {

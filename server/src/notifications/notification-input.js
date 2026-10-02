@@ -8,6 +8,7 @@ export const notificationCategories = Object.freeze([
   'supplier_payment',
   'check_due',
   'check_bounced',
+  'customer_reminder',
 ])
 
 export function parseNotificationSettings(input) {

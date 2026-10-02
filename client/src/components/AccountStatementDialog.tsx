@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { apiFetch } from '../api'
 import { movementSourceLabel } from '../business-labels'
-import { formatDecimal } from '../money-display'
+import { formatDecimal, formatQuantity } from '../money-display'
+import { groupStatementEntries } from '../statement-groups'
 import { DialogCloseButton } from './DialogCloseButton'
 import type { Store } from '../types'
 import { DocumentOutputActions } from './DocumentOutputActions'
@@ -129,11 +130,11 @@ export function AccountStatementDialog({
 
 function StatementDocument({ documentRef, statement }: { documentRef: RefObject<HTMLElement | null>; statement: AccountStatement }) {
   const customer = statement.kind === 'customer'
+  const dateGroups = groupStatementEntries(statement.entries)
   return (
     <article className={`print-document statement-print-area ${customer ? 'customer-statement' : 'supplier-statement'} bg-white p-2`} dir="rtl" ref={documentRef}>
       <header className="document-header border-b-2 border-slate-900 pb-4 text-right">
-        <p className="text-sm font-black text-slate-500">نظام إدارة الحسابات والمتجر</p>
-        <h1 className="mt-1 text-3xl font-black">{customer ? 'كشف حساب عميل' : 'كشف حساب مورد'}</h1>
+        <h1 className="text-center text-3xl font-black">طلبية تسعير</h1>
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm font-bold sm:grid-cols-4">
           <p><span className="text-slate-500">الاسم:</span> {statement.party.name}</p>
           <p><span className="text-slate-500">الهاتف:</span> {statement.party.phone ?? '—'}</p>
@@ -147,18 +148,18 @@ function StatementDocument({ documentRef, statement }: { documentRef: RefObject<
       </div>
       <div className="overflow-x-auto print:overflow-visible">
         <table className="statement-table w-full border-collapse text-right text-sm">
-          <thead><tr><th>التاريخ</th><th>البيان</th><th>المستند / المحل</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead>
-          <tbody>
-            {statement.entries.map((entry) => <tr key={entry.id}>
-              <td>{entry.date}</td>
-              <td><strong>{entryLabel(entry, statement.kind)}</strong>{entry.description && <small>{entry.description}</small>}{entry.project_name && <small>المشروع: {entry.project_name}</small>}{entry.purchase_items?.map((item, index) => <small key={`${entry.id}:${index}`}>{item.product} - {formatDecimal(item.quantity)} × ₪{formatDecimal(item.unit_price)} = ₪{formatDecimal(item.line_total)}</small>)}</td>
-              <td>{entry.document_number ?? `#${entry.source_id ?? entry.id}`}<small>{entry.store_name}</small></td>
+          <thead><tr><th>البيان</th><th>المستند</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead>
+          {dateGroups.map((group) => <tbody key={group.date}>
+            <tr className="statement-date-row"><th colSpan={5} scope="rowgroup">{group.date}</th></tr>
+            {group.entries.map((entry) => <tr key={entry.id}>
+              <td><strong>{entryLabel(entry, statement.kind)}</strong>{entry.original_document_number && <small>الفاتورة الأصلية: {entry.original_document_number} — تاريخ المرتجع: {entry.date}</small>}{entry.description && <small>{entry.description}</small>}{entry.project_name && <small>المشروع: {entry.project_name}</small>}{entry.purchase_items?.map((item, index) => <small key={`${entry.id}:${index}`}>{item.product} - {formatQuantity(item.quantity)} × ₪{formatDecimal(item.unit_price)} = ₪{formatDecimal(item.line_total)}</small>)}</td>
+              <td>{entry.document_number ?? `#${entry.source_id ?? entry.id}`}</td>
               <td dir="ltr">{entry.debit === '0' ? '—' : `₪${formatDecimal(entry.debit)}`}</td>
               <td dir="ltr">{entry.credit === '0' ? '—' : `₪${formatDecimal(entry.credit)}`}</td>
               <td className="font-black" dir="ltr">₪{formatDecimal(entry.running_balance)}</td>
             </tr>)}
-            {!statement.entries.length && <tr><td className="py-8 text-center font-bold text-slate-500" colSpan={6}>لا توجد حركات في الفترة المحددة.</td></tr>}
-          </tbody>
+          </tbody>)}
+          {!dateGroups.length && <tbody><tr><td className="py-8 text-center font-bold text-slate-500" colSpan={5}>لا توجد حركات في الفترة المحددة.</td></tr></tbody>}
         </table>
       </div>
       <footer className="document-footer mt-4 flex items-center justify-between border-t-2 border-slate-900 pt-4 text-lg font-black">

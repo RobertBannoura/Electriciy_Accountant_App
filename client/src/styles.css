@@ -51,8 +51,13 @@ select {
   touch-action: manipulation;
 }
 
-:where(a, button):focus-visible {
+#root :is(a, button, summary, [tabindex]):focus-visible {
   outline: 3px solid #14b8a6;
+  outline-offset: 2px;
+}
+
+#root :is(input, textarea, select):focus-visible {
+  outline: 3px solid #0d9488;
   outline-offset: 2px;
 }
 
@@ -65,7 +70,31 @@ select {
   to { transform: translateX(0); opacity: 1; }
 }
 
+.sale-success-badge {
+  animation: sale-success-pop 450ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+.sale-success-check {
+  stroke-dasharray: 32;
+  stroke-dashoffset: 32;
+  animation: sale-success-draw 360ms ease-out 180ms both;
+}
+
+@keyframes sale-success-pop {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes sale-success-draw {
+  to { stroke-dashoffset: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .sale-success-check {
+    animation-delay: 0ms !important;
+    stroke-dashoffset: 0;
+  }
+
   *,
   *::before,
   *::after {
@@ -178,6 +207,12 @@ html[data-connection='offline'] a[href*='/payment'] {
   }
 }
 
+.statement-table .statement-date-row th {
+  background: #e2e8f0;
+  padding: 0.5rem 0.75rem;
+  text-align: right;
+}
+
 @media print {
   body * {
     visibility: hidden;
@@ -254,6 +289,10 @@ html[data-connection='offline'] a[href*='/payment'] {
   .statement-table th {
     background: #f1f5f9 !important;
     font-weight: 900;
+  }
+
+  .statement-table .statement-date-row th {
+    background: #e2e8f0 !important;
   }
 
   .statement-table small {

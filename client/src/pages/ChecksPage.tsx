@@ -9,6 +9,8 @@ type CheckStatus = 'pending' | 'cleared' | 'bounced'
 type SupplierAssignment = '' | 'true' | 'false'
 export type CheckRecord = {
   id: string
+  store_id: string
+  store_name: string
   check_number: string
   amount: string
   currency_code: string
@@ -74,12 +76,13 @@ export function ChecksPage({
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [selectedStoreId, setSelectedStoreId] = useState('')
   const [status, setStatus] = useState<'' | CheckStatus>('')
   const [supplierAssigned, setSupplierAssigned] = useState<SupplierAssignment>('')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [transferCheckId, setTransferCheckId] = useState<string | null>(null)
+  const [transferCheck, setTransferCheck] = useState<CheckRecord | null>(null)
   const [supplierId, setSupplierId] = useState('')
   const [transferDate, setTransferDate] = useState(currentBusinessDate)
   const [savingTransfer, setSavingTransfer] = useState(false)
@@ -101,6 +104,7 @@ export function ChecksPage({
     setError(null)
     const params = new URLSearchParams()
     params.set('page', String(page))
+    params.set('storeId', selectedStoreId || 'all')
     if (status) params.set('status', status)
     if (supplierAssigned) params.set('supplierAssigned', supplierAssigned)
     if (search.trim()) params.set('search', search.trim())
@@ -120,9 +124,9 @@ export function ChecksPage({
     } finally {
       if (!signal?.aborted) setLoading(false)
     }
-  }, [operatingStoreId, page, search, status, supplierAssigned])
+  }, [operatingStoreId, page, search, selectedStoreId, status, supplierAssigned])
 
-  useEffect(() => setPage(1), [operatingStoreId, search, status, supplierAssigned])
+  useEffect(() => setPage(1), [operatingStoreId, search, selectedStoreId, status, supplierAssigned])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -156,8 +160,8 @@ export function ChecksPage({
     return () => controller.abort()
   }, [loadSuppliers])
 
-  function beginTransfer(checkId: string) {
-    setTransferCheckId(checkId)
+  function beginTransfer(check: CheckRecord) {
+    setTransferCheck(check)
     setSupplierId('')
     setTransferDate(currentBusinessDate())
     setError(null)
@@ -165,21 +169,21 @@ export function ChecksPage({
 
   async function submitTransfer(event: FormEvent) {
     event.preventDefault()
-    if (!transferCheckId || !supplierId || !transferDate || savingTransfer) return
+    if (!transferCheck || !supplierId || !transferDate || savingTransfer) return
     setSavingTransfer(true)
     setError(null)
     try {
       const headers = new Headers({
         'Content-Type': 'application/json',
-        'X-Store-Id': operatingStoreId,
+        'X-Store-Id': transferCheck.store_id,
       })
-      const response = await apiFetch(`/checks/${transferCheckId}/transfer`, {
+      const response = await apiFetch(`/checks/${transferCheck.id}/transfer`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ supplierId, transferDate }),
       })
       if (!response.ok) throw new Error(await errorMessage(response))
-      setTransferCheckId(null)
+      setTransferCheck(null)
       setSupplierId('')
       await Promise.all([loadChecks(), loadSuppliers()])
     } catch (caught) {
@@ -232,7 +236,7 @@ export function ChecksPage({
     try {
       const response = await apiFetch(`/checks/${check.id}/${action}`, {
         method: 'POST',
-        headers: { 'X-Store-Id': operatingStoreId },
+        headers: { 'X-Store-Id': check.store_id },
       })
       if (!response.ok) throw new Error(await errorMessage(response))
       await Promise.all([loadChecks(), check.supplier_id ? loadSuppliers() : Promise.resolve()])
@@ -278,6 +282,7 @@ export function ChecksPage({
       )}
 
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:hidden">
+        <label className="mb-3 block"><span className="mb-2 block text-sm font-black">المحل</span><select className={inputClass} onChange={(event) => setSelectedStoreId(event.target.value)} value={selectedStoreId}><option value="">كل المحلات</option>{stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}</select></label>
         <label>
           <span className="sr-only">بحث بالعميل أو صاحب الشيك أو رقمه</span>
           <input className={inputClass} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث بالاسم أو رقم الشيك" value={search} />
@@ -297,7 +302,8 @@ export function ChecksPage({
         </details>
       </div>
 
-      <div className="mt-6 hidden gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid md:grid-cols-3">
+      <div className="mt-6 hidden gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid md:grid-cols-4">
+        <label><span className="mb-2 block font-black">المحل</span><select className={inputClass} onChange={(event) => setSelectedStoreId(event.target.value)} value={selectedStoreId}><option value="">كل المحلات</option>{stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}</select></label>
         <label><span className="mb-2 block font-black">بحث بالعميل أو صاحب الشيك أو رقمه</span><input className={inputClass} onChange={(event) => setSearch(event.target.value)} value={search} /></label>
         <label><span className="mb-2 block font-black">الحالة المالية</span><select className={inputClass} onChange={(event) => setStatus(event.target.value as '' | CheckStatus)} value={status}><option value="">كل الحالات</option><option value="pending">قيد التحصيل</option><option value="cleared">تم تحصيله</option><option value="bounced">مرتجع</option></select></label>
         <label><span className="mb-2 block font-black">التسليم إلى مورد</span><select className={inputClass} onChange={(event) => setSupplierAssigned(event.target.value as SupplierAssignment)} value={supplierAssigned}><option value="">كل الشيكات</option><option value="true">مُسلّم إلى مورد</option><option value="false">غير مُسلّم إلى مورد</option></select></label>
@@ -317,6 +323,7 @@ export function ChecksPage({
               return (
                 <article className="grid gap-4 p-5 md:grid-cols-[minmax(0,1.5fr)_1fr_1fr_auto] md:items-center" key={check.id}>
                   <div className="min-w-0">
+                    <p className="mb-1 text-sm font-black text-teal-700">{check.store_name}</p>
                     {check.customer_id ? (
                       <Link className="text-lg font-black text-slate-950 hover:text-teal-700" to={`/customers/${check.customer_id}`}>{check.customer_name}</Link>
                     ) : (
@@ -352,16 +359,16 @@ export function ChecksPage({
                     ) : (
                       <span className={`inline-flex min-h-10 items-center justify-center rounded-full px-4 font-black ${check.status === 'cleared' ? 'bg-emerald-100 text-emerald-900' : check.status === 'bounced' ? 'bg-rose-100 text-rose-900' : 'bg-violet-100 text-violet-900'}`}>{customerCheckStatusLabel(check.status)}</span>
                     )}
-                    {!readOnly && check.status === 'pending' && check.customer_id && !check.supplier_id && <button className="min-h-10 rounded-xl bg-violet-700 px-4 font-black text-white hover:bg-violet-800" onClick={() => beginTransfer(check.id)} type="button">تحويل لمورد</button>}
+                    {!readOnly && check.status === 'pending' && check.customer_id && !check.supplier_id && <button className="min-h-10 rounded-xl bg-violet-700 px-4 font-black text-white hover:bg-violet-800" onClick={() => beginTransfer(check)} type="button">تحويل لمورد</button>}
                     {!readOnly && check.status === 'bounced' && !check.bounced_reminder_stopped_at && <button className="min-h-10 rounded-xl border border-slate-300 px-4 font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50" disabled={actingCheckId === check.id} onClick={() => void runLifecycleAction(check, 'stop-bounced-reminder')} type="button">إيقاف تذكير المرتجع</button>}
                     {check.status === 'bounced' && check.bounced_reminder_stopped_at && <span className="text-center text-sm font-bold text-slate-500">تم إيقاف التذكير</span>}
                   </div>
-                  {!readOnly && transferCheckId === check.id && (
+                  {!readOnly && transferCheck?.id === check.id && (
                     <form aria-label="تحويل الشيك إلى مورد" className="grid gap-3 rounded-xl bg-violet-50 p-4 md:col-span-4 md:grid-cols-[1fr_14rem_auto_auto] md:items-end" onSubmit={(event) => void submitTransfer(event)}>
                       <label><span className="mb-2 block font-black">المورد</span><select autoFocus className={inputClass} onChange={(event) => setSupplierId(event.target.value)} required value={supplierId}><option value="">اختر المورد</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} — المستحق ₪{formatDecimal(supplier.balance_ils)}</option>)}</select></label>
                       <label><span className="mb-2 block font-black">تاريخ التحويل</span><input className={inputClass} onChange={(event) => setTransferDate(event.target.value)} required type="date" value={transferDate} /></label>
                       <button className="min-h-12 rounded-xl bg-violet-700 px-5 font-black text-white disabled:opacity-50" disabled={!supplierId || !transferDate || savingTransfer} type="submit">{savingTransfer ? 'جارٍ التحويل…' : 'تأكيد التحويل'}</button>
-                      <button className="min-h-12 rounded-xl px-5 font-black text-slate-700 hover:bg-white" disabled={savingTransfer} onClick={() => setTransferCheckId(null)} type="button">إلغاء</button>
+                      <button className="min-h-12 rounded-xl px-5 font-black text-slate-700 hover:bg-white" disabled={savingTransfer} onClick={() => setTransferCheck(null)} type="button">إلغاء</button>
                     </form>
                   )}
                 </article>

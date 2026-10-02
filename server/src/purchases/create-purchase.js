@@ -32,6 +32,12 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
     const productIds = [...new Set(input.items.flatMap((item) => (
       item.productId === null ? [] : [item.productId]
     )))]
+    if (productIds.length > 0) {
+      await client.query(
+        'SELECT id FROM products WHERE id = ANY($1::BIGINT[]) ORDER BY id FOR UPDATE',
+        [productIds],
+      )
+    }
     const productResult = productIds.length === 0
       ? { rowCount: 0, rows: [] }
       : await client.query(

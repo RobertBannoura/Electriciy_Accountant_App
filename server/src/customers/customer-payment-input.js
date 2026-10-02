@@ -1,4 +1,5 @@
 import { normalizeOptionalText } from '../products/product-input.js'
+import { parsePromiseVersion } from './customer-reminders.js'
 import { parseSalePayments } from '../sales/sale-payment-input.js'
 
 export function parseCustomerPaymentInput(body) {
@@ -13,11 +14,17 @@ export function parseCustomerPaymentInput(body) {
     return { error: 'ملاحظات الدفعة تتجاوز 2000 حرف' }
   }
 
+  const completePromiseVersion = body?.completePromiseVersion === undefined
+    ? null : parsePromiseVersion(body.completePromiseVersion)
+  if (body?.completePromiseVersion !== undefined && !completePromiseVersion) {
+    return { error: 'نسخة وعد الدفع غير صالحة' }
+  }
+
   const payments = parsedPayments.value.map((payment) => (
     payment.method === 'check' && !payment.notes && notes
       ? { ...payment, notes }
       : payment
   ))
 
-  return { value: { payments, notes } }
+  return { value: { payments, notes, completePromiseVersion } }
 }

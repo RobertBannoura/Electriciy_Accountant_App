@@ -57,10 +57,10 @@ test('selling screen keeps live totals on the left and item lines in a compact s
   assert.equal(page.match(/id="invoice-discount"/g)?.length, 1)
 })
 
-test('sale route can use the available desktop width without widening other screens', async () => {
+test('sale and purchase routes can use the available desktop width', async () => {
   const shell = await readFile(clientUrl('src/components/AppShell.tsx'), 'utf8')
 
-  assert.match(shell, /location\.pathname === '\/sale' \? 'max-w-\[78rem\]' : 'max-w-6xl'/)
+  assert.match(shell, /\['\/sale', '\/purchases'\]\.includes\(location\.pathname\) \? 'max-w-\[78rem\]' : 'max-w-6xl'/)
 })
 
 test('payment methods open as a dedicated second checkout step', async () => {
@@ -183,7 +183,7 @@ test('sale route uses the implemented selling screen', async () => {
   assert.match(app, /<SalePage configuredStoreId={configuredStoreId}/)
 })
 
-test('long PostgreSQL decimal scales are normalized for older users', async () => {
+test('money displays use two decimals while keeping exact values in state', async () => {
   const [formatter, sale, maintenance, customerPayment, customers] = await Promise.all([
     readFile(clientUrl('src/money-display.ts'), 'utf8'),
     readFile(clientUrl('src/pages/SalePage.tsx'), 'utf8'),
@@ -192,14 +192,14 @@ test('long PostgreSQL decimal scales are normalized for older users', async () =
     readFile(clientUrl('src/pages/CustomersPage.tsx'), 'utf8'),
   ])
 
-  assert.match(formatter, /new DisplayDecimal\(value\)\.toFixed\(\)/)
-  assert.match(formatter, /toDecimalPlaces\(2\)\.toFixed\(\)/)
-  assert.match(formatter, /toNearest\('0\.5', DisplayDecimal\.ROUND_HALF_UP\)/)
+  assert.match(formatter, /new DisplayDecimal\(value\)/)
+  assert.match(formatter, /toDecimalPlaces\(2\)/)
+  assert.match(formatter, /rounded\.toFixed\(2\)/)
   assert.match(formatter, /formatMoney\(value\)/)
   assert.match(sale, /formatDecimal\(payload\.sale\.total\)/)
   assert.match(maintenance, /amount_ils: formatDecimal\(record\.amount_ils\)/)
   assert.match(customerPayment, /formatDecimal\(customer\.balance_ils\)/)
   assert.match(customers, /formatCurrencyAmount\(item\.total, item\.currency_code\)/)
-  assert.match(customers, /formatHalfShekel\(amount\)/)
+  assert.match(customers, /formatDecimal\(amount\)/)
   assert.match(customers, /grid-cols-\[minmax\(0,1fr\)_auto\]/)
 })

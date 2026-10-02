@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { apiFetch, storeScopedApiFetch } from '../api'
 import { Store } from '../types'
 import { formatDecimal } from '../money-display'
@@ -111,6 +111,8 @@ export function CustomerPaymentPage({
   stores: Store[]
 }) {
   const { customerId = '' } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const completePromiseVersion = searchParams.get('completePromise')
   const operatingStoreId = stores.some((store) => store.id === defaultStoreId)
     ? defaultStoreId!
     : ''
@@ -181,6 +183,14 @@ export function CustomerPaymentPage({
     setMessage(null)
   }
 
+  function addPayment(method: PaymentMethod, isGiro = false) {
+    setPayments((current) => [...current, newPayment(method, isGiro)])
+    window.requestAnimationFrame(() => {
+      const cards = document.querySelectorAll<HTMLElement>('[data-customer-payment-card]')
+      cards[cards.length - 1]?.querySelector<HTMLElement>('input, select')?.focus()
+    })
+  }
+
   async function submitPayment() {
     if (!canSave || !customer) return
     setSaving(true)
@@ -192,6 +202,7 @@ export function CustomerPaymentPage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           notes: notes.trim() || null,
+          ...(completePromiseVersion ? { completePromiseVersion } : {}),
           payments: payments.map((payment) => ({
             method: payment.method,
             currency: payment.method === 'cash' ? payment.currency : 'ILS',
@@ -230,12 +241,20 @@ export function CustomerPaymentPage({
           })
       if (!response.ok) throw new Error(await errorMessage(response))
       const payload = (await response.json()) as {
-        payment: { total_ils: string; balance_after_ils: string }
+        payment: { total_ils: string; balance_after_ils: string; promise_completed: boolean }
       }
       setCustomer({ ...customer, balance_ils: payload.payment.balance_after_ils })
+      window.dispatchEvent(new Event('app:customer-reminders-changed'))
       setPayments([newPayment('cash')])
       setNotes('')
-      setMessage(`تم تسجيل ₪${formatDecimal(payload.payment.total_ils)}. الرصيد المتبقي ₪${formatDecimal(payload.payment.balance_after_ils)}.`)
+      setMessage(`تم تسجيل ₪${formatDecimal(payload.payment.total_ils)}${payload.payment.promise_completed ? ' وإنهاء وعد الدفع' : ''}. الرصيد المتبقي ₪${formatDecimal(payload.payment.balance_after_ils)}.`)
+      if (payload.payment.promise_completed) {
+        setSearchParams((current) => {
+          const next = new URLSearchParams(current)
+          next.delete('completePromise')
+          return next
+        }, { replace: true })
+      }
     } catch (caught) {
       setMessage(null)
       setError(caught instanceof Error ? caught.message : 'تعذّر تسجيل الدفعة')
@@ -256,6 +275,7 @@ export function CustomerPaymentPage({
           <p className="font-bold text-teal-300">{operatingStore?.name ?? 'المتجر الحالي'}</p>
           <h1 className="mt-1 text-3xl font-black sm:text-4xl" id="customer-payment-title">تسجيل دفعة</h1>
           <p className="mt-3 text-xl font-bold">{customer.name}</p>
+          {completePromiseVersion && <p className="mt-2 text-sm font-bold text-teal-200">سيُنهى وعد الدفع عند تسجيل الدفعة.</p>}
         </div>
         <div className="rounded-2xl bg-white/10 px-6 py-4 text-center">
           <p className="font-bold text-slate-300">الدين الحالي</p>
@@ -276,10 +296,10 @@ export function CustomerPaymentPage({
             <p className="mt-1 font-bold text-slate-600">يمكن جمع أكثر من طريقة في عملية واحدة.</p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <button className="min-h-13 rounded-xl bg-emerald-700 px-5 text-lg font-black text-white" onClick={() => setPayments((current) => [...current, newPayment('cash')])} type="button">+ نقدي</button>
-            <button className="min-h-13 rounded-xl bg-sky-700 px-5 text-lg font-black text-white" onClick={() => setPayments((current) => [...current, newPayment('bank_card')])} type="button">+ بطاقة / بنك</button>
-            <button className="min-h-13 rounded-xl bg-violet-700 px-5 text-lg font-black text-white" onClick={() => setPayments((current) => [...current, newPayment('check')])} type="button">+ شيك</button>
-            <button className="min-h-13 rounded-xl bg-fuchsia-700 px-5 text-lg font-black text-white" onClick={() => setPayments((current) => [...current, newPayment('check', true)])} type="button">+ شيك جيرو</button>
+            <button className="min-h-13 rounded-xl bg-emerald-700 px-5 text-lg font-black text-white" onClick={() => addPayment('cash')} type="button">+ نقدي</button>
+            <button className="min-h-13 rounded-xl bg-sky-700 px-5 text-lg font-black text-white" onClick={() => addPayment('bank_card')} type="button">+ بطاقة / بنك</button>
+            <button className="min-h-13 rounded-xl bg-violet-700 px-5 text-lg font-black text-white" onClick={() => addPayment('check')} type="button">+ شيك</button>
+            <button className="min-h-13 rounded-xl bg-fuchsia-700 px-5 text-lg font-black text-white" onClick={() => addPayment('check', true)} type="button">+ شيك جيرو</button>
           </div>
         </div>
 
@@ -288,7 +308,7 @@ export function CustomerPaymentPage({
             const calculation = calculations.get(payment.id)!
             const foreign = payment.method === 'cash' && payment.currency !== 'ILS'
             return (
-              <article className="rounded-2xl border-2 border-slate-200 p-4" key={payment.id}>
+              <article className="rounded-2xl border-2 border-slate-200 p-4" data-customer-payment-card key={payment.id}>
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-xl font-black">{index + 1}. {payment.method === 'cash' ? 'نقدي' : payment.method === 'bank_card' ? 'بطاقة / بنك' : payment.isGiro ? 'شيك جيرو' : 'شيك'}</h3>
                   <button className="min-h-11 rounded-xl px-4 font-black text-rose-700 hover:bg-rose-50" disabled={payments.length === 1} onClick={() => setPayments((current) => current.filter((item) => item.id !== payment.id))} type="button">حذف</button>
@@ -300,7 +320,7 @@ export function CustomerPaymentPage({
                   {payment.method === 'bank_card' && <PaymentField label="مرجع العملية (اختياري)"><input className={inputClass} maxLength={200} onChange={(event) => updatePayment(payment.id, { reference: event.target.value })} value={payment.reference} /></PaymentField>}
                   {payment.method === 'check' && <><PaymentField label="رقم الشيك"><input className={inputClass} maxLength={100} onChange={(event) => updatePayment(payment.id, { checkNumber: event.target.value })} value={payment.checkNumber} /></PaymentField><PaymentField label="تاريخ الاستحقاق"><input className={inputClass} onChange={(event) => updatePayment(payment.id, { dueDate: event.target.value })} type="date" value={payment.dueDate} /></PaymentField><PaymentField label="ملاحظات — اختياري"><input className={inputClass} maxLength={2000} onChange={(event) => updatePayment(payment.id, { notes: event.target.value })} value={payment.notes} /></PaymentField></>}
                   {payment.method === 'check' && payment.isGiro && <><PaymentField label="اسم صاحب الشيك الأصلي"><input className={inputClass} maxLength={150} onChange={(event) => updatePayment(payment.id, { originalOwnerName: event.target.value })} value={payment.originalOwnerName} /></PaymentField><PaymentField label="رقم هاتف صاحب الشيك الأصلي"><input className={inputClass} inputMode="tel" maxLength={50} onChange={(event) => updatePayment(payment.id, { originalOwnerPhone: event.target.value })} value={payment.originalOwnerPhone} /></PaymentField></>}
-                  <div className="rounded-xl bg-slate-100 p-3"><p className="font-bold text-slate-600">القيمة بـ ₪</p><p className="mt-1 text-xl font-black text-teal-900" dir="ltr">₪{calculation.amount?.toFixed() ?? '—'}</p></div>
+                  <div className="rounded-xl bg-slate-100 p-3"><p className="font-bold text-slate-600">القيمة بـ ₪</p><p className="mt-1 text-xl font-black text-teal-900" dir="ltr">₪{calculation.amount ? formatDecimal(calculation.amount.toFixed()) : '—'}</p></div>
                 </div>
                 {calculation.error && <p className="mt-3 font-black text-rose-700">{calculation.error}</p>}
               </article>
@@ -321,7 +341,7 @@ export function CustomerPaymentPage({
           <SummaryRow label="الدين قبل الدفعة" value={debt} />
           <SummaryRow label="مجموع الدفعة" value={paidTotal} />
           <div className="mt-4 border-t-2 border-slate-300 pt-4"><SummaryRow large label="المتبقي بعد الدفعة" value={balanceAfter} /></div>
-          <button className={`mt-5 min-h-16 w-full rounded-2xl px-6 text-xl font-black ${canSave ? 'bg-teal-700 text-white hover:bg-teal-800' : 'cursor-not-allowed bg-slate-300 text-slate-600'}`} disabled={!canSave} onClick={() => void submitPayment()} type="button">{saving ? 'جارٍ التسجيل…' : 'تسجيل الدفعة'}</button>
+          <button className={`mt-5 min-h-16 w-full rounded-2xl px-6 text-xl font-black ${canSave ? 'bg-teal-700 text-white hover:bg-teal-800' : 'cursor-not-allowed bg-slate-300 text-slate-600'}`} disabled={!canSave} onClick={() => void submitPayment()} type="button">{saving ? 'جارٍ التسجيل…' : completePromiseVersion ? 'تسجيل الدفعة وإنهاء الوعد' : 'تسجيل الدفعة'}</button>
         </div>
       </aside>
       </div>
@@ -334,7 +354,7 @@ function PaymentField({ label, children }: { label: string; children: React.Reac
 }
 
 function SummaryRow({ label, value, large = false }: { label: string; value: Decimal | null; large?: boolean }) {
-  return <div className={`flex items-center justify-between gap-4 ${large ? 'text-2xl font-black text-teal-900' : 'mt-3 text-lg font-bold'}`}><span>{label}</span><span dir="ltr">₪{value?.toFixed() ?? '—'}</span></div>
+  return <div className={`flex items-center justify-between gap-4 ${large ? 'text-2xl font-black text-teal-900' : 'mt-3 text-lg font-bold'}`}><span>{label}</span><span dir="ltr">₪{value ? formatDecimal(value.toFixed()) : '—'}</span></div>
 }
 
 function PaymentState({ text, error = false }: { text: string; error?: boolean }) {

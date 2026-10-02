@@ -12,9 +12,11 @@ import {
 import { Link } from 'react-router-dom'
 import { apiFetch, storeScopedApiFetch } from '../api'
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner'
-import { currencySymbol, formatDecimal } from '../money-display'
+import { currencySymbol, formatDecimal, formatQuantity } from '../money-display'
 import { InvoiceOutput } from '../components/InvoiceOutput'
 import type { SavedInvoice } from '../components/InvoiceOutput'
+import { SaleNamePicker } from '../components/SaleNamePicker'
+import { nameKey, rankNameMatches } from '../../../server/src/customers/name-matching.js'
 
 type ProductInventory = {
   store_id: string
@@ -70,6 +72,7 @@ type PaymentDraft = {
   method: PaymentMethod
   currency: Currency
   amount: string
+  autoAmount: boolean
   exchangeRate: string
   reference: string
   checkNumber: string
@@ -115,11 +118,7 @@ function isHalfShekel(decimal: Decimal) {
 }
 
 function formatAmount(decimal: Decimal | null) {
-  return decimal === null ? '—' : decimal.toFixed()
-}
-
-function customerOptionLabel(customer: Customer) {
-  return customer.phone ? `${customer.name} — ${customer.phone}` : customer.name
+  return decimal === null ? '—' : formatDecimal(decimal.toFixed())
 }
 
 function calculateLine(line: SaleLine): LineCalculation {
@@ -210,6 +209,7 @@ function newPayment(method: PaymentMethod, dueDate: string, isGiro = false): Pay
     method,
     currency: 'ILS',
     amount: '',
+    autoAmount: false,
     exchangeRate: '',
     reference: '',
     checkNumber: '',
@@ -255,6 +255,13 @@ export function SalePage({
   const [step, setStep] = useState<'items' | 'payment'>('items')
   const [search, setSearch] = useState('')
   const [results, setResults] = useState<SaleProduct[]>([])
+  const [productSearchOpen, setProductSearchOpen] = useState(true)
+  const [activeProductIndex, setActiveProductIndex] = useState(-1)
+  useEffect(() => {
+    if (productSearchOpen && activeProductIndex >= 0 && results[activeProductIndex]) {
+      document.getElementById(`sale-product-option-${results[activeProductIndex].id}`)?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [activeProductIndex, productSearchOpen, results])
   const [lines, setLines] = useState<SaleLine[]>([])
   const [manualDraft, setManualDraft] = useState<SaleLine>(newManualLineDraft)
   const [manualDraftAttempted, setManualDraftAttempted] = useState(false)
@@ -262,9 +269,16 @@ export function SalePage({
   const [customers, setCustomers] = useState<Customer[]>([])
   const [customerId, setCustomerId] = useState('')
   const [customerSearch, setCustomerSearch] = useState('')
-  const [customerPickerOpen, setCustomerPickerOpen] = useState(false)
+  const [receiverName, setReceiverName] = useState('')
+  const [customerLookupKey, setCustomerLookupKey] = useState('')
   const [projects, setProjects] = useState<CustomerProject[]>([])
+  const [projectsCustomerId, setProjectsCustomerId] = useState('')
   const [customerProjectId, setCustomerProjectId] = useState('')
+  const [projectSearch, setProjectSearch] = useState('')
+  const [loadingProjects, setLoadingProjects] = useState(false)
+  const [customerSearchError, setCustomerSearchError] = useState(false)
+  const [projectSearchError, setProjectSearchError] = useState(false)
+  const [lookupRevision, setLookupRevision] = useState(0)
   const [payments, setPayments] = useState<PaymentDraft[]>([])
   const [payLater, setPayLater] = useState(false)
   const [invoiceDiscount, setInvoiceDiscount] = useState('0')
@@ -276,7 +290,47 @@ export function SalePage({
   const [savedInvoice, setSavedInvoice] = useState<SavedInvoice | null>(null)
   const searchRequestId = useRef(0)
   const manualNameInputRef = useRef<HTMLInputElement>(null)
+  const pendingNameFocusRef = useRef<{ sourceId: string; targetId: string } | null>(null)
+  const focusPendingNameField = useCallback(() => {
+    const pending = pendingNameFocusRef.current
+    if (!pending) return
+    const active = document.activeElement
+    if (active instanceof HTMLElement && active !== document.body
+      && active.id !== pending.sourceId && !active.closest(`#${pending.sourceId}-options`)) {
+      pendingNameFocusRef.current = null
+      return
+    }
+    const target = document.getElementById(pending.targetId)
+    if (!(target instanceof HTMLInputElement) || target.disabled) return
+    pendingNameFocusRef.current = null
+    target.focus()
+    target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [])
+  function advanceFromName(sourceId: string, targetId: string) {
+    pendingNameFocusRef.current = { sourceId, targetId }
+    window.requestAnimationFrame(focusPendingNameField)
+  }
   const needsStore = !configuredStoreId
+  const exactCustomers = customers.filter((customer) => nameKey(customer.name) === nameKey(customerSearch))
+  const effectiveCustomerId = customerId || (exactCustomers.length === 1 ? exactCustomers[0].id : '')
+  const hasCustomer = Boolean(customerSearch.trim() || effectiveCustomerId)
+  const ambiguousCustomer = !customerId && exactCustomers.length > 1
+  const customerLookupPending = loadingCustomers || customerLookupKey !== customerSearch.trim()
+  const customerProjects = projectsCustomerId === effectiveCustomerId ? projects : []
+  const projectLookupPending = Boolean(effectiveCustomerId) && (loadingProjects || projectsCustomerId !== effectiveCustomerId)
+  const exactProjects = customerProjects.filter((project) => nameKey(project.name) === nameKey(projectSearch))
+  const effectiveProjectId = customerProjectId || (exactProjects.length === 1 ? exactProjects[0].id : '')
+  const ambiguousProject = !customerProjectId && exactProjects.length > 1
+  useEffect(() => {
+    if (step === 'items') focusPendingNameField()
+    else pendingNameFocusRef.current = null
+  }, [step, customerLookupPending, projectLookupPending, ambiguousCustomer, saving, focusPendingNameField])
+  useEffect(() => {
+    if (step === 'payment') {
+      const firstPaymentInput = document.querySelector<HTMLInputElement>('[data-sale-payment-card] input')
+      ;(firstPaymentInput ?? document.getElementById('sale-payment-first-option'))?.focus()
+    }
+  }, [step])
   const saleApiFetch = useCallback((path: string, init?: RequestInit) => {
     if (window.desktop) return storeScopedApiFetch(path, init)
     if (!configuredStoreId) throw new Error('لا يوجد متجر متاح لهذه العملية')
@@ -293,43 +347,65 @@ export function SalePage({
 
     const controller = new AbortController()
     setLoadingCustomers(true)
-    saleApiFetch('/customers', { signal: controller.signal })
+    setCustomerSearchError(false)
+    const timer = window.setTimeout(() => {
+      saleApiFetch(`/customers/sale-search?search=${encodeURIComponent(customerSearch.trim())}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(await errorMessage(response))
         return response.json() as Promise<{ customers: Customer[] }>
       })
-      .then((payload) => setCustomers(payload.customers))
+      .then((payload) => {
+        if (!controller.signal.aborted) {
+          setCustomers(payload.customers)
+          setCustomerLookupKey(customerSearch.trim())
+        }
+      })
       .catch((caught) => {
         if (caught instanceof DOMException && caught.name === 'AbortError') return
+        if (controller.signal.aborted) return
+        setCustomerSearchError(true)
         setError(caught instanceof Error ? caught.message : 'تعذر تحميل العملاء')
       })
-      .finally(() => setLoadingCustomers(false))
+      .finally(() => { if (!controller.signal.aborted) setLoadingCustomers(false) })
+    }, 200)
 
-    return () => controller.abort()
-  }, [configuredStoreId, needsStore, saleApiFetch])
+    return () => { window.clearTimeout(timer); controller.abort() }
+  }, [configuredStoreId, needsStore, saleApiFetch, customerSearch, lookupRevision])
 
   useEffect(() => {
     setCustomerProjectId('')
-    if (!customerId || !configuredStoreId) {
-      setProjects([])
+    setProjects([])
+    setProjectsCustomerId('')
+    setProjectSearchError(false)
+    if (!effectiveCustomerId || !configuredStoreId) {
+      setLoadingProjects(false)
       return
     }
 
     const controller = new AbortController()
-    saleApiFetch(`/customers/${customerId}`, { signal: controller.signal })
+    setLoadingProjects(true)
+    saleApiFetch(`/customers/${effectiveCustomerId}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(await errorMessage(response))
         return response.json() as Promise<{ customer: { projects: CustomerProject[] } }>
       })
-      .then((payload) => setProjects(payload.customer.projects))
+      .then((payload) => {
+        if (!controller.signal.aborted) {
+          setProjects(payload.customer.projects)
+          setProjectsCustomerId(effectiveCustomerId)
+        }
+      })
       .catch((caught) => {
         if (caught instanceof DOMException && caught.name === 'AbortError') return
+        if (controller.signal.aborted) return
+        setProjectSearchError(true)
         setProjects([])
         setError(caught instanceof Error ? caught.message : 'تعذر تحميل مشاريع العميل')
       })
+      .finally(() => { if (!controller.signal.aborted) setLoadingProjects(false) })
 
     return () => controller.abort()
-  }, [configuredStoreId, customerId, saleApiFetch])
+  }, [configuredStoreId, effectiveCustomerId, saleApiFetch, lookupRevision])
 
   const addProduct = useCallback((product: SaleProduct) => {
     setLines((current) => {
@@ -360,6 +436,7 @@ export function SalePage({
     })
     setSearch('')
     setResults([])
+    setSearching(false)
     setError(null)
     setMessage(`تمت إضافة ${product.name}`)
   }, [])
@@ -479,34 +556,48 @@ export function SalePage({
     subtotal !== null && parsedInvoiceDiscount && !invoiceDiscountError
       ? subtotal.minus(parsedInvoiceDiscount)
       : null
+  const effectivePayments = useMemo(() => {
+    if (finalTotal === null) return payments
+    const automatic = payments.find((payment) => payment.autoAmount)
+    if (!automatic) return payments
+
+    let otherTotal = new DraftDecimal(0)
+    for (const payment of payments) {
+      if (payment.id === automatic.id) continue
+      const calculated = calculatePayment(payment).ilsAmount
+      if (calculated === null) return payments
+      otherTotal = otherTotal.plus(calculated)
+    }
+    const amount = DraftDecimal.max(finalTotal.minus(otherTotal), 0).toFixed()
+    return payments.map((payment) => payment.id === automatic.id
+      ? { ...payment, amount }
+      : payment)
+  }, [finalTotal, payments])
   const paymentCalculations = useMemo(
-    () => new Map(payments.map((payment) => [payment.id, calculatePayment(payment)])),
-    [payments],
+    () => new Map(effectivePayments.map((payment) => [payment.id, calculatePayment(payment)])),
+    [effectivePayments],
   )
   const paidTotal = useMemo(() => {
-    const amounts = payments.map((payment) => paymentCalculations.get(payment.id)?.ilsAmount ?? null)
+    const amounts = effectivePayments.map((payment) => paymentCalculations.get(payment.id)?.ilsAmount ?? null)
     if (amounts.some((amount) => amount === null)) return null
     return amounts.reduce<Decimal>((sum, amount) => sum.plus(amount!), new DraftDecimal(0))
-  }, [paymentCalculations, payments])
+  }, [paymentCalculations, effectivePayments])
   const remainingDue = finalTotal !== null && paidTotal !== null
     ? finalTotal.minus(paidTotal)
     : null
   const overpayment = remainingDue?.lessThan(0) ?? false
   const customerRequired = Boolean(remainingDue?.greaterThan(0))
-  const checkRequiresCustomer = !customerId && payments.some((payment) => payment.method === 'check')
-  const matchingCustomers = useMemo(() => {
-    const term = customerSearch.trim().toLocaleLowerCase('ar')
-    if (!term) return customers
-    return customers.filter((customer) => (
-      customer.name.toLocaleLowerCase('ar').includes(term)
-      || customer.phone?.toLocaleLowerCase('ar').includes(term)
-    ))
-  }, [customerSearch, customers])
+  const checkRequiresCustomer = !hasCustomer && payments.some((payment) => payment.method === 'check')
+  const matchingCustomers = rankNameMatches(customers, customerSearch)
+  const matchingProjects = rankNameMatches(customerProjects, projectSearch)
+  const partiesReady = !ambiguousCustomer && !ambiguousProject
+    && (!hasCustomer || (!customerLookupPending && !projectLookupPending && !customerSearchError && !projectSearchError))
   const canContinueToPayment = Boolean(
     configuredStoreId
       && businessDate
       && lines.length > 0
-      && finalTotal !== null,
+      && finalTotal !== null
+      && partiesReady,
   )
   const canSave = Boolean(
     configuredStoreId
@@ -515,8 +606,9 @@ export function SalePage({
       && finalTotal !== null
       && paidTotal !== null
       && !overpayment
-      && (!customerRequired || customerId)
+      && (!customerRequired || hasCustomer)
       && !checkRequiresCustomer
+      && partiesReady
       && !saving,
   )
 
@@ -525,6 +617,8 @@ export function SalePage({
     || manualDraftTouched
     || payments.length
     || customerId
+    || customerSearch.trim()
+    || projectSearch.trim()
     || customerProjectId
     || (invoiceDiscount.trim() && invoiceDiscount !== '0'),
   )
@@ -581,17 +675,21 @@ export function SalePage({
     setMessage(null)
   }
 
-  function addPayment(method: PaymentMethod) {
+  function addPayment(method: PaymentMethod, isGiro = false) {
     setPayLater(false)
-    setPayments((current) => [...current, newPayment(method, businessDate)])
+    setPayments((current) => [...current, newPayment(method, businessDate, isGiro)])
     setMessage(null)
+    window.requestAnimationFrame(() => {
+      const cards = document.querySelectorAll<HTMLElement>('[data-sale-payment-card]')
+      cards[cards.length - 1]?.querySelector<HTMLElement>('input, select')?.focus()
+    })
   }
 
   function continueToPayment() {
     if (!canContinueToPayment) return
     setPayments((current) => {
       if (current.length > 0 || payLater) return current
-      return [{ ...newPayment('cash', businessDate), amount: finalTotal?.toFixed() ?? '' }]
+      return [{ ...newPayment('cash', businessDate), amount: finalTotal?.toFixed() ?? '', autoAmount: true }]
     })
     setStep('payment')
     setMessage(null)
@@ -616,8 +714,11 @@ export function SalePage({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           businessDate,
-          customerId: customerId || null,
-          customerProjectId: customerProjectId || null,
+          customerId: effectiveCustomerId || null,
+          customerName: effectiveCustomerId ? null : customerSearch.trim() || null,
+          receiverName: receiverName.trim() || null,
+          customerProjectId: effectiveProjectId || null,
+          customerProjectName: effectiveProjectId ? null : projectSearch.trim() || null,
           invoiceDiscount: parsedInvoiceDiscount!.toFixed(),
           items: lines.map((line) => ({
             ...(line.productId
@@ -627,7 +728,7 @@ export function SalePage({
             actualPrice: normalizeDecimalInput(line.actualSalePrice, 2),
             discount: normalizeDecimalInput(line.discount || '0', 2),
           })),
-          payments: payments.map((payment) => ({
+          payments: effectivePayments.map((payment) => ({
             method: payment.method,
             currency: payment.method === 'cash' ? payment.currency : 'ILS',
             amount: normalizeDecimalInput(
@@ -658,8 +759,8 @@ export function SalePage({
         }),
       })
       if (!response.ok) throw new Error(await errorMessage(response))
-      const payload = (await response.json()) as { sale: Omit<SavedInvoice, 'customer_name'> }
-      const customerName = customers.find((customer) => customer.id === customerId)?.name ?? null
+      const payload = (await response.json()) as { sale: SavedInvoice }
+      const customerName = payload.sale.customer_name ?? (customerSearch.trim() || null)
       setSavedInvoice({ ...payload.sale, customer_name: customerName })
 
       setLines([])
@@ -670,8 +771,9 @@ export function SalePage({
       setInvoiceDiscount('0')
       setCustomerId('')
       setCustomerSearch('')
-      setCustomerPickerOpen(false)
+      setReceiverName('')
       setCustomerProjectId('')
+      setProjectSearch('')
       setBusinessDate(currentBusinessDate())
       setStep('items')
       setMessage(
@@ -759,108 +861,58 @@ export function SalePage({
 
       {step === 'items' ? (
         <>
-      <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-4">
-        <div className="block">
-          <span className="mb-1 block font-black">رقم الفاتورة</span>
-          <div className="flex min-h-11 items-center rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-lg font-black text-emerald-900">
-            يُنشأ تلقائياً عند الحفظ
-          </div>
-        </div>
+      <div className="mt-4 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2 lg:grid-cols-4">
         <label className="block" htmlFor="sale-business-date">
           <span className="mb-1 block font-black">تاريخ الفاتورة</span>
           <input className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-lg font-black outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100" id="sale-business-date" onChange={(event) => setBusinessDate(event.target.value)} type="date" value={businessDate} />
         </label>
-        <div
-          className="relative block"
-          onBlur={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) {
-              setCustomerPickerOpen(false)
-              if (!customerId) setCustomerSearch('')
-            }
+        <SaleNamePicker
+          id="sale-customer" label="العميل (اختياري)" value={customerSearch}
+          selectedId={effectiveCustomerId} options={matchingCustomers} loading={customerLookupPending && !customerSearchError}
+          disabled={saving || needsStore}
+          status={customerSearchError ? 'تعذر البحث؛ أعد كتابة الاسم للمحاولة مجدداً.'
+            : ambiguousCustomer ? 'يوجد أكثر من عميل بهذا الاسم؛ اختر العميل المطلوب.'
+            : effectiveCustomerId ? 'ستُضاف الفاتورة إلى العميل الموجود.'
+            : customerSearch.trim() ? 'سيُنشأ العميل بهذا الاسم عند حفظ البيع.' : 'اكتب الاسم أو رقم الهاتف للبحث.'}
+          onChange={(value) => {
+            setCustomerSearch(value)
+            setCustomerId('')
+            setCustomerProjectId('')
+            setProjectSearch('')
           }}
-        >
-          <span className="mb-1 block font-black" id="sale-customer-label">العميل (اختياري)</span>
-          <input
-            aria-autocomplete="list"
-            aria-controls="sale-customer-options"
-            aria-expanded={customerPickerOpen}
-            aria-labelledby="sale-customer-label"
-            autoComplete="off"
-            className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-lg font-black outline-none placeholder:text-slate-500 focus:border-teal-600 focus:ring-4 focus:ring-teal-100"
-            disabled={loadingCustomers}
-            id="sale-customer"
-            onChange={(event) => {
-              setCustomerSearch(event.target.value)
-              setCustomerPickerOpen(true)
-              if (customerId) setCustomerId('')
-            }}
-            onFocus={() => setCustomerPickerOpen(true)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') setCustomerPickerOpen(false)
-              if (event.key === 'Enter' && matchingCustomers.length === 1) {
-                event.preventDefault()
-                setCustomerId(matchingCustomers[0].id)
-                setCustomerSearch(customerOptionLabel(matchingCustomers[0]))
-                setCustomerPickerOpen(false)
-              }
-            }}
-            placeholder={loadingCustomers ? 'جارٍ تحميل العملاء…' : 'ابحث باسم العميل أو رقم الهاتف'}
-            role="combobox"
-            value={customerSearch}
-          />
-          {customerPickerOpen && !loadingCustomers && (
-            <div className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-2xl" id="sale-customer-options" role="listbox">
-              <button
-                className="block min-h-12 w-full border-b border-slate-200 px-4 text-right font-black text-slate-700 hover:bg-slate-100 focus:bg-slate-100 focus:outline-none"
-                onClick={() => {
-                  setCustomerId('')
-                  setCustomerSearch('')
-                  setCustomerPickerOpen(false)
-                }}
-                role="option"
-                type="button"
-              >
-                بيع بدون عميل
-              </button>
-              {matchingCustomers.length === 0 ? (
-                <p className="p-4 text-center font-bold text-slate-600">لا يوجد عميل مطابق</p>
-              ) : (
-                <div className="max-h-72 overflow-y-auto">
-                  {matchingCustomers.slice(0, 50).map((customer) => (
-                    <button
-                      aria-selected={customer.id === customerId}
-                      className="block min-h-12 w-full border-b border-slate-100 px-4 text-right hover:bg-teal-50 focus:bg-teal-50 focus:outline-none"
-                      key={customer.id}
-                      onClick={() => {
-                        setCustomerId(customer.id)
-                        setCustomerSearch(customerOptionLabel(customer))
-                        setCustomerPickerOpen(false)
-                      }}
-                      role="option"
-                      type="button"
-                    >
-                      <span className="block font-black text-slate-900">{customer.name}</span>
-                      {customer.phone && <span className="block text-sm font-bold text-slate-500" dir="ltr">{customer.phone}</span>}
-                    </button>
-                  ))}
-                  {matchingCustomers.length > 50 && (
-                    <p className="p-3 text-center text-sm font-bold text-slate-500">اكتب جزءاً إضافياً من الاسم أو الهاتف لتضييق النتائج.</p>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        <label className="block" htmlFor="sale-project">
-          <span className="mb-1 block font-black">مشروع العميل (اختياري)</span>
-          <select className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-lg font-black outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100 disabled:bg-slate-100" disabled={!customerId || projects.length === 0} id="sale-project" onChange={(event) => setCustomerProjectId(event.target.value)} value={customerProjectId}>
-            <option value="">بدون مشروع</option>
-            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-          </select>
+          onSelect={(customer) => {
+            if (customer.id !== effectiveCustomerId) {
+              setCustomerProjectId('')
+              setProjectSearch('')
+            }
+            setCustomerId(customer.id)
+            setCustomerSearch(customer.name)
+          }}
+          onCommit={(value) => advanceFromName('sale-customer', value.trim() ? 'sale-project' : 'sale-receiver')}
+        />
+        <SaleNamePicker
+          id="sale-project" label="مشروع العميل (اختياري)" value={projectSearch}
+          selectedId={effectiveProjectId} options={matchingProjects} loading={projectLookupPending && !projectSearchError}
+          disabled={!hasCustomer || ambiguousCustomer || customerLookupPending || projectLookupPending || saving}
+          status={projectSearchError ? 'تعذر تحميل المشاريع؛ أعد اختيار العميل للمحاولة مجدداً.'
+            : !hasCustomer ? 'اكتب اسم العميل أولاً.'
+            : ambiguousProject ? 'يوجد أكثر من مشروع بهذا الاسم؛ اختر المشروع المطلوب.'
+            : effectiveProjectId ? 'ستُضاف الفاتورة إلى المشروع الموجود.'
+            : projectSearch.trim() ? 'سيُنشأ المشروع لهذا العميل عند حفظ البيع.' : 'ابحث في مشاريع العميل أو اكتب اسماً جديداً.'}
+          onChange={(value) => { setProjectSearch(value); setCustomerProjectId('') }}
+          onSelect={(project) => { setCustomerProjectId(project.id); setProjectSearch(project.name) }}
+          onCommit={() => advanceFromName('sale-project', 'sale-receiver')}
+        />
+        <label className="block" htmlFor="sale-receiver">
+          <span className="mb-1 block font-black">المستلم (اختياري)</span>
+          <input className="min-h-11 w-full rounded-xl border border-slate-300 px-3 text-lg font-black outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100" disabled={saving || needsStore} id="sale-receiver" maxLength={150} onChange={(event) => setReceiverName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); document.getElementById('sale-product-search')?.focus() } }} type="text" value={receiverName} />
         </label>
+        {(customerSearchError || projectSearchError) && (
+          <button className="min-h-11 rounded-xl bg-amber-100 px-4 font-bold text-amber-900" type="button" onClick={() => setLookupRevision((value) => value + 1)}>إعادة محاولة تحميل العملاء والمشاريع</button>
+        )}
       </div>
 
-      <div className="mt-5 grid items-start gap-5 min-[1150px]:grid-cols-[20rem_minmax(0,1fr)]" dir="ltr">
+      <div className="mt-5 grid items-start gap-5 min-[1150px]:grid-cols-[17rem_minmax(0,1fr)]" dir="ltr">
         <aside
           aria-label="ملخص الفاتورة المباشر"
           aria-live="polite"
@@ -894,11 +946,34 @@ export function SalePage({
             <input
               autoComplete="off"
               autoFocus
+              aria-activedescendant={productSearchOpen && !searching && results[activeProductIndex] ? `sale-product-option-${results[activeProductIndex].id}` : undefined}
+              aria-autocomplete="list"
+              aria-controls={results.length ? 'sale-product-options' : undefined}
+              aria-expanded={Boolean(search.trim() && productSearchOpen && !searching)}
+              aria-labelledby="sale-product-search-label"
               className="min-w-0 flex-1 bg-transparent py-3 text-xl font-bold outline-none placeholder:text-slate-500 disabled:cursor-not-allowed"
               disabled={needsStore}
               id="sale-product-search"
-              onChange={(event) => { setSearch(event.target.value); setMessage(null) }}
+              onChange={(event) => { setSearch(event.target.value); setResults([]); setSearching(Boolean(event.target.value.trim())); setProductSearchOpen(true); setActiveProductIndex(-1); setMessage(null) }}
+              onFocus={() => setProductSearchOpen(true)}
               onKeyDown={(event) => {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                  if (!search.trim() || !results.length || searching) return
+                  event.preventDefault()
+                  setProductSearchOpen(true)
+                  setActiveProductIndex((index) => {
+                    return event.key === 'ArrowDown'
+                      ? (index + 1) % results.length
+                      : (index <= 0 ? results.length - 1 : index - 1)
+                  })
+                  return
+                }
+                if (event.key === 'Escape' && productSearchOpen) {
+                  event.preventDefault()
+                  setProductSearchOpen(false)
+                  setActiveProductIndex(-1)
+                  return
+                }
                 if (event.key !== 'Enter') return
 
                 const term = search.trim()
@@ -906,7 +981,8 @@ export function SalePage({
 
                 const exactBarcodeMatch = results.find((product) => product.barcode === term)
                 const singleResult = results.length === 1 ? results[0] : null
-                const matchedProduct = exactBarcodeMatch ?? singleResult
+                const highlightedResult = productSearchOpen && !searching ? results[activeProductIndex] : null
+                const matchedProduct = highlightedResult ?? exactBarcodeMatch ?? singleResult
 
                 event.preventDefault()
                 event.stopPropagation()
@@ -918,6 +994,7 @@ export function SalePage({
                 if (/^\d{4,}$/.test(term)) void addScannedProduct(term)
               }}
               placeholder="امسح الباركود أو اكتب اسم الصنف"
+              role="combobox"
               value={search}
             />
             {searching && <span className="shrink-0 font-bold text-slate-500" role="status">جارٍ البحث…</span>}
@@ -925,24 +1002,24 @@ export function SalePage({
         </label>
         <p className="mt-2 text-sm font-bold text-slate-500">ابحث في المخزون، أو اكتب الصنف مباشرة في السطر الجاهز داخل الجدول.</p>
 
-        {search.trim() && !searching && (
+        {search.trim() && productSearchOpen && !searching && (
           <div className="absolute inset-x-4 top-full z-20 mt-2 overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-2xl sm:inset-x-6" aria-label="نتائج البحث">
             {results.length === 0 ? (
               <p className="p-6 text-center text-lg font-black text-slate-600">لا توجد أصناف مطابقة</p>
             ) : (
-              <ul className="max-h-96 divide-y divide-slate-200 overflow-y-auto">
-                {results.map((product) => (
-                  <li className="flex flex-wrap items-center justify-between gap-4 p-4" key={product.id}>
+              <ul className="max-h-96 divide-y divide-slate-200 overflow-y-auto" id="sale-product-options" role="listbox">
+                {results.map((product, index) => (
+                  <li className={`flex flex-wrap items-center justify-between gap-4 p-4 ${activeProductIndex === index ? 'bg-teal-50' : ''}`} key={product.id} role="presentation">
                     <div className="min-w-0">
                       <p className="text-lg font-black">{product.name}</p>
                       <p className="mt-1 font-bold text-slate-600">
-                        {product.sale_unit} · المتوفر {resultStock(product)}
+                        {product.sale_unit} · المتوفر {formatQuantity(resultStock(product))}
                         {product.default_sale_price === null
                           ? ' · السعر غير محدد'
-                          : ` · السعر الافتراضي ${product.default_sale_price}`}
+                          : ` · السعر الافتراضي ${formatDecimal(product.default_sale_price)}`}
                       </p>
                     </div>
-                    <button className="min-h-12 rounded-xl bg-teal-700 px-6 text-lg font-black text-white hover:bg-teal-800" onClick={() => addProduct(product)} type="button">إضافة</button>
+                    <button aria-selected={activeProductIndex === index} className="min-h-12 rounded-xl bg-teal-700 px-6 text-lg font-black text-white hover:bg-teal-800" id={`sale-product-option-${product.id}`} onClick={() => { addProduct(product); document.getElementById('sale-product-search')?.focus() }} onFocus={() => setActiveProductIndex(index)} onMouseEnter={() => setActiveProductIndex(index)} role="option" type="button">إضافة {product.name}</button>
                   </li>
                 ))}
               </ul>
@@ -956,17 +1033,17 @@ export function SalePage({
         {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-lg font-black text-rose-900" role="alert">{error}</p>}
       </div>
 
-      {savedInvoice && <InvoiceOutput invoice={savedInvoice} onClose={() => setSavedInvoice(null)} />}
+      {savedInvoice && <InvoiceOutput celebrate invoice={savedInvoice} onClose={() => setSavedInvoice(null)} />}
 
       <div className="mt-4 min-h-64 rounded-3xl border border-slate-200 bg-white shadow-sm">
         <table className="sale-lines-table w-full min-w-0 table-fixed text-right">
           <thead className="sticky top-0 z-10 bg-slate-100 text-lg shadow-sm">
             <tr>
-              <th className="w-[24%] px-3 py-4 font-black" scope="col">الصنف</th>
-              <th className="w-[24%] px-2 py-4 text-center font-black" scope="col">الكمية</th>
-              <th className="w-[16%] px-2 py-4 text-center font-black" scope="col">السعر</th>
-              <th className="w-[16%] px-2 py-4 text-center font-black" scope="col">الخصم</th>
-              <th className="w-[13%] px-2 py-4 text-center font-black" scope="col">الإجمالي</th>
+              <th className="w-[42%] px-3 py-4 font-black" scope="col">الصنف</th>
+              <th className="w-[20%] px-2 py-4 text-center font-black" scope="col">الكمية</th>
+              <th className="w-[11%] px-2 py-4 text-center font-black" scope="col">السعر</th>
+              <th className="w-[10%] px-2 py-4 text-center font-black" scope="col">الخصم</th>
+              <th className="w-[10%] px-2 py-4 text-center font-black" scope="col">الإجمالي</th>
               <th className="w-[7%] px-1 py-4 text-center font-black" scope="col"><span className="sr-only">حذف</span></th>
             </tr>
           </thead>
@@ -990,7 +1067,7 @@ export function SalePage({
                 <p className="mt-1 text-xs font-black text-teal-800">سطر جديد جاهز — لا يؤثر على المخزون</p>
                 {manualDraftAttempted && manualDraftCalculation.nameError && <p className="mt-1 text-sm font-bold text-rose-700">{manualDraftCalculation.nameError}</p>}
               </td>
-              <td className="px-2 py-3" data-mobile-label="الكمية">
+              <td className="px-2 py-3 text-center" data-mobile-label="الكمية">
                 <input
                   aria-label="كمية الصنف اليدوي الجديد"
                   className={moneyInputClass}
@@ -1033,7 +1110,7 @@ export function SalePage({
               <td className="px-2 py-5 text-center text-lg font-black" data-mobile-label="الإجمالي" dir="ltr">
                 {formatAmount(manualDraftCalculation.total)}
               </td>
-              <td className="px-1 py-3 text-center" data-mobile-label="">
+              <td className="px-0 py-3 text-center" data-mobile-label="">
                 <button
                   aria-label="إضافة السطر اليدوي"
                   className={`size-11 rounded-xl text-2xl font-black text-white ${manualDraftCalculation.total === null ? 'bg-slate-600 hover:bg-slate-700' : 'bg-teal-700 hover:bg-teal-800'}`}
@@ -1079,7 +1156,7 @@ export function SalePage({
                   </td>
                   <td className="px-2 py-4 text-center" data-mobile-label="السعر">
                     <input aria-label={`سعر بيع ${line.productName || 'الصنف اليدوي'}`} className={moneyInputClass} inputMode="decimal" min="0" onBlur={(event) => normalizeLineInput(event, line, 'actualSalePrice', 2)} onChange={(event) => updateLine(line.id, { actualSalePrice: event.target.value })} placeholder="أدخل السعر" value={line.actualSalePrice} />
-                    {line.productId && <p className="mt-2 text-sm font-bold text-slate-500">{line.originalPrice === null ? 'لا يوجد سعر افتراضي' : `السعر الافتراضي: ${line.originalPrice}`}</p>}
+                    {line.productId && <p className="mt-2 text-sm font-bold text-slate-500">{line.originalPrice === null ? 'لا يوجد سعر افتراضي' : `السعر الافتراضي: ${formatDecimal(line.originalPrice)}`}</p>}
                     {calculation.priceError && <p className="mt-1 text-sm font-bold text-rose-700">{calculation.priceError}</p>}
                   </td>
                   <td className="px-2 py-4 text-center" data-mobile-label="الخصم">
@@ -1113,8 +1190,8 @@ export function SalePage({
           {totalsSummary}
           <div className="mt-4 space-y-2">
             {overpayment && <p className="rounded-xl bg-rose-50 p-3 font-black text-rose-800">مجموع الدفعات أكبر من إجمالي الفاتورة.</p>}
-            {customerRequired && !customerId && <p className="rounded-xl bg-amber-50 p-3 font-black text-amber-950">يوجد مبلغ متبقٍ؛ اختر العميل من شاشة الأصناف قبل الحفظ.</p>}
-            {checkRequiresCustomer && <p className="rounded-xl bg-amber-50 p-3 font-black text-amber-950">اختر العميل من شاشة الأصناف قبل قبول الشيك.</p>}
+            {customerRequired && !hasCustomer && <p className="rounded-xl bg-amber-50 p-3 font-black text-amber-950">يوجد مبلغ متبقٍ؛ اختر العميل أو اكتب اسمه في شاشة الأصناف قبل الحفظ.</p>}
+            {checkRequiresCustomer && <p className="rounded-xl bg-amber-50 p-3 font-black text-amber-950">اختر العميل أو اكتب اسمه في شاشة الأصناف قبل قبول الشيك.</p>}
           </div>
           <button className={`mt-5 min-h-16 w-full rounded-2xl px-6 text-xl font-black ${canSave ? 'bg-teal-700 text-white hover:bg-teal-800' : 'cursor-not-allowed bg-slate-300 text-slate-600'}`} disabled={!canSave} onClick={() => void saveSale()} type="button">{saving ? 'جارٍ الحفظ…' : 'إتمام البيع وحفظه'}</button>
           <button className="mt-3 min-h-12 w-full rounded-xl bg-white px-5 font-black ring-1 ring-slate-300 hover:bg-slate-100" onClick={() => setStep('items')} type="button">العودة وتعديل الأصناف</button>
@@ -1123,6 +1200,7 @@ export function SalePage({
         <div className="order-1 min-w-0 min-[1150px]:order-2" dir="rtl">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="font-black text-slate-900">رقم الفاتورة سيُنشأ عند الحفظ · {lines.length} {lines.length === 1 ? 'صنف' : 'أصناف'}</p>
+            {hasCustomer && <p className="mt-1 font-bold text-teal-800">العميل: {customerSearch}{projectSearch.trim() ? ` · المشروع: ${projectSearch}` : ''}</p>}
             <p className="mt-1 text-sm font-bold text-slate-600">اختر طريقة الدفع، ثم راجع المدفوع والمتبقي قبل الحفظ النهائي.</p>
           </div>
 
@@ -1132,7 +1210,7 @@ export function SalePage({
           <p className="mt-1 text-sm font-bold text-slate-600">اختر طريقة أو أكثر لتقسيم المبلغ، ويظهر غير المدفوع ديناً.</p>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5" aria-label="إضافة طريقة دفع">
-          <button className="min-h-16 rounded-2xl bg-emerald-700 px-3 font-black text-white hover:bg-emerald-800" onClick={() => addPayment('cash')} type="button">
+          <button className="min-h-16 rounded-2xl bg-emerald-700 px-3 font-black text-white hover:bg-emerald-800" id="sale-payment-first-option" onClick={() => addPayment('cash')} type="button">
             <span className="block text-lg">نقدي</span>
             <span className="mt-1 block text-xs font-bold text-emerald-100">₪ / دولار / دينار</span>
           </button>
@@ -1144,7 +1222,7 @@ export function SalePage({
             <span className="block text-lg">شيك</span>
             <span className="mt-1 block text-xs font-bold text-violet-100">رقم وتاريخ استحقاق</span>
           </button>
-          <button className="min-h-16 rounded-2xl bg-fuchsia-700 px-3 font-black text-white hover:bg-fuchsia-800" onClick={() => { setPayLater(false); setPayments((current) => [...current, newPayment('check', businessDate, true)]) }} type="button">
+          <button className="min-h-16 rounded-2xl bg-fuchsia-700 px-3 font-black text-white hover:bg-fuchsia-800" onClick={() => addPayment('check', true)} type="button">
             <span className="block text-lg">شيك جيرو</span>
             <span className="mt-1 block text-xs font-bold text-fuchsia-100">بيانات صاحب الشيك</span>
           </button>
@@ -1160,11 +1238,11 @@ export function SalePage({
           </div>
         ) : (
           <div className="mt-4 space-y-3">
-            {payments.map((payment, index) => {
+            {effectivePayments.map((payment, index) => {
               const calculation = paymentCalculations.get(payment.id)!
               const foreignCash = payment.method === 'cash' && payment.currency !== 'ILS'
               return (
-                <div className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-4" key={payment.id}>
+                <div className="rounded-2xl border-2 border-slate-200 bg-slate-50 p-4" data-sale-payment-card key={payment.id}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-lg font-black">
                       {index + 1}. {payment.method === 'cash' ? 'نقدي' : payment.method === 'bank_card' ? 'بطاقة / بنك' : payment.isGiro ? 'شيك جيرو' : 'شيك'}
@@ -1175,7 +1253,7 @@ export function SalePage({
                     {payment.method === 'cash' && (
                       <label className="block">
                         <span className="mb-2 block font-black">عملة النقد</span>
-                        <select className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-black" onChange={(event) => updatePayment(payment.id, { currency: event.target.value as Currency, exchangeRate: '' })} value={payment.currency}>
+                        <select className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-black" onChange={(event) => updatePayment(payment.id, { currency: event.target.value as Currency, exchangeRate: '', autoAmount: false })} value={payment.currency}>
                           <option value="ILS">₪</option>
                           <option value="USD">دولار</option>
                           <option value="JOD">دينار</option>
@@ -1184,7 +1262,7 @@ export function SalePage({
                     )}
                     <label className="block">
                       <span className="mb-2 block font-black">{foreignCash ? 'المبلغ الأصلي' : 'المبلغ (₪)'}</span>
-                      <input className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-black" inputMode="decimal" min="0" onBlur={(event) => updatePayment(payment.id, { amount: normalizeDecimalInput(event.target.value, foreignCash ? 6 : 2) })} onChange={(event) => updatePayment(payment.id, { amount: event.target.value })} placeholder="0" value={payment.amount} />
+                      <input className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-black" inputMode="decimal" min="0" onBlur={(event) => updatePayment(payment.id, { amount: normalizeDecimalInput(event.target.value, foreignCash ? 6 : 2), autoAmount: false })} onChange={(event) => updatePayment(payment.id, { amount: event.target.value, autoAmount: false })} placeholder="0" value={payment.amount} />
                     </label>
                     {foreignCash && (
                       <label className="block">

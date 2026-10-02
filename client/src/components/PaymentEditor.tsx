@@ -1,3 +1,4 @@
+import { formatDecimal } from '../money-display'
 import {
   calculatePayment,
   Currency,
@@ -57,7 +58,7 @@ export function PaymentEditor({
                   {payment.method === 'bank_card' && <label><span className="mb-2 block font-black">المرجع (اختياري)</span><input className={inputClass} maxLength={200} onChange={(event) => update(payment.id, { reference: event.target.value })} value={payment.reference} /></label>}
                   {payment.method === 'check' && <><label><span className="mb-2 block font-black">رقم الشيك *</span><input className={inputClass} maxLength={100} onChange={(event) => update(payment.id, { checkNumber: event.target.value })} value={payment.checkNumber} /></label><label><span className="mb-2 block font-black">تاريخ الاستحقاق *</span><input className={inputClass} onChange={(event) => update(payment.id, { dueDate: event.target.value })} type="date" value={payment.dueDate} /></label><label><span className="mb-2 block font-black">ملاحظات — اختياري</span><input className={inputClass} maxLength={2000} onChange={(event) => update(payment.id, { notes: event.target.value })} value={payment.notes} /></label></>}
                   {payment.method === 'check' && payment.isGiro && <><label><span className="mb-2 block font-black">اسم صاحب الشيك الأصلي *</span><input className={inputClass} maxLength={150} onChange={(event) => update(payment.id, { originalOwnerName: event.target.value })} value={payment.originalOwnerName} /></label><label><span className="mb-2 block font-black">رقم هاتف صاحب الشيك الأصلي *</span><input className={inputClass} inputMode="tel" maxLength={50} onChange={(event) => update(payment.id, { originalOwnerPhone: event.target.value })} value={payment.originalOwnerPhone} /></label></>}
-                  <div className="rounded-xl bg-slate-900 p-3 text-white"><p className="font-bold text-slate-300">يعادل بـ ₪</p><p className="mt-1 text-2xl font-black" dir="ltr">{calculation.amount ? `₪${calculation.amount.toFixed()}` : '—'}</p>{calculation.error && <p className="mt-1 text-sm font-bold text-rose-300">{calculation.error}</p>}</div>
+                  <div className="rounded-xl bg-slate-900 p-3 text-white"><p className="font-bold text-slate-300">يعادل بـ ₪</p><p className="mt-1 text-2xl font-black" dir="ltr">{calculation.amount ? `₪${formatDecimal(calculation.amount.toFixed())}` : '—'}</p>{calculation.error && <p className="mt-1 text-sm font-bold text-rose-300">{calculation.error}</p>}</div>
                 </div>
               </div>
             )

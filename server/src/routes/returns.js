@@ -4,6 +4,7 @@ import { AppError } from '../errors/app-error.js'
 import { requireStore } from '../middleware/require-store.js'
 import { createCustomerReturn } from '../returns/create-customer-return.js'
 import { createSupplierReturn } from '../returns/create-supplier-return.js'
+import { parseId } from '../products/product-input.js'
 import { parseReturnInput } from '../returns/return-input.js'
 import { paginatedResult, parsePagination } from '../pagination/pagination.js'
 import {
@@ -15,10 +16,18 @@ export const returnsRouter = Router()
 returnsRouter.use(requireStore)
 
 returnsRouter.get('/customer/sources', async (request, response) => {
+  const partyId = request.query.partyId ?? null
+  if (partyId !== null && partyId !== 'cash' && !parseId(partyId)) {
+    throw new AppError('يجب اختيار عميل أو مورد صالح', 400, 'INVALID_RETURN_PARTY')
+  }
   const pagination = parsePagination(request.query)
   const result = await query(
     `WITH recent_sales AS (
        SELECT id FROM sales WHERE store_id = $1::BIGINT
+         AND ($4::TEXT IS NULL OR customer_id::TEXT = $4 OR ($4 = 'cash' AND customer_id IS NULL))
+         AND EXISTS (SELECT 1 FROM sale_items i WHERE i.sale_id = sales.id
+           AND i.product_id IS NOT NULL AND i.quantity > COALESCE(
+             (SELECT SUM(r.quantity) FROM customer_return_items r WHERE r.sale_item_id = i.id), 0))
        ORDER BY business_date DESC, id DESC
        LIMIT $2::INTEGER OFFSET $3::INTEGER
      )
@@ -39,7 +48,7 @@ returnsRouter.get('/customer/sources', async (request, response) => {
      WHERE item.product_id IS NOT NULL
        AND item.quantity > COALESCE(returned.quantity, 0::NUMERIC)
      ORDER BY sale.business_date DESC, sale.id DESC, item.id`,
-    [request.storeId, pagination.fetchLimit, pagination.offset],
+    [request.storeId, pagination.fetchLimit, pagination.offset, partyId],
   )
   const documents = groupSourceDocuments(result.rows)
   const page = paginatedResult(documents, pagination)
@@ -47,10 +56,18 @@ returnsRouter.get('/customer/sources', async (request, response) => {
 })
 
 returnsRouter.get('/supplier/sources', async (request, response) => {
+  const partyId = request.query.partyId ?? null
+  if (partyId !== null && partyId !== 'cash' && !parseId(partyId)) {
+    throw new AppError('يجب اختيار عميل أو مورد صالح', 400, 'INVALID_RETURN_PARTY')
+  }
   const pagination = parsePagination(request.query)
   const result = await query(
     `WITH recent_purchases AS (
        SELECT id FROM purchases WHERE store_id = $1::BIGINT
+         AND ($4::TEXT IS NULL OR supplier_id::TEXT = $4)
+         AND EXISTS (SELECT 1 FROM purchase_items i WHERE i.purchase_id = purchases.id
+           AND i.product_id IS NOT NULL AND i.quantity > COALESCE(
+             (SELECT SUM(r.quantity) FROM supplier_return_items r WHERE r.purchase_item_id = i.id), 0))
        ORDER BY business_date DESC, id DESC
        LIMIT $2::INTEGER OFFSET $3::INTEGER
      )
@@ -71,7 +88,7 @@ returnsRouter.get('/supplier/sources', async (request, response) => {
      WHERE item.product_id IS NOT NULL
        AND item.quantity > COALESCE(returned.quantity, 0::NUMERIC)
      ORDER BY purchase.business_date DESC, purchase.id DESC, item.id`,
-    [request.storeId, pagination.fetchLimit, pagination.offset],
+    [request.storeId, pagination.fetchLimit, pagination.offset, partyId],
   )
   const documents = groupSourceDocuments(result.rows)
   const page = paginatedResult(documents, pagination)

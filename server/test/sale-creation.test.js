@@ -28,6 +28,9 @@ function fakeDatabase({
       if (statement.startsWith('SELECT id FROM customers')) {
         return { rowCount: 1, rows: [{ id: '9' }] }
       }
+      if (statement.startsWith('SELECT id FROM products WHERE id = ANY')) {
+        return { rowCount: params[0].length, rows: params[0].map((id) => ({ id })) }
+      }
       if (statement.includes('FROM store_inventory AS inventory')) {
         return {
           rowCount: 1,
@@ -49,7 +52,7 @@ function fakeDatabase({
             invoice_number: 'S-41', business_date: '2026-09-08', status: 'recorded',
             currency_code: 'ILS', items_subtotal: params[5], invoice_discount: params[6],
             total: params[7], paid_total: params[8], remaining_due: params[9],
-            cost_total: params[10], gross_profit: params[11],
+            cost_total: params[10], gross_profit: params[11], receiver_name: params[13],
             created_at: '2026-09-08T10:00:00.000Z',
           }],
         }
@@ -142,8 +145,11 @@ test('sale creation stores server totals and database original prices then deduc
   const { databasePool, state } = fakeDatabase()
   const sale = await createSale({ databasePool, input, storeId: '2', userId: '5' })
 
+  assert.ok(state.commands.findIndex((sql) => sql.startsWith('SELECT id FROM products WHERE id = ANY'))
+    < state.commands.findIndex((sql) => sql.includes('FROM store_inventory AS inventory')))
+
   assert.deepEqual(state.saleInsert.slice(0, 5), ['2', null, null, 'S-41', '2026-09-08'])
-  assert.deepEqual(state.saleInsert.slice(5), ['36.25', '1', '35.25', '35.25', '0', '17.5', '17.75', '5'])
+  assert.deepEqual(state.saleInsert.slice(5), ['36.25', '1', '35.25', '35.25', '0', '17.5', '17.75', '5', null])
   assert.equal(state.itemInserts.length, 2)
   assert.equal(state.itemInserts[0][4], '12.50')
   assert.equal(state.itemInserts[0][7], '10')
@@ -158,6 +164,16 @@ test('sale creation stores server totals and database original prices then deduc
   assert.equal(sale.items.length, 2)
   assert.equal(state.commands.at(-1), 'COMMIT')
   assert.equal(state.released, true)
+})
+
+test('sale creation saves the optional receiver with the order', async () => {
+  const { databasePool, state } = fakeDatabase()
+  const sale = await createSale({
+    databasePool, input: { ...input, receiverName: 'أحمد' }, storeId: '2', userId: '5',
+  })
+
+  assert.equal(state.saleInsert[13], 'أحمد')
+  assert.equal(sale.receiver_name, 'أحمد')
 })
 
 test('sale creation accepts a database-generated invoice number and uses it in related records', async () => {

@@ -78,15 +78,69 @@ async function requireOrdinaryDirectory(directory) {
 function createBackupFileStore(deviceSettings, { now = () => new Date() } = {}) {
   let saveQueue = Promise.resolve()
 
+  async function fileExists(filePath) {
+    try {
+      const stats = await fs.lstat(filePath)
+      return stats.isFile() && !stats.isSymbolicLink()
+    } catch (error) {
+      if (error.code === 'ENOENT') return false
+      throw error
+    }
+  }
+
+  async function backupExistsInDirectory(directory, filename) {
+    if (!directory) return false
+    try {
+      const ordinaryDirectory = await requireOrdinaryDirectory(directory)
+      return await fileExists(path.join(ordinaryDirectory, filename))
+    } catch {
+      return false
+    }
+  }
+
+  async function writeBackup(directory, filename, serialized) {
+    const destination = path.join(directory, filename)
+    const temporary = path.join(directory, `.${filename}.${process.pid}.${Date.now()}.tmp`)
+    try {
+      await fs.writeFile(temporary, serialized, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
+      await fs.rename(temporary, destination)
+      return destination
+    } catch (error) {
+      await fs.rm(temporary, { force: true }).catch(() => {})
+      throw new Error('تعذر كتابة ملف النسخة الاحتياطية', { cause: error })
+    }
+  }
+
+  async function pruneExcessDailyBackups(directory) {
+    const names = (await fs.readdir(directory))
+      .filter((name) => /^electricity-accountant-automatic-\d{4}-\d{2}-\d{2}\.json$/.test(name))
+      .sort().reverse()
+    const regularFiles = []
+    for (const name of names) {
+      const stats = await fs.lstat(path.join(directory, name))
+      if (stats.isFile() && !stats.isSymbolicLink()) regularFiles.push(name)
+    }
+    for (const name of regularFiles.slice(7)) {
+      await fs.unlink(path.join(directory, name))
+    }
+  }
+
   async function getStatus() {
     const settings = await deviceSettings.getBackupSettings()
     const today = localDateKey(now())
+    const month = today.slice(0, 7)
+    const dailyBackupDue = Boolean(settings.directory && !await backupExistsInDirectory(
+      settings.directory, `electricity-accountant-automatic-${today}.json`,
+    ))
+    const monthlyBackupDue = Boolean(settings.monthlyDirectory && !await backupExistsInDirectory(
+      settings.monthlyDirectory, `electricity-accountant-monthly-${month}.json`,
+    ))
     return Object.freeze({
       ...settings,
       today,
-      automaticBackupDue: Boolean(
-        settings.directory && settings.lastAutomaticBackupDate !== today,
-      ),
+      dailyBackupDue,
+      monthlyBackupDue,
+      automaticBackupDue: dailyBackupDue || monthlyBackupDue,
     })
   }
 
@@ -94,15 +148,12 @@ function createBackupFileStore(deviceSettings, { now = () => new Date() } = {}) 
     const operation = saveQueue.then(async () => {
       assertBackupEnvelope(backup)
       const status = await getStatus()
-      if (!status.directory) {
-        if (automatic) return { saved: false, skipped: true, reason: 'directory-not-configured' }
+      if (!status.directory && !automatic) {
         throw new Error('يجب اختيار مجلد النسخ الاحتياطي أولاً')
       }
       if (automatic && !status.automaticBackupDue) {
         return { saved: false, skipped: true, reason: 'already-created-today' }
       }
-
-      const backupDirectory = await requireOrdinaryDirectory(status.directory)
 
       const serialized = `${JSON.stringify(backup, null, 2)}\n`
       if (Buffer.byteLength(serialized, 'utf8') > maxBackupBytes) {
@@ -110,34 +161,44 @@ function createBackupFileStore(deviceSettings, { now = () => new Date() } = {}) 
       }
 
       const stamp = backup.timestamp.replace(/[-:.Z]/g, '').slice(0, 17)
-      const filename = automatic
-        ? `electricity-accountant-automatic-${status.today}.json`
-        : `electricity-accountant-${stamp}-manual.json`
-      const destination = path.join(backupDirectory, filename)
-      const temporary = path.join(backupDirectory, `.${filename}.${process.pid}.${Date.now()}.tmp`)
+      if (!automatic) {
+        const directory = await requireOrdinaryDirectory(status.directory)
+        const destination = await writeBackup(directory, `electricity-accountant-${stamp}-manual.json`, serialized)
+        return { saved: true, skipped: false, path: destination }
+      }
 
-      if (automatic) {
+      let dailyPath
+      let monthlyPath
+      let dailyError
+      let monthlyError
+      if (status.dailyBackupDue) {
         try {
-          const existing = await fs.stat(destination)
-          if (existing.isFile()) {
-            await deviceSettings.setLastAutomaticBackupDate(status.today)
-            return { saved: false, skipped: true, reason: 'already-created-today' }
+          const directory = await requireOrdinaryDirectory(status.directory)
+          const filename = `electricity-accountant-automatic-${status.today}.json`
+          dailyPath = path.join(directory, filename)
+          if (!await fileExists(dailyPath)) {
+            await writeBackup(directory, filename, serialized)
+            await pruneExcessDailyBackups(directory)
           }
+          await deviceSettings.setLastAutomaticBackupDate(status.today)
         } catch (error) {
-          if (error.code !== 'ENOENT') throw error
+          dailyError = error
         }
       }
-
-      try {
-        await fs.writeFile(temporary, serialized, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
-        await fs.rename(temporary, destination)
-      } catch (error) {
-        await fs.rm(temporary, { force: true }).catch(() => {})
-        throw new Error('تعذر كتابة ملف النسخة الاحتياطية', { cause: error })
+      if (status.monthlyDirectory && status.monthlyBackupDue) {
+        try {
+          const directory = await requireOrdinaryDirectory(status.monthlyDirectory)
+          const filename = `electricity-accountant-monthly-${status.today.slice(0, 7)}.json`
+          monthlyPath = path.join(directory, filename)
+          if (!await fileExists(monthlyPath)) await writeBackup(directory, filename, serialized)
+        } catch (error) {
+          monthlyError = error
+        }
       }
-
-      if (automatic) await deviceSettings.setLastAutomaticBackupDate(status.today)
-      return { saved: true, skipped: false, path: destination }
+      if (dailyError || monthlyError) {
+        throw new AggregateError([dailyError, monthlyError].filter(Boolean), 'تعذر إكمال بعض النسخ الاحتياطية التلقائية')
+      }
+      return { saved: Boolean(dailyPath || monthlyPath), skipped: false, path: dailyPath, monthlyPath }
     })
     saveQueue = operation.catch(() => {})
     return operation

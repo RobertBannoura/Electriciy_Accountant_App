@@ -30,6 +30,7 @@ test('sale input normalizes Arabic values and ignores client totals and store ID
       businessDate: '2026-09-08',
       customerId: null,
       customerProjectId: null,
+      receiverName: null,
       invoiceDiscount: '1.50',
       items: [
         { productId: '7', quantity: '2.5', actualPrice: '10.50', discount: '0.50' },
@@ -60,6 +61,9 @@ test('sale input permits automatic invoice numbering and validates the remaining
     parseSaleInput({ ...base, invoiceDiscount: '0.25' }).error,
     /₪0\.50/,
   )
+  assert.equal(parseSaleInput({ ...base, receiverName: '  أحمد  ' }).value.receiverName, 'أحمد')
+  assert.equal(parseSaleInput({ ...base, receiverName: '  ' }).value.receiverName, null)
+  assert.match(parseSaleInput({ ...base, receiverName: 'x'.repeat(151) }).error, /اسم المستلم/)
 })
 
 test('sale input accepts validated invoice-only manual lines without a product ID', () => {

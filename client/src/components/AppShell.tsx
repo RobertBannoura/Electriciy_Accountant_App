@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { AuthUser } from '../api'
 import { Store } from '../types'
+import { CustomerReminderNotifications } from './CustomerReminderNotifications'
 
 type AppShellProps = {
   configuredStore: Store | null
@@ -83,6 +84,7 @@ export function AppShell({ configuredStore, isOnline, stores, user, onBrowserSto
 
   return (
     <main className="pwa-shell min-h-dvh pb-[calc(6rem+env(safe-area-inset-bottom))] text-slate-900 sm:pb-0">
+      <CustomerReminderNotifications isOnline={isOnline} storeId={configuredStore?.id ?? stores[0]?.id ?? null} userId={user.id} />
       {!window.desktop && (
         <MobileHeader configuredStore={configuredStore} onBrowserStoreChange={onBrowserStoreChange} onOpenDrawer={() => setDrawerOpen(true)} pathname={location.pathname} stores={stores} />
       )}
@@ -120,9 +122,9 @@ export function AppShell({ configuredStore, isOnline, stores, user, onBrowserSto
 
       {!isOnline && <div className="border-b border-rose-300 bg-rose-50 px-4 py-3 text-center font-black text-rose-900" role="alert">لا يوجد اتصال بالخادم. العمليات المالية متوقفة حتى عودة الاتصال.</div>}
 
-      <div className={`mx-auto px-4 py-5 sm:px-8 sm:py-10 ${location.pathname === '/sale' ? 'max-w-[78rem]' : 'max-w-6xl'}`}>
+      <div className={`mx-auto px-4 py-5 sm:px-8 sm:py-10 ${['/sale', '/purchases'].includes(location.pathname) ? 'max-w-[78rem]' : 'max-w-6xl'}`}>
         {financialRouteLocked && <p className="mb-4 rounded-2xl border-2 border-rose-300 bg-rose-50 p-5 text-center text-lg font-black text-rose-900" role="alert">هذه العملية غير متاحة دون اتصال بالخادم.</p>}
-        <div aria-disabled={financialRouteLocked} className={financialRouteLocked ? 'select-none opacity-45' : undefined} inert={financialRouteLocked}><Outlet /></div>
+        <div aria-disabled={financialRouteLocked} className={financialRouteLocked ? 'select-none opacity-45' : undefined} data-arrow-navigation inert={financialRouteLocked}><Outlet /></div>
       </div>
 
       {!window.desktop && <>
@@ -139,6 +141,7 @@ function MobileHeader({ configuredStore, onBrowserStoreChange, onOpenDrawer, pat
       <div className="flex h-11 flex-nowrap items-center gap-1.5 min-[360px]:gap-2">
         <button aria-label="فتح القائمة" className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-700 text-white shadow-sm shadow-teal-900/15 transition hover:bg-teal-800 active:scale-95 min-[360px]:size-11" onClick={onOpenDrawer} type="button"><svg aria-hidden="true" className="size-6" fill="none" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg></button>
         <h1 className="min-w-0 flex-1 truncate text-base font-black">{mobilePageTitle(pathname)}</h1>
+        <Link aria-label="صور الطلبات — التقاط ورفع سريع" className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-950" to="/order-photos"><MobileNavIcon name="photos" /></Link>
         <label className="flex min-h-10 w-[8.5rem] max-w-[42vw] shrink-0 items-center gap-1 rounded-xl bg-teal-50 px-2 text-teal-950 ring-1 ring-inset ring-teal-200">
           <svg aria-hidden="true" className="size-4 shrink-0 text-teal-700 max-[359px]:hidden" fill="none" viewBox="0 0 24 24"><path d="M4 20V8l8-4 8 4v12M8 20v-7h8v7M3 20h18" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>
           <select aria-label="تغيير المحل الحالي" className="min-h-9 min-w-0 flex-1 bg-transparent text-xs font-black outline-none focus-visible:ring-2 focus-visible:ring-teal-600" onChange={(event) => onBrowserStoreChange(event.target.value)} value={configuredStore?.id ?? ''}><option disabled value="">اختر المحل</option>{stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}</select>
@@ -158,6 +161,8 @@ function StoreSelector({ configuredStore, onChange, stores }: { configuredStore:
 }
 
 const drawerLinks = [
+  { label: 'كتالوج العملاء', path: '/catalog-manage', icon: 'products' },
+  { label: 'صور الطلبات اليومية', path: '/order-photos', icon: 'photos' },
   { label: 'الأصناف والمخزون', path: '/products', icon: 'products' },
   { label: 'العملاء وكشوف الحساب', path: '/customers', icon: 'customers' },
   { label: 'الموردون', path: '/suppliers', icon: 'suppliers' },
@@ -193,7 +198,7 @@ const mobileNavigation = [
   { label: 'الشيكات', path: '/checks', key: 'checks' },
 ] as const
 
-type MobileIconName = typeof mobileNavigation[number]['key'] | 'home' | 'reports'
+type MobileIconName = typeof mobileNavigation[number]['key'] | 'home' | 'reports' | 'photos'
 
 function activeSection(pathname: string): typeof mobileNavigation[number]['key'] | '' {
   if (pathname.startsWith('/products')) return 'products'
@@ -219,6 +224,8 @@ function MobileBottomNavigation({ pathname }: { pathname: string }) {
 }
 
 function mobilePageTitle(pathname: string) {
+  if (pathname.startsWith('/order-photos')) return 'صور الطلبات'
+  if (pathname.startsWith('/catalog-manage')) return 'كتالوج العملاء'
   if (pathname.startsWith('/financial-verification')) return 'فحص الحسابات'
   if (pathname.startsWith('/sales-returns')) return 'مرتجع مبيعات'
   if (pathname.startsWith('/purchase-returns')) return 'مرتجع مشتريات'
@@ -241,6 +248,7 @@ function mobilePageTitle(pathname: string) {
 
 function MobileNavIcon({ name }: { name: MobileIconName }) {
   const paths: Record<MobileIconName, string> = {
+    photos: 'M3 7h4l2-3h6l2 3h4v13H3V7Zm13 6a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
     products: 'M5 7.5 12 4l7 3.5v9L12 20l-7-3.5v-9Zm0 0 7 3.5 7-3.5M12 11v9',
     customers: 'M16 19v-1.5A3.5 3.5 0 0 0 12.5 14h-5A3.5 3.5 0 0 0 4 17.5V19m6-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7-1a2.5 2.5 0 0 1 2.5 2.5V16',
     money: 'M4 7h16v11H4V7Zm3 3h.01M17 15h.01M12 15a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z',

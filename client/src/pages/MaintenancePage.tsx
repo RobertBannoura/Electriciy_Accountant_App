@@ -70,6 +70,7 @@ export function MaintenancePage({
   const [amount, setAmount] = useState('')
   const [businessDate, setBusinessDate] = useState(currentBusinessDate)
   const [payments, setPayments] = useState<PaymentDraft[]>(() => [newPayment('cash', currentBusinessDate())])
+  const [autoFillPayment, setAutoFillPayment] = useState(true)
   const [search, setSearch] = useState('')
   const [filterDate, setFilterDate] = useState('')
   const [loading, setLoading] = useState(true)
@@ -171,6 +172,23 @@ export function MaintenancePage({
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [hasUnsavedDraft, showForm])
 
+  function updateAmount(nextAmount: string) {
+    setAmount(nextAmount)
+    if (!autoFillPayment) return
+    const parsed = parsePaymentDecimal(nextAmount, 2)
+    const paymentAmount = parsed?.greaterThan(0) && parsed.mod('0.5').isZero()
+      ? parsed.toFixed()
+      : ''
+    setPayments((current) => current.length === 1 && current[0].method === 'cash' && current[0].currency === 'ILS'
+      ? [{ ...current[0], amount: paymentAmount }]
+      : current)
+  }
+
+  function updatePayments(nextPayments: PaymentDraft[]) {
+    setAutoFillPayment(false)
+    setPayments(nextPayments)
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (!canSave) return
@@ -197,6 +215,7 @@ export function MaintenancePage({
       setItemDescription('')
       setAmount('')
       setPayments([newPayment('cash', businessDate)])
+      setAutoFillPayment(true)
       setShowForm(false)
       await loadRecords(search, filterDate)
     } catch (caught) {
@@ -252,21 +271,21 @@ export function MaintenancePage({
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <label><span className="mb-1.5 block font-black">الجهاز أو القطعة *</span><input autoFocus className={inputClass} maxLength={200} onChange={(event) => setItemDescription(event.target.value)} placeholder="مثال: مضخة مياه" required value={itemDescription} /></label>
                 <label><span className="mb-1.5 block font-black">العميل (اختياري)</span><select className={inputClass} onChange={(event) => setCustomerId(event.target.value)} value={customerId}><option value="">بدون عميل — دفع كامل</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label>
-                <label><span className="mb-1.5 block font-black">المبلغ (₪) *</span><input className={inputClass} inputMode="decimal" onChange={(event) => setAmount(event.target.value)} placeholder="0.00" required value={amount} />{amount && !amountValid && <span className="mt-1.5 block text-sm font-bold text-rose-700">أدخل مبلغاً أكبر من صفر وبمضاعفات 0.50</span>}</label>
+                <label><span className="mb-1.5 block font-black">المبلغ (₪) *</span><input className={inputClass} inputMode="decimal" onChange={(event) => updateAmount(event.target.value)} placeholder="0.00" required value={amount} />{amount && !amountValid && <span className="mt-1.5 block text-sm font-bold text-rose-700">أدخل مبلغاً أكبر من صفر وبمضاعفات 0.50</span>}</label>
                 <label><span className="mb-1.5 block font-black">التاريخ *</span><input className={inputClass} onChange={(event) => setBusinessDate(event.target.value)} required type="date" value={businessDate} /></label>
               </div>
             </section>
 
-            <PaymentEditor businessDate={businessDate} onChange={setPayments} payments={payments} />
+            <PaymentEditor businessDate={businessDate} onChange={updatePayments} payments={payments} />
 
             <section className="sticky bottom-0 rounded-2xl bg-slate-900 p-3 text-white shadow-xl sm:p-4">
               {overpaid && <p className="mb-3 rounded-xl bg-rose-100 p-3 font-black text-rose-900">مجموع الدفعات أكبر من مبلغ الصيانة.</p>}
               {anonymousDebt && <p className="mb-3 rounded-xl bg-amber-100 p-3 font-black text-amber-950">الصيانة بدون عميل يجب أن تكون مدفوعة بالكامل.</p>}
               {anonymousCheck && <p className="mb-3 rounded-xl bg-amber-100 p-3 font-black text-amber-950">اختر العميل قبل قبول الشيك.</p>}
               <div className="grid gap-2 md:grid-cols-4">
-                <p className="rounded-xl bg-white/10 p-3 font-black">الإجمالي <span className="float-left text-lg" dir="ltr">{amountValid ? `₪${amountValue!.toFixed()}` : '—'}</span></p>
-                <p className="rounded-xl bg-white/10 p-3 font-black">المدفوع <span className="float-left text-lg" dir="ltr">{paidTotal ? `₪${paidTotal.toFixed()}` : '—'}</span></p>
-                <p className={`rounded-xl p-3 font-black ${remaining?.greaterThan(0) ? 'bg-amber-400 text-slate-950' : 'bg-emerald-700'}`}>المتبقي <span className="float-left text-lg" dir="ltr">{remaining && !overpaid ? `₪${remaining.toFixed()}` : '—'}</span></p>
+                <p className="rounded-xl bg-white/10 p-3 font-black">الإجمالي <span className="float-left text-lg" dir="ltr">{amountValid ? `₪${formatDecimal(amountValue!.toFixed())}` : '—'}</span></p>
+                <p className="rounded-xl bg-white/10 p-3 font-black">المدفوع <span className="float-left text-lg" dir="ltr">{paidTotal ? `₪${formatDecimal(paidTotal.toFixed())}` : '—'}</span></p>
+                <p className={`rounded-xl p-3 font-black ${remaining?.greaterThan(0) ? 'bg-amber-400 text-slate-950' : 'bg-emerald-700'}`}>المتبقي <span className="float-left text-lg" dir="ltr">{remaining && !overpaid ? `₪${formatDecimal(remaining.toFixed())}` : '—'}</span></p>
                 <button className="min-h-12 rounded-xl bg-amber-400 px-6 text-xl font-black text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canSave} type="submit">{saving ? 'جارٍ الحفظ…' : 'حفظ الصيانة'}</button>
               </div>
             </section>

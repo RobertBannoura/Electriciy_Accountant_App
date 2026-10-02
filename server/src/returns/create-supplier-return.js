@@ -25,7 +25,19 @@ export async function createSupplierReturn({ databasePool = pool, input, storeId
       throw new AppError('فاتورة الشراء الأصلية غير موجودة في هذا المتجر', 404, 'PURCHASE_NOT_FOUND')
     }
     const purchase = purchaseResult.rows[0]
+    if (input.partyId && input.partyId !== (purchase.supplier_id ?? 'cash')) {
+      throw new AppError('الفاتورة لا تخص الطرف المحدد للمرتجع', 409, 'RETURN_PARTY_MISMATCH')
+    }
+    // Supplier payments in either store lock this row before checking debt.
+    await client.query('SELECT id FROM suppliers WHERE id = $1::BIGINT FOR UPDATE', [purchase.supplier_id])
     const itemIds = input.items.map((item) => item.sourceItemId)
+    await client.query(
+      `SELECT id FROM products
+       WHERE id IN (SELECT product_id FROM purchase_items
+                    WHERE purchase_id = $1::BIGINT AND id = ANY($2::BIGINT[]))
+       ORDER BY id FOR UPDATE`,
+      [purchase.id, itemIds],
+    )
     const itemResult = await client.query(
       `SELECT item.id::TEXT AS id, item.product_id::TEXT AS product_id,
         item.description, item.quantity::TEXT AS quantity,
@@ -35,7 +47,7 @@ export async function createSupplierReturn({ databasePool = pool, input, storeId
        INNER JOIN store_inventory AS inventory
          ON inventory.store_id = $2::BIGINT AND inventory.product_id = item.product_id
        WHERE item.purchase_id = $1::BIGINT AND item.id = ANY($3::BIGINT[])
-       ORDER BY item.id
+       ORDER BY item.product_id, item.id
        FOR UPDATE OF item, products, inventory`,
       [purchase.id, storeId, itemIds],
     )

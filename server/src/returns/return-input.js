@@ -7,6 +7,8 @@ export function parseReturnInput(body) {
   const sourceDocumentId = parseId(
     body?.sourceDocumentId ?? body?.saleId ?? body?.purchaseId,
   )
+  const partyId = body?.partyId === 'cash' ? 'cash' : parseId(body?.partyId)
+  if (body?.partyId !== undefined && !partyId) return { error: 'يجب اختيار عميل أو مورد صالح' }
   if (!sourceDocumentId) return { error: 'يجب اختيار الفاتورة الأصلية' }
   if (!Array.isArray(body?.items) || body.items.length === 0 || body.items.length > 500) {
     return { error: 'يجب اختيار بند واحد على الأقل للمرتجع' }
@@ -26,5 +28,5 @@ export function parseReturnInput(body) {
     itemIds.add(sourceItemId)
     items.push({ sourceItemId, quantity })
   }
-  return { value: { sourceDocumentId, items } }
+  return { value: { sourceDocumentId, items, ...(partyId ? { partyId } : {}) } }
 }

@@ -196,9 +196,11 @@ export function SettingsPage({
       </form>
       </div>
 
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8 [&>section]:mt-0 [&>section]:border-0 [&>section]:pt-0">
-        <PushNotificationSettings />
-      </div>
+      {!window.desktop?.trialMode && (
+        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8 [&>section]:mt-0 [&>section]:border-0 [&>section]:pt-0">
+          <PushNotificationSettings />
+        </div>
+      )}
 
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <h2 className="text-xl font-black">أدوات المدير</h2>
@@ -258,6 +260,14 @@ export function SettingsPage({
         </div>
       )}
       </div>
+
+      {window.desktop?.trialMode && (
+        <aside className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-slate-700" aria-label="نسخة تجريبية">
+          <h2 className="text-base font-bold">نسخة تجريبية</h2>
+          <p className="mt-2 leading-7">هذه نسخة تجريبية من نظام إدارة الحسابات والمتجر.<br />يمكنك استخدامها لتجربة جميع وظائف النظام والتأكد من أنها مناسبة لاحتياجاتك.</p>
+          <p className="mt-2 leading-7">البيانات محفوظة محلياً على هذا الجهاز.</p>
+        </aside>
+      )}
     </section>
   )
 }

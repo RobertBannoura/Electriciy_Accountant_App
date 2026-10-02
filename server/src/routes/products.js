@@ -405,7 +405,7 @@ productsRouter.post(
       throw new AppError(parsed.error, 400, 'INVALID_INVENTORY_MOVEMENT')
     }
     const userId = inventoryMovementAuthorId(request)
-    await claimFinancialOperation(client, {
+    const operationId = await claimFinancialOperation(client, {
       userId,
       operation: financialOperation(request, 'inventory:adjust', {
         storeId: request.storeId,
@@ -446,10 +446,10 @@ productsRouter.post(
       `
         INSERT INTO inventory_movements (
           store_id, product_id, movement_type, quantity_delta, occurred_at,
-          source_type, reason, created_by_user_id
+          source_type, source_id, reason, created_by_user_id
         )
         VALUES ($1::BIGINT, $2::BIGINT, $3, $4::NUMERIC, NOW(),
-                'manual_inventory', $5, $6::BIGINT)
+                'manual_inventory', $5::BIGINT, $6, $7::BIGINT)
         RETURNING id::TEXT AS id, quantity_delta::TEXT AS quantity_delta, occurred_at
       `,
       [
@@ -457,6 +457,7 @@ productsRouter.post(
         productId,
         parsed.value.movementType,
         parsed.value.quantityDelta,
+        operationId,
         parsed.value.reason,
         inventoryMovementAuthorId(request),
       ],
@@ -470,6 +471,7 @@ productsRouter.post(
       inventoryValueDelta: costMovement.inventoryValueDelta,
       occurredAt: result.rows[0].occurred_at,
       sourceType: 'manual_inventory',
+      sourceId: operationId,
     })
     const balanceResult = await client.query(
       `

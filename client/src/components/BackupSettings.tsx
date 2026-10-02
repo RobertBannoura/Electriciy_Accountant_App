@@ -3,8 +3,11 @@ import { apiFetch } from '../api'
 
 type BackupStatus = {
   directory: string | null
+  monthlyDirectory: string | null
   lastAutomaticBackupDate: string | null
+  dailyBackupDue: boolean
   automaticBackupDue: boolean
+  monthlyBackupDue: boolean
 }
 
 type SelectedBackup = {
@@ -58,11 +61,8 @@ export function BackupSettings() {
     try {
       const result = await desktop!.chooseBackupDirectory()
       if (result.selected && result.directory) {
-        setStatus((current) => ({
-          directory: result.directory ?? null,
-          lastAutomaticBackupDate: current?.lastAutomaticBackupDate ?? null,
-          automaticBackupDue: true,
-        }))
+        setStatus(await desktop!.getBackupStatus())
+        window.dispatchEvent(new Event('backup-settings-changed'))
         setState('done')
         setMessage('تم حفظ مجلد النسخ الاحتياطي على هذا الجهاز.')
       } else {
@@ -71,6 +71,25 @@ export function BackupSettings() {
     } catch (error) {
       setState('error')
       setMessage(error instanceof Error ? error.message : 'تعذر اختيار مجلد النسخ الاحتياطي')
+    }
+  }
+
+  async function chooseMonthlyDirectory() {
+    setState('working')
+    setMessage(null)
+    try {
+      const result = await desktop!.chooseMonthlyBackupDirectory()
+      if (result.selected && result.directory) {
+        setStatus(await desktop!.getBackupStatus())
+        window.dispatchEvent(new Event('backup-settings-changed'))
+        setState('done')
+        setMessage('تم حفظ مجلد النسخ الشهرية على USB.')
+      } else {
+        setState('idle')
+      }
+    } catch (error) {
+      setState('error')
+      setMessage(error instanceof Error ? error.message : 'تعذر اختيار مجلد النسخ الشهرية')
     }
   }
 
@@ -156,8 +175,9 @@ export function BackupSettings() {
     <div className="mt-10 border-t border-slate-200 pt-8">
       <h2 className="text-xl font-black">النسخ الاحتياطي والاستعادة</h2>
       <p className="mt-2 leading-7 text-slate-600">
-        تُحفظ الملفات محليًا على هذا الكمبيوتر. ينشئ النظام نسخة تلقائية واحدة كحد أقصى يوميًا عند توفر الاتصال.
+        ينشئ النظام نسخة تلقائية يوميًا عند تشغيل التطبيق وتوفر الاتصال. يحتفظ بآخر 7 ملفات نسخ يومية في المجلد المحلي؛ وبعد حفظ نسخة جديدة يحذف الأقدم فقط إذا تجاوز العدد 7. ينشئ أيضًا نسخة واحدة كل شهر في مجلد USB المحدد، ويعيد المحاولة عند توصيله.
       </p>
+      <p className="mt-2 text-sm leading-6 text-slate-600">تتضمن النسخة سجلات صور الطلبات، أما ملفات الصور نفسها فتحتاج نسخة منفصلة من مجلد الصور أو حاوية التخزين.</p>
 
       <label className="mt-5 block" htmlFor="backup-directory">
         <span className="mb-2 block text-base font-bold">مجلد النسخ الاحتياطي</span>
@@ -181,6 +201,28 @@ export function BackupSettings() {
         </span>
       </label>
 
+      <label className="mt-5 block" htmlFor="monthly-backup-directory">
+        <span className="mb-2 block text-base font-bold">مجلد النسخ الشهرية على USB</span>
+        <span className="flex flex-col gap-3 sm:flex-row">
+          <input
+            className="min-h-14 min-w-0 flex-1 rounded-xl border border-slate-300 bg-slate-50 px-4 text-left text-base outline-none"
+            dir="ltr"
+            id="monthly-backup-directory"
+            placeholder="E:\\..."
+            readOnly
+            value={status?.monthlyDirectory ?? ''}
+          />
+          <button
+            className="min-h-14 rounded-xl border-2 border-teal-700 px-6 text-lg font-black text-teal-800 hover:bg-teal-50 disabled:opacity-50"
+            disabled={state === 'working'}
+            onClick={() => void chooseMonthlyDirectory()}
+            type="button"
+          >
+            اختيار
+          </button>
+        </span>
+      </label>
+
       <button
         className="mt-5 min-h-14 rounded-xl bg-teal-700 px-7 text-lg font-black text-white hover:bg-teal-800 disabled:opacity-50"
         disabled={!status?.directory || state === 'working'}
@@ -192,6 +234,7 @@ export function BackupSettings() {
 
       <div className="mt-8 rounded-2xl border border-amber-300 bg-amber-50 p-5">
         <h3 className="text-lg font-black text-amber-950">استعادة نسخة احتياطية</h3>
+        <p className="mt-2 text-amber-900">اختر ملف نسخة احتياطية من المجلد المحلي أو USB، ثم تحقق منه وأكد الاستعادة.</p>
         <p className="mt-2 font-bold text-amber-900">
           استعادة النسخة ستؤثر على بيانات النظام في المحلين
         </p>

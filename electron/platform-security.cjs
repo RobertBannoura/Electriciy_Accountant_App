@@ -83,6 +83,10 @@ function desktopCheckNotification(options) {
     throw new TypeError('بيانات إشعار سطح المكتب غير صالحة')
   }
   const messages = {
+    customer_reminders: {
+      title: 'تذكير بمتابعة سداد العملاء',
+      body: `يوجد ${options.count} عميل لديه وعد دفع مستحق أو بلغ حد الدين. افتح التطبيق لعرض التفاصيل.`,
+    },
     checks_due: {
       title: 'شيكات مستحقة اليوم',
       body: `يوجد ${options.count} شيك مستحق. افتح التطبيق لعرض التفاصيل.`,

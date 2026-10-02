@@ -23,6 +23,9 @@ const ROUTERS = {
   stores: { mount: '/api/stores', variable: 'storesRouter' },
   suppliers: { mount: '/api/suppliers', variable: 'suppliersRouter' },
   verification: { mount: '/api/verification', variable: 'verificationRouter' },
+  'order-photos': { mount: '/api/order-photos', variable: 'orderPhotosRouter' },
+  catalog: { mount: '/api/catalog', variable: 'catalogRouter' },
+  'catalog-admin': { mount: '/api/catalog-admin', variable: 'catalogAdminRouter' },
 }
 
 const PUBLIC_ENDPOINTS = new Set([
@@ -62,7 +65,7 @@ test('API security matrix contains every and only declared router method/path pa
     documented.add(`${match[1]} ${match[2]}`)
   }
 
-  assert.equal(declared.size, 62)
+  assert.equal(declared.size, 87)
   assert.deepEqual([...documented].sort(), [...declared].sort())
 })
 

@@ -29,11 +29,81 @@ test('preserves device assignment while adding backup settings', async () => {
     assert.deepEqual(await settings.getStoreAssignment(), { storeId: '2' })
     assert.deepEqual(await settings.getBackupSettings(), {
       directory: backupDirectory,
+      monthlyDirectory: null,
       lastAutomaticBackupDate: null,
     })
   } finally {
     await fs.rm(directory, { recursive: true, force: true })
     await fs.rm(backupDirectory, { recursive: true, force: true })
+  }
+})
+
+test('keeps the newest seven successful daily files and one file per USB month', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'backup-retention-'))
+  const local = path.join(root, 'local')
+  const usb = path.join(root, 'usb')
+  await fs.mkdir(local)
+  await fs.mkdir(usb)
+  try {
+    const settings = createDeviceSettingsStore(path.join(root, 'settings'))
+    await settings.setBackupDirectory(local)
+    await settings.setMonthlyBackupDirectory(usb)
+    for (const day of ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05', '2026-09-06', '2026-09-07']) {
+      await fs.writeFile(path.join(local, `electricity-accountant-automatic-${day}.json`), '{}')
+    }
+    await fs.writeFile(path.join(local, 'electricity-accountant-20260901120000000-manual.json'), '{}')
+    let currentDate = new Date(2026, 8, 9, 12)
+    const files = createBackupFileStore(settings, { now: () => currentDate })
+    const result = await files.saveBackup(sampleBackup, { automatic: true })
+    assert.equal(result.saved, true)
+    assert.ok(result.monthlyPath)
+    const localNames = await fs.readdir(local)
+    assert.equal(localNames.some((name) => name.includes('automatic-2026-09-01')), false)
+    assert.equal(localNames.some((name) => name.includes('automatic-2026-09-02')), true)
+    assert.equal(localNames.some((name) => name.includes('automatic-2026-09-03')), true)
+    assert.equal(localNames.some((name) => name.includes('-manual.json')), true)
+    assert.equal(localNames.filter((name) => name.includes('-automatic-')).length, 7)
+    assert.deepEqual(await fs.readdir(usb), ['electricity-accountant-monthly-2026-09.json'])
+    await fs.writeFile(path.join(local, 'electricity-accountant-automatic-2026-09-01.json'), '{}')
+    const repeat = await files.saveBackup(sampleBackup, { automatic: true })
+    assert.equal(repeat.saved, false)
+    assert.equal((await fs.readdir(local)).filter((name) => name.includes('-automatic-')).length, 8)
+    assert.equal((await files.getStatus()).automaticBackupDue, false)
+    currentDate = new Date(2026, 9, 1, 12)
+    await files.saveBackup(sampleBackup, { automatic: true })
+    assert.equal((await fs.readdir(local)).filter((name) => name.includes('-automatic-')).length, 7)
+    assert.deepEqual((await fs.readdir(usb)).sort(), [
+      'electricity-accountant-monthly-2026-09.json',
+      'electricity-accountant-monthly-2026-10.json',
+    ])
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})
+
+test('retries a missed monthly USB copy after the drive returns', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'backup-usb-retry-'))
+  const local = path.join(root, 'local')
+  const usb = path.join(root, 'usb')
+  await fs.mkdir(local)
+  await fs.mkdir(usb)
+  try {
+    const settings = createDeviceSettingsStore(path.join(root, 'settings'))
+    await settings.setBackupDirectory(local)
+    await settings.setMonthlyBackupDirectory(usb)
+    await fs.rmdir(usb)
+    const files = createBackupFileStore(settings, { now: () => new Date(2026, 8, 9, 12) })
+    await assert.rejects(files.saveBackup(sampleBackup, { automatic: true }), AggregateError)
+    assert.equal((await settings.getBackupSettings()).lastAutomaticBackupDate, '2026-09-09')
+    assert.equal((await files.getStatus()).automaticBackupDue, true)
+    await fs.mkdir(usb)
+    const result = await files.saveBackup(sampleBackup, { automatic: true })
+    assert.equal(result.saved, true)
+    assert.equal(result.path, undefined)
+    assert.ok(result.monthlyPath)
+    assert.equal((await files.getStatus()).automaticBackupDue, false)
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
   }
 })
 

@@ -119,7 +119,9 @@ test('PDF save targets require an absolute PDF path and reject symbolic-link tar
   }
 })
 
-test('desktop notification IPC accepts only generic check counts', () => {
+test('desktop notification IPC accepts only supported generic reminder counts', () => {
+  assert.match(desktopCheckNotification({ kind: 'customer_reminders', count: 2 }).body, /2 عميل/)
+  assert.throws(() => desktopCheckNotification({ kind: 'customer_reminders', count: 0 }), TypeError)
   assert.deepEqual(desktopCheckNotification({ kind: 'checks_due', count: 2 }), {
     title: 'شيكات مستحقة اليوم',
     body: 'يوجد 2 شيك مستحق. افتح التطبيق لعرض التفاصيل.',
@@ -160,6 +162,7 @@ test('preload exposes only the declared narrow IPC methods and no generic channe
     'device:set-store-assignment',
     'backup:get-status',
     'backup:choose-directory',
+    'backup:choose-monthly-directory',
     'backup:save',
     'backup:select-file',
     'app:show-notification',

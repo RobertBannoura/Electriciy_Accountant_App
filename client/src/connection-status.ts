@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { connectionStatusEvent, publicApiFetch } from './api'
 
 export function useConnectionStatus() {
-  const [isOnline, setIsOnline] = useState(() => navigator.onLine)
+  const [isOnline, setIsOnline] = useState(() => window.desktop?.trialMode || navigator.onLine)
 
   useEffect(() => {
-    function offline() { setIsOnline(false) }
+    function offline() {
+      if (!window.desktop?.trialMode) setIsOnline(false)
+    }
     function changed(event: Event) {
       const detail = (event as CustomEvent<{ available: boolean }>).detail
       setIsOnline(detail.available)

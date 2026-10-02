@@ -5,7 +5,10 @@ export async function getCustomerStatement({ customerId, from, to, storeId, proj
     `WITH enriched AS (
        SELECT ledger.id, ledger.store_id, stores.name AS store_name,
          ledger.direction, ledger.amount_ils, ledger.occurred_at,
-         (ledger.occurred_at AT TIME ZONE 'Asia/Hebron')::DATE AS statement_date,
+         COALESCE(source_sale.business_date, source_maintenance.business_date,
+           source_return.business_date,
+           (source_payment.paid_at AT TIME ZONE 'Asia/Hebron')::DATE,
+           (ledger.occurred_at AT TIME ZONE 'Asia/Hebron')::DATE) AS statement_date,
          ledger.source_type, ledger.source_id, ledger.notes,
          contextual_sale.customer_project_id AS project_id,
          projects.name AS project_name,
@@ -13,11 +16,14 @@ export async function getCustomerStatement({ customerId, from, to, storeId, proj
            CASE WHEN source_check.id IS NOT NULL THEN 'شيك ' || source_check.check_number END,
            source_payment.reference) AS document_number,
          source_check.check_number, source_check.status AS check_status,
-         source_payment.payment_method
+         source_payment.payment_method,
+         CASE WHEN source_return.id IS NOT NULL THEN contextual_sale.document_number END AS original_document_number
        FROM customer_ledger AS ledger
        INNER JOIN stores ON stores.id = ledger.store_id
        LEFT JOIN sales AS source_sale
          ON ledger.source_type = 'sale' AND source_sale.id = ledger.source_id
+       LEFT JOIN maintenance_records AS source_maintenance
+         ON ledger.source_type = 'maintenance' AND source_maintenance.id = ledger.source_id
        LEFT JOIN payments AS source_payment
          ON ledger.source_type IN ('sale_payment', 'payment', 'maintenance_payment', 'maintenance_reversal_payment')
         AND source_payment.id = ledger.source_id
@@ -40,7 +46,7 @@ export async function getCustomerStatement({ customerId, from, to, storeId, proj
      ), period_rows AS (
        SELECT enriched.*,
          opening.balance + SUM(CASE direction WHEN 'debit' THEN amount_ils ELSE -amount_ils END)
-           OVER (ORDER BY occurred_at, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_balance
+           OVER (ORDER BY statement_date, occurred_at, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_balance
        FROM enriched CROSS JOIN opening
        WHERE statement_date BETWEEN $2::DATE AND $3::DATE
      )
@@ -50,13 +56,14 @@ export async function getCustomerStatement({ customerId, from, to, storeId, proj
          'id', id::TEXT, 'date', statement_date::TEXT, 'occurred_at', occurred_at,
          'store_name', store_name, 'source_type', source_type,
          'source_id', source_id::TEXT, 'description', notes,
+         'original_document_number', original_document_number,
          'document_number', document_number, 'project_id', project_id::TEXT,
          'project_name', project_name, 'check_number', check_number,
          'check_status', check_status, 'payment_method', payment_method,
          'debit', CASE WHEN direction = 'debit' THEN amount_ils::TEXT ELSE '0' END,
          'credit', CASE WHEN direction = 'credit' THEN amount_ils::TEXT ELSE '0' END,
          'running_balance', running_balance::TEXT
-       ) ORDER BY occurred_at, id) FROM period_rows), '[]'::JSONB) AS entries
+       ) ORDER BY statement_date, occurred_at, id) FROM period_rows), '[]'::JSONB) AS entries
      FROM opening`,
     [customerId, from, to, storeId, projectId],
   )
@@ -68,13 +75,16 @@ export async function getSupplierStatement({ supplierId, from, to, storeId }) {
     `WITH enriched AS (
        SELECT ledger.id, ledger.store_id, stores.name AS store_name,
          ledger.direction, ledger.amount_ils, ledger.occurred_at,
-         (ledger.occurred_at AT TIME ZONE 'Asia/Hebron')::DATE AS statement_date,
+         COALESCE(source_purchase.business_date, source_return.business_date,
+           (source_payment.paid_at AT TIME ZONE 'Asia/Hebron')::DATE,
+           (ledger.occurred_at AT TIME ZONE 'Asia/Hebron')::DATE) AS statement_date,
          ledger.source_type, ledger.source_id, ledger.notes,
          COALESCE(source_purchase.document_number, source_return.document_number,
            CASE WHEN source_check.id IS NOT NULL THEN 'شيك ' || source_check.check_number END,
            source_payment.reference) AS document_number,
          source_check.check_number, source_check.status AS check_status,
          source_payment.payment_method,
+         return_purchase.document_number AS original_document_number,
          CASE WHEN source_purchase.id IS NULL THEN '[]'::JSONB ELSE COALESCE((
            SELECT JSONB_AGG(JSONB_BUILD_OBJECT(
              'product', items.description, 'quantity', items.quantity::TEXT,
@@ -95,6 +105,7 @@ export async function getSupplierStatement({ supplierId, from, to, storeId }) {
         AND source_check.id = ledger.source_id
        LEFT JOIN supplier_returns AS source_return
          ON ledger.source_type = 'supplier_return' AND source_return.id = ledger.source_id
+       LEFT JOIN purchases AS return_purchase ON return_purchase.id = source_return.purchase_id
        WHERE ledger.supplier_id = $1::BIGINT
          AND ($4::BIGINT IS NULL OR ledger.store_id = $4)
      ), opening AS (
@@ -103,7 +114,7 @@ export async function getSupplierStatement({ supplierId, from, to, storeId }) {
      ), period_rows AS (
        SELECT enriched.*,
          opening.balance + SUM(CASE direction WHEN 'credit' THEN amount_ils ELSE -amount_ils END)
-           OVER (ORDER BY occurred_at, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_balance
+           OVER (ORDER BY statement_date, occurred_at, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_balance
        FROM enriched CROSS JOIN opening
        WHERE statement_date BETWEEN $2::DATE AND $3::DATE
      )
@@ -113,13 +124,14 @@ export async function getSupplierStatement({ supplierId, from, to, storeId }) {
          'id', id::TEXT, 'date', statement_date::TEXT, 'occurred_at', occurred_at,
          'store_name', store_name, 'source_type', source_type,
          'source_id', source_id::TEXT, 'description', notes,
+         'original_document_number', original_document_number,
          'document_number', document_number, 'check_number', check_number,
          'check_status', check_status, 'payment_method', payment_method,
          'purchase_items', purchase_items,
          'debit', CASE WHEN direction = 'debit' THEN amount_ils::TEXT ELSE '0' END,
          'credit', CASE WHEN direction = 'credit' THEN amount_ils::TEXT ELSE '0' END,
          'running_balance', running_balance::TEXT
-       ) ORDER BY occurred_at, id) FROM period_rows), '[]'::JSONB) AS entries
+       ) ORDER BY statement_date, occurred_at, id) FROM period_rows), '[]'::JSONB) AS entries
      FROM opening`,
     [supplierId, from, to, storeId],
   )

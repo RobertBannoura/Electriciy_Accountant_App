@@ -1,9 +1,10 @@
 import dotenv from 'dotenv'
 import { isIP } from 'node:net'
 
-dotenv.config({ quiet: true })
+const offlineTrial = process.env.TRIAL_OFFLINE === '1'
+if (!offlineTrial) dotenv.config({ quiet: true })
 
-const allowedEnvironments = new Set(['development', 'test', 'production'])
+const allowedEnvironments = new Set(['development', 'test', 'production', 'trial'])
 const nodeEnv = process.env.NODE_ENV ?? 'development'
 const trustedProxyNames = new Set(['loopback', 'linklocal', 'uniquelocal'])
 const proxyClientIpHeaders = new Set(['x-forwarded-for', 'x-real-ip'])
@@ -176,6 +177,35 @@ if (nodeEnv === 'production' && trustedProxyRanges.length === 0) {
   throw new Error('TRUST_PROXY must identify the production reverse proxy by IP or CIDR.')
 }
 
+if (offlineTrial) {
+  let parsedDatabaseUrl
+  try {
+    parsedDatabaseUrl = new URL(databaseUrl)
+  } catch {
+    throw new Error('The offline trial requires its local database configuration.')
+  }
+  if (
+    nodeEnv !== 'trial' || host !== '127.0.0.1'
+    || parsedDatabaseUrl.protocol !== 'postgresql:'
+    || parsedDatabaseUrl.hostname !== '127.0.0.1'
+    || !parsedDatabaseUrl.port
+    || parsedDatabaseUrl.pathname !== '/electricity_accountant'
+    || parsedDatabaseUrl.username !== 'trial_owner'
+    || !/^[a-f0-9]{64}$/.test(parsedDatabaseUrl.password)
+    || parsedDatabaseUrl.search || parsedDatabaseUrl.hash
+    || trustedProxyRanges.length !== 0 || process.env.DATABASE_TLS_CA
+    || process.env.ELECTRON_ORIGIN !== 'app://renderer'
+    || clientOrigin !== 'http://127.0.0.1:1'
+    || configuredVapidValues !== 0
+    || !/^[a-f0-9]{64}$/.test(process.env.TRIAL_RUNTIME_TOKEN ?? '')
+    || !/^[a-f0-9]{64}$/.test(process.env.TRIAL_BUILD_ID ?? '')
+  ) {
+    throw new Error('The offline trial accepts only its isolated loopback services.')
+  }
+} else if (nodeEnv === 'trial') {
+  throw new Error('Trial mode must be launched by the offline runtime.')
+}
+
 if (!proxyClientIpHeaders.has(proxyClientIpHeader)) {
   throw new Error('PROXY_CLIENT_IP_HEADER must be x-forwarded-for or x-real-ip.')
 }
@@ -189,6 +219,7 @@ if (vapidSubject && !/^(mailto:|https?:\/\/)/.test(vapidSubject)) {
 }
 
 export const env = Object.freeze({
+  offlineTrial,
   nodeEnv,
   port,
   host,

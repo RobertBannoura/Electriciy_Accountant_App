@@ -129,6 +129,7 @@ test('lock-screen notification bodies omit party names, amounts, and check numbe
 test('notification examples use exact ILS grouping and due checks are deduplicable events', async () => {
   assert.equal(formatIlsAmount('1250.00'), '₪1,250')
   assert.equal(formatIlsAmount('500.50'), '₪500.5')
+  assert.equal(formatIlsAmount('3.123456789012'), '₪3.12')
   const notifications = []
   const result = await sendDueCheckNotifications({
     today: '2026-09-09',

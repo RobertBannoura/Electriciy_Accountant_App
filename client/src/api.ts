@@ -1,16 +1,19 @@
-export const apiUrl =
-  import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api'
+export const apiUrl = window.location.protocol === 'app:'
+  ? window.desktop?.trialMode && window.desktop.trialApiBaseUrl
+    ? window.desktop.trialApiBaseUrl
+    : (() => { throw new Error('تعذر الاتصال بالخدمة المحلية') })()
+  : import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api'
 
 const sessionTokenKey = 'electricity-accountant-session'
 const rememberedSessionTokenKey = 'electricity-accountant-remembered-session'
 const cachedUserKey = 'electricity-accountant-user'
 export const connectionStatusEvent = 'app:connection-status'
-let serverReachable = typeof navigator === 'undefined' ? true : navigator.onLine
+let serverReachable = typeof navigator === 'undefined' || Boolean(window.desktop?.trialMode)
+  ? true : navigator.onLine
 const financialRequestStoragePrefix = 'electricity-accountant-financial-request:'
-const financialRequestRetryWindowMs = 5 * 60 * 1000
 const financialRequestCompletedWindowMs = 3 * 1000
 
-type StoredFinancialRequest = { requestId: string; expiresAt: number }
+type StoredFinancialRequest = { requestId: string; expiresAt?: number }
 
 function announceConnection(available: boolean) {
   serverReachable = available
@@ -47,7 +50,9 @@ function financialRequestIdentity(path: string, init: RequestInit | undefined, h
 
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey) ?? 'null') as StoredFinancialRequest | null
-    if (saved && saved.expiresAt > now) return { ...saved, storageKey }
+    if (saved && (saved.expiresAt === undefined || saved.expiresAt > now)) {
+      return { ...saved, storageKey }
+    }
   } catch {
     // Storage can be unavailable in hardened browser contexts. The request
     // still receives a strong unique id; only cross-tab reuse is unavailable.
@@ -57,7 +62,9 @@ function financialRequestIdentity(path: string, init: RequestInit | undefined, h
   // either writes. A different payload with a hash collision is rejected by
   // the server-side SHA-256 request hash and never reuses financial effects.
   const requestId = `fin-${signatureHash}-${Math.floor(now / 5000).toString(36)}`
-  const saved = { requestId, expiresAt: now + financialRequestRetryWindowMs }
+  // Keep an unresolved request id until the server gives a definitive reply.
+  // A timeout or server error may happen after the transaction committed.
+  const saved = { requestId }
   try {
     localStorage.setItem(storageKey, JSON.stringify(saved))
   } catch {
@@ -179,7 +186,7 @@ export function clearCachedAuthUser() {
 }
 
 export function publicApiFetch(path: string, init?: RequestInit) {
-  if (!navigator.onLine || (isMutation(init) && !serverReachable)) {
+  if ((!window.desktop?.trialMode && !navigator.onLine) || (isMutation(init) && !serverReachable)) {
     announceConnection(false)
     return Promise.reject(new Error('لا يوجد اتصال بالخادم. أُوقفت العمليات المالية حتى عودة الاتصال.'))
   }
@@ -209,7 +216,7 @@ export function apiFetch(path: string, init?: RequestInit) {
   if (mutationIdentity) headers.set('X-Request-Id', mutationIdentity.requestId)
 
   return publicApiFetch(path, { ...init, headers }).then((response) => {
-    if (mutationIdentity) {
+    if (mutationIdentity && response.status < 500) {
       markFinancialRequestCompleted(mutationIdentity.storageKey, mutationIdentity.requestId)
     }
     if (response.status === 401) {
