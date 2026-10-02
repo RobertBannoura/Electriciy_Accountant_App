@@ -91,6 +91,7 @@ productsRouter.get('/', async (request, response) => {
                AND low_balance.product_id = low_inventory.product_id
               WHERE low_inventory.product_id = products.id
                 AND low_inventory.is_active = TRUE
+                AND low_inventory.store_id IN (SELECT id FROM stores WHERE code = 'SHOWROOM')
                 AND ($4::BIGINT IS NULL OR low_inventory.store_id = $4)
                 AND low_balance.quantity <= low_inventory.reorder_level
             )
@@ -114,7 +115,7 @@ productsRouter.get('/', async (request, response) => {
         balances.quantity::TEXT AS quantity,
         cost_balances.inventory_value::TEXT AS inventory_value,
         cost_balances.weighted_average_cost::TEXT AS weighted_average_cost,
-        (balances.quantity <= inventory.reorder_level) AS low_stock,
+        (stores.code = 'SHOWROOM' AND balances.quantity <= inventory.reorder_level) AS low_stock,
         (
           SELECT COALESCE(SUM(total_balance.quantity), 0::NUMERIC)::TEXT
           FROM store_inventory AS total_inventory
@@ -123,6 +124,7 @@ productsRouter.get('/', async (request, response) => {
            AND total_balance.product_id = total_inventory.product_id
           WHERE total_inventory.product_id = products.id
             AND total_inventory.is_active = TRUE
+            AND total_inventory.store_id IN (SELECT id FROM stores WHERE code = 'SHOWROOM')
         ) AS total_quantity
       FROM candidate_products
       INNER JOIN products ON products.id = candidate_products.id
@@ -173,7 +175,11 @@ productsRouter.post('/', requireFinancialRequestId, async (request, response) =>
       }),
     })
     await requireCategory(client, parsedProduct.value.categoryId)
-    await requireStores(client, parsedInventory.value.map((item) => item.storeId))
+    const selectedStores = await requireStores(client, parsedInventory.value.map((item) => item.storeId))
+    if (parsedInventory.value.some((item) => selectedStores.get(item.storeId) !== 'SHOWROOM'
+        && !isZeroDecimal(item.openingQuantity))) {
+      throw new AppError('الكمية الافتتاحية تُسجّل لمخزون المعرض فقط', 400, 'SHOWROOM_STOCK_ONLY')
+    }
     const productResult = await client.query(
       `
         INSERT INTO products (
@@ -381,6 +387,13 @@ productsRouter.post(
   const client = await pool.connect()
   try {
     await client.query('BEGIN')
+    const storeResult = await client.query(
+      'SELECT code FROM stores WHERE id = $1::BIGINT AND is_active = TRUE FOR SHARE',
+      [request.storeId],
+    )
+    if (storeResult.rows[0]?.code !== 'SHOWROOM') {
+      throw new AppError('حركات المخزون متاحة للمعرض فقط', 409, 'SHOWROOM_STOCK_ONLY')
+    }
     const product = await requireActiveProductForUpdate(client, productId)
     const inventoryResult = await client.query(
       `
@@ -689,12 +702,13 @@ async function requireActiveStoreFilter(storeId) {
 
 async function requireStores(client, storeIds) {
   const result = await client.query(
-    'SELECT id::TEXT AS id FROM stores WHERE id = ANY($1::BIGINT[]) AND is_active = TRUE',
+    'SELECT id::TEXT AS id, code FROM stores WHERE id = ANY($1::BIGINT[]) AND is_active = TRUE',
     [storeIds],
   )
   if (result.rowCount !== storeIds.length) {
     throw new AppError('أحد المتاجر المحددة غير موجود', 400, 'INVALID_STORES')
   }
+  return new Map(result.rows.map((row) => [row.id, row.code]))
 }
 
 async function syncProductInventories(client, productId, settings) {

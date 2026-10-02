@@ -22,7 +22,8 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
   try {
     await client.query('BEGIN')
     await claimFinancialOperation(client, { userId, operation })
-    await requireStore(client, storeId)
+    const store = await requireStore(client, storeId)
+    const tracksStoreInventory = store.code === 'SHOWROOM'
     const prepared = await prepareSupplierPayments(client, {
       payments: input.payments,
       storeId,
@@ -81,7 +82,7 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
         : products.get(item.productId).name,
     })))
     const costUpdates = new Map()
-    for (const item of calculated.items) {
+    for (const item of tracksStoreInventory ? calculated.items : []) {
       if (item.productId === null) continue
       const balance = await readInventoryCostBalance(client, storeId, item.productId)
       costUpdates.set(item.productId, calculateWeightedAverageCost({
@@ -127,12 +128,14 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
       const result = await client.query(
         `
           INSERT INTO purchase_items (
-            purchase_id, product_id, description, quantity, unit_cost
-          ) VALUES ($1::BIGINT, $2::BIGINT, $3, $4::NUMERIC, $5::NUMERIC)
+            purchase_id, product_id, description, quantity, unit_cost, tracks_inventory
+          ) VALUES ($1::BIGINT, $2::BIGINT, $3, $4::NUMERIC, $5::NUMERIC, $6::BOOLEAN)
           RETURNING id::TEXT AS id, product_id::TEXT AS product_id,
-            description, quantity::TEXT AS quantity, unit_cost::TEXT AS purchase_price
+            description, quantity::TEXT AS quantity, unit_cost::TEXT AS purchase_price,
+            tracks_inventory
         `,
-        [purchase.id, item.productId, item.productName, item.quantity, item.purchasePrice],
+        [purchase.id, item.productId, item.productName, item.quantity, item.purchasePrice,
+          tracksStoreInventory && item.productId !== null],
       )
       savedItems.push({ ...result.rows[0], line_total: item.lineTotal })
       if (item.productId !== null) {
@@ -143,7 +146,7 @@ export async function createPurchase({ databasePool = pool, input, storeId, user
       }
     }
 
-    for (const [productId, quantity] of aggregateQuantities(calculated.items)) {
+    for (const [productId, quantity] of aggregateQuantities(tracksStoreInventory ? calculated.items : [])) {
       const movementResult = await client.query(
         `
           INSERT INTO inventory_movements (
@@ -258,10 +261,11 @@ function aggregateQuantities(items) {
 
 async function requireStore(client, storeId) {
   const result = await client.query(
-    'SELECT id FROM stores WHERE id = $1::BIGINT AND is_active = TRUE FOR SHARE',
+    'SELECT id, code FROM stores WHERE id = $1::BIGINT AND is_active = TRUE FOR SHARE',
     [storeId],
   )
   if (result.rowCount === 0) throw new AppError('المتجر غير موجود أو غير فعال', 404, 'STORE_NOT_FOUND')
+  return result.rows[0]
 }
 
 async function requireSupplier(client, supplierId) {

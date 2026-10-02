@@ -207,25 +207,29 @@ const checks = Object.freeze([
         SELECT sales.store_id, items.product_id, 'sale'::TEXT AS source_type,
           sales.id AS source_id, -SUM(items.quantity) AS quantity
         FROM sales INNER JOIN sale_items AS items ON items.sale_id = sales.id
-        WHERE items.product_id IS NOT NULL
+        WHERE COALESCE(items.tracks_inventory, items.product_id IS NOT NULL)
         GROUP BY sales.store_id, items.product_id, sales.id
         UNION ALL
         SELECT purchases.store_id, items.product_id, 'purchase', purchases.id,
           SUM(items.quantity)
         FROM purchases INNER JOIN purchase_items AS items ON items.purchase_id = purchases.id
-        WHERE items.product_id IS NOT NULL
+        WHERE COALESCE(items.tracks_inventory, items.product_id IS NOT NULL)
         GROUP BY purchases.store_id, items.product_id, purchases.id
         UNION ALL
         SELECT returns.store_id, items.product_id, 'customer_return', returns.id,
           SUM(items.quantity)
         FROM customer_returns AS returns
         INNER JOIN customer_return_items AS items ON items.customer_return_id = returns.id
+        INNER JOIN sale_items AS source ON source.id = items.sale_item_id
+        WHERE COALESCE(source.tracks_inventory, source.product_id IS NOT NULL)
         GROUP BY returns.store_id, items.product_id, returns.id
         UNION ALL
         SELECT returns.store_id, items.product_id, 'supplier_return', returns.id,
           -SUM(items.quantity)
         FROM supplier_returns AS returns
         INNER JOIN supplier_return_items AS items ON items.supplier_return_id = returns.id
+        INNER JOIN purchase_items AS source ON source.id = items.purchase_item_id
+        WHERE COALESCE(source.tracks_inventory, source.product_id IS NOT NULL)
         GROUP BY returns.store_id, items.product_id, returns.id
       ), actual AS (
         SELECT store_id, product_id, source_type, source_id,

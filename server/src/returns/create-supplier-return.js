@@ -34,21 +34,35 @@ export async function createSupplierReturn({ databasePool = pool, input, storeId
     await client.query(
       `SELECT id FROM products
        WHERE id IN (SELECT product_id FROM purchase_items
-                    WHERE purchase_id = $1::BIGINT AND id = ANY($2::BIGINT[]))
+                    WHERE purchase_id = $1::BIGINT AND id = ANY($2::BIGINT[])
+                      AND COALESCE(tracks_inventory, product_id IS NOT NULL))
        ORDER BY id FOR UPDATE`,
       [purchase.id, itemIds],
+    )
+    await client.query(
+      `SELECT product_id FROM store_inventory
+       WHERE store_id = $1::BIGINT AND product_id IN
+         (SELECT product_id FROM purchase_items WHERE purchase_id = $2::BIGINT
+            AND id = ANY($3::BIGINT[])
+            AND COALESCE(tracks_inventory, product_id IS NOT NULL))
+       ORDER BY product_id FOR UPDATE`,
+      [storeId, purchase.id, itemIds],
     )
     const itemResult = await client.query(
       `SELECT item.id::TEXT AS id, item.product_id::TEXT AS product_id,
         item.description, item.quantity::TEXT AS quantity,
-        item.unit_cost::TEXT AS unit_cost, products.unit_name
+        item.unit_cost::TEXT AS unit_cost,
+        COALESCE(item.tracks_inventory, item.product_id IS NOT NULL) AS tracks_inventory,
+        products.unit_name
        FROM purchase_items AS item
-       INNER JOIN products ON products.id = item.product_id
-       INNER JOIN store_inventory AS inventory
+       LEFT JOIN products ON products.id = item.product_id
+       LEFT JOIN store_inventory AS inventory
          ON inventory.store_id = $2::BIGINT AND inventory.product_id = item.product_id
        WHERE item.purchase_id = $1::BIGINT AND item.id = ANY($3::BIGINT[])
+         AND (NOT COALESCE(item.tracks_inventory, item.product_id IS NOT NULL) OR
+           (products.id IS NOT NULL AND inventory.product_id IS NOT NULL))
        ORDER BY item.product_id, item.id
-       FOR UPDATE OF item, products, inventory`,
+       FOR UPDATE OF item`,
       [purchase.id, storeId, itemIds],
     )
     if (itemResult.rowCount !== itemIds.length) {
@@ -75,7 +89,10 @@ export async function createSupplierReturn({ databasePool = pool, input, storeId
       }
       const lineTotal = new ReturnDecimal(requested.quantity).mul(source.unit_cost).toDecimalPlaces(12)
       creditTotal = creditTotal.plus(lineTotal)
-      return { ...source, returnedQuantity: requested.quantity, returnTotal: lineTotal.toFixed() }
+      return {
+        ...source, returnedQuantity: requested.quantity, returnTotal: lineTotal.toFixed(),
+        ...(source.tracks_inventory ? {} : { unitInventoryCostSnapshot: '0', inventoryCostTotal: '0' }),
+      }
     })
     const groupedLines = [...groupSupplierReturnLines(lines)]
     let inventoryCostTotal = new ReturnDecimal(0)
@@ -197,6 +214,7 @@ export async function createSupplierReturn({ databasePool = pool, input, storeId
 function groupSupplierReturnLines(lines) {
   const groups = new Map()
   for (const line of lines) {
+    if (!line.tracks_inventory) continue
     const group = groups.get(line.product_id) ?? {
       productId: line.product_id, description: line.description,
       quantity: new ReturnDecimal(0), historicalCostTotal: new ReturnDecimal(0), lines: [],

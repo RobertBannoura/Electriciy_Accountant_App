@@ -17,6 +17,7 @@ import {
 import { notifyCustomerPaymentCreated } from '../notifications/financial-notifications.js'
 import { getCustomerStatement } from '../statements/account-statements.js'
 import { parseStatementRange } from '../statements/statement-input.js'
+import { paginatedResult, parsePagination } from '../pagination/pagination.js'
 import {
   normalizeOptionalText,
   parseId,
@@ -151,6 +152,39 @@ customersRouter.post('/', async (request, response) => {
   )
 
   response.status(201).json({ customer: { ...result.rows[0], balance_ils: '0' } })
+})
+
+customersRouter.get('/:customerId/sales', async (request, response) => {
+  const customerId = requireCustomerId(request.params.customerId)
+  const projectId = optionalId(request.query.projectId, 'معرّف المشروع غير صالح', 'INVALID_CUSTOMER_PROJECT_ID')
+  const activityStoreId = optionalId(request.query.storeId, 'معرّف المتجر غير صالح', 'INVALID_ACTIVITY_STORE_ID')
+  if (activityStoreId) await requireActiveActivityStore(activityStoreId)
+  const pagination = parsePagination(request.query, { defaultLimit: 10, maxLimit: 50 })
+  const search = request.query.search === undefined ? '' : request.query.search
+  if (typeof search !== 'string' || search.length > 100) {
+    throw new AppError('بحث الفواتير غير صالح', 400, 'INVALID_SALES_SEARCH')
+  }
+
+  const result = await query(
+    `SELECT sales.id::TEXT AS id, sales.store_id::TEXT AS store_id,
+            sales.document_number, sales.business_date::TEXT AS business_date,
+            sales.status, sales.currency_code, sales.customer_project_id::TEXT AS project_id,
+            customer_projects.name AS project_name, sales.total::TEXT AS total,
+            stores.name AS store_name
+     FROM sales
+     INNER JOIN customers ON customers.id = sales.customer_id AND customers.is_active = TRUE
+     INNER JOIN stores ON stores.id = sales.store_id
+     LEFT JOIN customer_projects ON customer_projects.id = sales.customer_project_id
+     WHERE sales.customer_id = $1::BIGINT AND sales.status = 'recorded'
+       AND ($2::BIGINT IS NULL OR sales.store_id = $2::BIGINT)
+       AND ($3::BIGINT IS NULL OR sales.customer_project_id = $3::BIGINT)
+       AND POSITION(LOWER($4::TEXT) IN LOWER(COALESCE(sales.document_number, ''))) > 0
+     ORDER BY sales.business_date DESC, sales.id DESC
+     LIMIT $5::INTEGER OFFSET $6::INTEGER`,
+    [customerId, activityStoreId, projectId, search.trim(), pagination.fetchLimit, pagination.offset],
+  )
+  const page = paginatedResult(result.rows, pagination)
+  response.json({ sales: page.rows, pagination: page.pagination })
 })
 
 customersRouter.get('/:customerId/statement', async (request, response) => {

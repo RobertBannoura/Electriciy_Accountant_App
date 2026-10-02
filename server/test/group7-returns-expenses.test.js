@@ -90,12 +90,14 @@ test('a failed expense balance movement rolls the expense back', async () => {
   assert.ok(!fake.commands.includes('COMMIT'))
 })
 
-function returnPool(kind, previousQuantity = '0') {
+function returnPool(kind, previousQuantity = '0', manual = false, tracksInventory = !manual) {
   const commands = []
+  const calls = []
   const client = {
     async query(sql, params = []) {
       const statement = sql.trim().replace(/\s+/g, ' ')
       commands.push(statement)
+      calls.push({ statement, params })
       if (statement === 'BEGIN' || statement === 'COMMIT' || statement === 'ROLLBACK') return { rows: [], rowCount: null }
       if (kind === 'customer' && statement.includes('FROM sales') && statement.endsWith('FOR UPDATE')) {
         return { rowCount: 1, rows: [{ id: '10', customer_id: '3', items_subtotal: '100', total: '90', document_number: 'S-10' }] }
@@ -104,10 +106,10 @@ function returnPool(kind, previousQuantity = '0') {
         return { rowCount: 1, rows: [{ id: '20', supplier_id: '4', document_number: 'P-20' }] }
       }
       if (statement.includes('FROM sale_items AS item')) {
-        return { rowCount: 1, rows: [{ id: '11', product_id: '5', description: 'سلك', quantity: '2', line_total: '100', unit_cost_snapshot: '10', unit_name: 'قطعة' }] }
+        return { rowCount: 1, rows: [{ id: '11', product_id: manual ? null : '5', tracks_inventory: tracksInventory, description: 'سلك', quantity: '2', line_total: '100', unit_cost_snapshot: tracksInventory ? '10' : '0', unit_name: manual ? null : 'قطعة' }] }
       }
       if (statement.includes('FROM purchase_items AS item')) {
-        return { rowCount: 1, rows: [{ id: '21', product_id: '5', description: 'سلك', quantity: '5', unit_cost: '20', unit_name: 'قطعة' }] }
+        return { rowCount: 1, rows: [{ id: '21', product_id: manual ? null : '5', tracks_inventory: tracksInventory, description: 'سلك', quantity: '5', unit_cost: '20', unit_name: manual ? null : 'قطعة' }] }
       }
       if (statement.includes('FROM customer_return_items') || statement.includes('FROM supplier_return_items')) {
         return previousQuantity === '0'
@@ -124,7 +126,7 @@ function returnPool(kind, previousQuantity = '0') {
     },
     release() {},
   }
-  return { commands, pool: { async connect() { return client } } }
+  return { commands, calls, pool: { async connect() { return client } } }
 }
 
 test('customer return atomically restores original cost and credits the customer', async () => {
@@ -160,6 +162,46 @@ test('supplier return atomically reverses historical purchase cost and debits th
   assert.ok(fake.commands.findIndex((sql) => sql.startsWith('SELECT id FROM products'))
     < fake.commands.findIndex((sql) => sql.includes('FROM purchase_items AS item')))
   assert.equal(fake.commands.at(-1), 'COMMIT')
+})
+
+test('full manual single-line sale and purchase returns reverse balances without stock movements', async () => {
+  for (const [kind, create, sourceDocumentId, sourceItemId, quantity, expectedCredit] of [
+    ['customer', createCustomerReturn, '10', '11', '2', '90'],
+    ['supplier', createSupplierReturn, '20', '21', '5', '100'],
+  ]) {
+    const fake = returnPool(kind, '0', true)
+    await create({
+      databasePool: fake.pool, storeId: '1', userId: '2',
+      input: { sourceDocumentId, items: [{ sourceItemId, quantity }] },
+    })
+    const itemInsert = fake.calls.find(({ statement }) => statement.startsWith(`INSERT INTO ${kind === 'customer' ? 'customer' : 'supplier'}_return_items`))
+    assert.equal(itemInsert.params[2], null)
+    assert.equal(itemInsert.params[5], kind === 'customer' ? '45' : '20')
+    assert.equal(itemInsert.params[6], expectedCredit)
+    assert.equal(itemInsert.params.at(-1), '0')
+    assert.equal(fake.commands.some((statement) => statement.startsWith('INSERT INTO inventory_movements')), false)
+    assert.equal(fake.commands.some((statement) => statement.startsWith('INSERT INTO inventory_cost_movements')), false)
+    assert.equal(fake.commands.some((statement) => statement.startsWith(`INSERT INTO ${kind === 'customer' ? 'customer' : 'supplier'}_ledger`)), true)
+    assert.equal(fake.commands.at(-1), 'COMMIT')
+  }
+})
+
+test('non-showroom catalog returns reverse the account without changing stock', async () => {
+  for (const [kind, create, sourceDocumentId, sourceItemId, quantity] of [
+    ['customer', createCustomerReturn, '10', '11', '2'],
+    ['supplier', createSupplierReturn, '20', '21', '5'],
+  ]) {
+    const fake = returnPool(kind, '0', false, false)
+    await create({
+      databasePool: fake.pool, storeId: '1', userId: '2',
+      input: { sourceDocumentId, items: [{ sourceItemId, quantity }] },
+    })
+    const itemInsert = fake.calls.find(({ statement }) => statement.startsWith(`INSERT INTO ${kind === 'customer' ? 'customer' : 'supplier'}_return_items`))
+    assert.equal(itemInsert.params[2], '5')
+    assert.equal(itemInsert.params.at(-1), '0')
+    assert.equal(fake.commands.some((statement) => statement.startsWith('INSERT INTO inventory_movements')), false)
+    assert.equal(fake.commands.some((statement) => statement.startsWith(`INSERT INTO ${kind === 'customer' ? 'customer' : 'supplier'}_ledger`)), true)
+  }
 })
 
 test('cumulative returns cannot exceed the quantity on the original line', async () => {

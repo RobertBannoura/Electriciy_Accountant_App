@@ -1,12 +1,12 @@
 import Decimal from 'decimal.js'
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { apiFetch, storeScopedApiFetch } from '../api'
 import { formatDecimal, formatQuantity } from '../money-display'
 
 type SourceItem = {
   id: string
-  product_id: string
+  product_id: string | null
   description: string
   original_quantity: string
   returnable_quantity: string
@@ -43,16 +43,20 @@ function ReturnPage({ configuredStoreId, kind, onDraftStateChange }: {
   kind: ReturnKind
   onDraftStateChange: (active: boolean) => void
 }) {
+  const [params] = useSearchParams()
+  const initialPartyId = params.get('partyId') ?? 'all'
+  const activeStoreId = window.desktop ? configuredStoreId : (params.get('storeId') ?? configuredStoreId)
   const [documents, setDocuments] = useState<SourceDocument[]>([])
   const [parties, setParties] = useState<Array<{ id: string; name: string }>>([])
-  const [partyId, setPartyId] = useState('')
-  const [partySearch, setPartySearch] = useState('')
+  const [partyId, setPartyId] = useState(initialPartyId)
+  const [partySearch, setPartySearch] = useState(params.get('partyName') ?? '')
   const sourceRequest = useRef(0)
   const [sourcePage, setSourcePage] = useState(1)
   const [hasMoreSources, setHasMoreSources] = useState(false)
   const [documentId, setDocumentId] = useState('')
   const [quantities, setQuantities] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+  const [sourcesLoaded, setSourcesLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -67,27 +71,28 @@ function ReturnPage({ configuredStoreId, kind, onDraftStateChange }: {
   const load = useCallback(async (page = 1, append = false) => {
     const requestId = ++sourceRequest.current
     if (!partyId) { setDocuments([]); setHasMoreSources(false); setLoading(false); return }
-    if (!configuredStoreId && !window.desktop) return
-    setLoading(true); setError(null)
+    if (!activeStoreId && !window.desktop) return
+    setLoading(true); setSourcesLoaded(false); setError(null)
     try {
-      const response = await scopedFetch(`/returns/${kind}/sources?page=${page}&partyId=${encodeURIComponent(partyId)}`, configuredStoreId)
+      const response = await scopedFetch(`/returns/${kind}/sources?page=${page}${partyId === 'all' ? '' : `&partyId=${encodeURIComponent(partyId)}`}`, activeStoreId)
       if (!response.ok) throw new Error(await errorMessage(response))
       const payload = (await response.json()) as { documents: SourceDocument[]; pagination: { hasMore: boolean } }
       if (requestId !== sourceRequest.current) return
       setDocuments((current) => append ? [...current, ...payload.documents] : payload.documents)
+      setSourcesLoaded(true)
       setSourcePage(page)
       setHasMoreSources(payload.pagination.hasMore)
     } catch (caught) {
       if (requestId !== sourceRequest.current) return
       setError(caught instanceof Error ? caught.message : 'تعذر تحميل الفواتير')
     } finally { if (requestId === sourceRequest.current) setLoading(false) }
-  }, [configuredStoreId, kind, partyId])
+  }, [activeStoreId, kind, partyId])
 
   useEffect(() => {
     const controller = new AbortController()
     const timer = setTimeout(() => {
       const endpoint = kind === 'customer' ? 'customers' : 'suppliers'
-      void scopedFetch(`/${endpoint}?search=${encodeURIComponent(partySearch)}`, configuredStoreId, { signal: controller.signal })
+      void scopedFetch(`/${endpoint}?search=${encodeURIComponent(partySearch)}`, activeStoreId, { signal: controller.signal })
         .then(async (response) => {
           if (!response.ok) throw new Error(await errorMessage(response))
           const payload = await response.json() as Record<string, Array<{ id: string; name: string }>>
@@ -97,11 +102,11 @@ function ReturnPage({ configuredStoreId, kind, onDraftStateChange }: {
         })
     }, 200)
     return () => { clearTimeout(timer); controller.abort() }
-  }, [configuredStoreId, kind, partySearch])
+  }, [activeStoreId, kind, partySearch])
 
   useEffect(() => {
-    setPartyId(''); setDocumentId(''); setQuantities({}); setDocuments([]); setSuccess(null)
-  }, [configuredStoreId, kind])
+    setPartyId(initialPartyId); setDocumentId(''); setQuantities({}); setDocuments([]); setSuccess(null)
+  }, [activeStoreId, kind, initialPartyId])
 
   useEffect(() => { void load() }, [load])
   useEffect(() => {
@@ -129,9 +134,9 @@ function ReturnPage({ configuredStoreId, kind, onDraftStateChange }: {
     if (items.length === 0) { setError('أدخل كمية مرتجعة لصنف واحد على الأقل'); return }
     setSaving(true)
     try {
-      const response = await scopedFetch(`/returns/${kind}`, configuredStoreId, {
+      const response = await scopedFetch(`/returns/${kind}`, activeStoreId, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partyId, sourceDocumentId: selected.id, items }),
+        body: JSON.stringify({ ...(partyId === 'all' ? {} : { partyId }), sourceDocumentId: selected.id, items }),
       })
       if (!response.ok) throw new Error(await errorMessage(response))
       const payload = (await response.json()) as { return: { document_number: string; business_date: string; total: string } }
@@ -148,24 +153,25 @@ function ReturnPage({ configuredStoreId, kind, onDraftStateChange }: {
         <div><p className="font-bold text-violet-300">مرتجع مرتبط بمستند أصلي</p><h1 className="mt-1 text-3xl font-black" id="return-title">{title}</h1></div>
         <Link className="rounded-xl bg-white px-5 py-3 font-black text-slate-900" to={kind === 'customer' ? '/sale' : '/purchases'}>عودة</Link>
       </div>
-      {!configuredStoreId && !window.desktop && <p className="mt-5 rounded-xl bg-amber-50 p-4 font-bold text-amber-900">اختر المتجر الحالي أولاً.</p>}
+      {!activeStoreId && !window.desktop && <p className="mt-5 rounded-xl bg-amber-50 p-4 font-bold text-amber-900">اختر المتجر الحالي أولاً.</p>}
       <form className="mt-6 space-y-6" onSubmit={submit}>
         <fieldset className="space-y-3" disabled={saving}>
           <legend className="mb-2 font-black">اختر {partyLabel} صاحب المرتجع</legend>
-          <input aria-label={`بحث عن ${partyLabel}`} className={inputClass} onChange={(event) => { ++sourceRequest.current; setPartySearch(event.target.value); setPartyId(''); setDocumentId(''); setQuantities({}); setDocuments([]); setSuccess(null) }} placeholder={`بحث باسم ${partyLabel} أو الهاتف`} value={partySearch} />
+          <input aria-label={`بحث عن ${partyLabel}`} className={inputClass} onChange={(event) => { ++sourceRequest.current; setPartySearch(event.target.value); setPartyId('all'); setDocumentId(''); setQuantities({}); setDocuments([]); setSuccess(null) }} placeholder={`بحث باسم ${partyLabel} أو الهاتف`} value={partySearch} />
           <select aria-label={partyLabel} className={inputClass} onChange={(event) => { ++sourceRequest.current; setPartyId(event.target.value); setDocumentId(''); setQuantities({}); setDocuments([]); setSuccess(null) }} required value={partyId}>
-            <option value="">اختر {partyLabel}</option>
+            <option value="all">كل الفواتير</option>
             {kind === 'customer' && <option value="cash">بيع نقدي بدون عميل</option>}
+            {partyId !== 'all' && partyId !== 'cash' && !parties.some((party) => party.id === partyId) && <option value={partyId}>{params.get('partyName') ?? partyLabel}</option>}
             {parties.map((party) => <option key={party.id} value={party.id}>{party.name}</option>)}
           </select>
         </fieldset>
-        {partyId && !loading && documents.length === 0 && <p className="font-bold text-slate-600">لا توجد فواتير قابلة للإرجاع لهذا الطرف في المتجر الحالي.</p>}
-        <label className="block"><span className="mb-2 block font-black">{sourceLabel}</span><select className={inputClass} disabled={saving || !partyId || loading || (!configuredStoreId && !window.desktop)} onChange={(event) => { setDocumentId(event.target.value); setQuantities({}); setSuccess(null) }} required value={documentId}><option value="">{loading ? 'جارٍ التحميل…' : 'اختر الفاتورة'}</option>{documents.map((document) => <option key={document.id} value={document.id}>{document.document_number} — {document.party_name ?? 'بيع نقدي'} — {document.business_date}</option>)}</select></label>
+        {partyId && sourcesLoaded && !loading && documents.length === 0 && <p className="font-bold text-slate-600">لا توجد فواتير قابلة للإرجاع لهذا الطرف في المتجر الحالي.</p>}
+        <label className="block"><span className="mb-2 block font-black">{sourceLabel}</span><select className={inputClass} disabled={saving || !partyId || loading || (!activeStoreId && !window.desktop)} onChange={(event) => { setDocumentId(event.target.value); setQuantities({}); setSuccess(null) }} required value={documentId}><option value="">{loading ? 'جارٍ التحميل…' : 'اختر الفاتورة'}</option>{documents.map((document) => <option key={document.id} value={document.id}>{document.document_number} — {document.party_name ?? 'بيع نقدي'} — {document.business_date}</option>)}</select></label>
         {hasMoreSources && <button className="min-h-11 rounded-xl border border-slate-300 px-5 font-black" disabled={saving || loading} onClick={() => void load(sourcePage + 1, true)} type="button">تحميل فواتير أقدم</button>}
         {selected && <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="border-b bg-slate-50 p-4 font-black">أصناف الفاتورة</div>{selected.items.map((item) => <div className="grid items-center gap-3 border-b p-4 last:border-0 sm:grid-cols-[1fr_12rem]" key={item.id}><div><p className="font-black">{item.description}</p><p className="text-sm text-slate-600">المتاح للمرتجع: {formatQuantity(item.returnable_quantity)} من أصل {formatQuantity(item.original_quantity)}</p></div><label><span className="sr-only">كمية مرتجع {item.description}</span><input className={inputClass} disabled={saving} inputMode="decimal" max={item.returnable_quantity} min="0" onChange={(event) => setQuantities((current) => ({ ...current, [item.id]: event.target.value }))} placeholder="الكمية المرتجعة" step="0.001" value={quantities[item.id] ?? ''} /></label></div>)}</div>}
         <p className="rounded-xl bg-slate-100 p-4 text-sm font-bold">يُسجل المرتجع كحركة مستقلة بتاريخ اليوم مرتبطة بالفاتورة الأصلية. تبقى كميات الفاتورة الأصلية وأسعارها وخصوماتها ومبالغها كما هي.</p>
-        {kind === 'customer' && partyId !== 'cash' && <p className="rounded-xl bg-sky-50 p-4 text-sm font-bold text-sky-900">ينشئ المرتجع رصيداً دائناً للعميل ولا يصرف مبلغاً نقدياً تلقائياً.</p>}
-        {partyId === 'cash' && <p className="rounded-xl bg-sky-50 p-4 text-sm font-bold text-sky-900">هذه الفاتورة غير مرتبطة بعميل؛ يُحفظ المرتجع على الفاتورة ولا ينشئ حركة في كشف حساب عميل أو يصرف نقداً تلقائياً.</p>}
+        {kind === 'customer' && selected?.party_name && <p className="rounded-xl bg-sky-50 p-4 text-sm font-bold text-sky-900">ينشئ المرتجع رصيداً دائناً للعميل ولا يصرف مبلغاً نقدياً تلقائياً.</p>}
+        {kind === 'customer' && selected && !selected.party_name && <p className="rounded-xl bg-sky-50 p-4 text-sm font-bold text-sky-900">هذه الفاتورة غير مرتبطة بعميل؛ يُحفظ المرتجع على الفاتورة ولا ينشئ حركة في كشف حساب عميل أو يصرف نقداً تلقائياً.</p>}
         {error && <p className="rounded-xl bg-rose-50 p-4 font-bold text-rose-800" role="alert">{error}</p>}
         {success && <p className="rounded-xl bg-emerald-50 p-4 font-bold text-emerald-900" role="status">{success}</p>}
         <button className="min-h-14 rounded-xl bg-teal-700 px-7 text-lg font-black text-white disabled:opacity-50" disabled={saving || !partyId || !selected} type="submit">{saving ? 'جارٍ الحفظ…' : `حفظ ${title}`}</button>

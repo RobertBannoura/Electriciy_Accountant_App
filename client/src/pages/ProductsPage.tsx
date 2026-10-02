@@ -90,6 +90,7 @@ export function ProductsPage({
   readOnly?: boolean
   stores: Store[]
 }) {
+  const showroomStoreId = stores.find((store) => store.code === 'SHOWROOM')?.id ?? ''
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [nameSearch, setNameSearch] = useState('')
@@ -185,9 +186,9 @@ export function ProductsPage({
       <Link className="mb-4 flex min-h-12 items-center justify-between rounded-xl bg-teal-50 px-4 font-black text-teal-800" to="/catalog-manage">كتالوج العملاء · صور الأصناف وعرضها<span aria-hidden="true">←</span></Link>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="hidden font-bold text-teal-700 sm:block">المخزون حسب المتجر</p>
+          <p className="hidden font-bold text-teal-700 sm:block">مخزون المعرض والكتالوج</p>
           <h1 className="hidden text-3xl font-black sm:mt-1 sm:block sm:text-4xl">الأصناف</h1>
-          <p className="mt-2 hidden text-sm font-bold text-slate-500 sm:block">{readOnly ? 'ابحث واعرض الكميات والأسعار في كل محل.' : 'قارئ الباركود جاهز: امسح الباركود لفتح الصنف'}</p>
+          <p className="mt-2 hidden text-sm font-bold text-slate-500 sm:block">{readOnly ? 'ابحث عن الأصناف والأسعار ومخزون المعرض.' : 'تتغير كميات المخزون من فواتير المعرض فقط. قارئ الباركود جاهز لفتح الصنف.'}</p>
         </div>
         <div className="hidden flex-wrap gap-3 sm:flex">
           <button className="min-h-12 rounded-xl border border-slate-300 bg-white px-5 font-black hover:bg-slate-100" onClick={() => setShowCategories(true)} type="button">إدارة التصنيفات</button>
@@ -263,7 +264,7 @@ export function ProductsPage({
               const visibleInventories = product.inventories
                 .filter((inventory) => !storeFilter || inventory.store_id === storeFilter)
               const displayedQuantity = storeFilter
-                ? visibleInventories[0]?.quantity ?? '0'
+                ? storeFilter === showroomStoreId ? visibleInventories[0]?.quantity ?? '0' : null
                 : product.total_quantity
               const hasLowStock = visibleInventories.some((inventory) => inventory.low_stock)
 
@@ -278,8 +279,8 @@ export function ProductsPage({
                       <p className="mt-0.5 truncate text-xs font-bold text-slate-500">{product.category_name}{product.default_sale_price ? ` · بيع ₪${formatMoney(product.default_sale_price)}` : ''}</p>
                     </div>
                     <div className="shrink-0 text-left">
-                      <p className="font-black text-teal-800" dir="ltr">{formatQuantity(displayedQuantity)} <span className="text-xs">{product.sale_unit}</span></p>
-                      <p className="text-[10px] font-bold text-slate-400">{storeFilter ? 'المحل' : 'الإجمالي'}</p>
+                      <p className="font-black text-teal-800" dir="ltr">{displayedQuantity === null ? '—' : formatQuantity(displayedQuantity)} <span className="text-xs">{displayedQuantity === null ? '' : product.sale_unit}</span></p>
+                      <p className="text-[10px] font-bold text-slate-400">{displayedQuantity === null ? 'كتالوج فقط' : 'المعرض'}</p>
                     </div>
                     <svg aria-hidden="true" className="size-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>
                   </summary>
@@ -288,10 +289,10 @@ export function ProductsPage({
                       <div className="flex items-center justify-between gap-3 border-b border-slate-200 py-2 last:border-0" key={inventory.store_id}>
                         <div className="min-w-0">
                           <p className="truncate text-sm font-black">{inventory.store_name}</p>
-                          <p className="text-xs font-bold text-violet-700">متوسط التكلفة ₪{formatMoney(inventory.weighted_average_cost)}</p>
+                          <p className="text-xs font-bold text-violet-700">{inventory.store_id === showroomStoreId ? `متوسط التكلفة ₪${formatMoney(inventory.weighted_average_cost)}` : 'كتالوج فقط · لا يُتتبع المخزون هنا'}</p>
                         </div>
                         <div className="shrink-0 text-left">
-                          <p className={`font-black ${inventory.low_stock ? 'text-amber-800' : 'text-slate-900'}`} dir="ltr">{formatQuantity(inventory.quantity)} {product.sale_unit}</p>
+                          <p className={`font-black ${inventory.low_stock ? 'text-amber-800' : 'text-slate-900'}`} dir="ltr">{inventory.store_id === showroomStoreId ? `${formatQuantity(inventory.quantity)} ${product.sale_unit}` : '—'}</p>
                           {inventory.low_stock && <p className="text-[10px] font-bold text-amber-700">الحد {formatQuantity(inventory.reorder_level)}</p>}
                         </div>
                       </div>
@@ -314,7 +315,7 @@ export function ProductsPage({
                     ) : isValidEan13(product.barcode) ? (
                       <button className="min-h-11 rounded-xl bg-indigo-50 px-4 font-black text-indigo-800 hover:bg-indigo-100" onClick={() => setBarcodePreview({ barcode: product.barcode!, name: product.name })} type="button">معاينة الباركود</button>
                     ) : null}
-                    <button className="min-h-11 rounded-xl bg-teal-50 px-4 font-black text-teal-800 hover:bg-teal-100" onClick={() => setMovementProduct(product)} type="button">حركة المخزون</button>
+                    {product.inventories.some((inventory) => inventory.store_id === showroomStoreId) && <button className="min-h-11 rounded-xl bg-teal-50 px-4 font-black text-teal-800 hover:bg-teal-100" onClick={() => setMovementProduct(product)} type="button">حركة مخزون المعرض</button>}
                     <button className="min-h-11 rounded-xl bg-slate-100 px-4 font-black hover:bg-slate-200" onClick={() => setEditingProduct(product)} type="button">تعديل</button>
                     <button className="min-h-11 rounded-xl px-3 font-bold text-rose-700 hover:bg-rose-50" onClick={() => void removeProduct(product)} type="button">حذف</button>
                   </div>
@@ -325,17 +326,10 @@ export function ProductsPage({
                     .map((inventory) => (
                     <div className={`min-w-48 rounded-xl border p-4 ${inventory.low_stock ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-slate-50'}`} key={inventory.store_id}>
                       <p className="font-bold text-slate-600">{inventory.store_name}</p>
-                      <p className="mt-1 text-2xl font-black">{formatQuantity(inventory.quantity)} <span className="text-base">{product.sale_unit}</span></p>
-                      <p className="mt-1 text-sm font-bold text-violet-800">متوسط التكلفة: ₪{formatMoney(inventory.weighted_average_cost)}</p>
+                      {inventory.store_id === showroomStoreId ? <><p className="mt-1 text-2xl font-black">{formatQuantity(inventory.quantity)} <span className="text-base">{product.sale_unit}</span></p><p className="mt-1 text-sm font-bold text-violet-800">متوسط التكلفة: ₪{formatMoney(inventory.weighted_average_cost)}</p></> : <p className="mt-1 text-sm font-bold text-slate-600">كتالوج فقط · لا يُتتبع المخزون هنا</p>}
                       {inventory.low_stock && <p className="mt-1 text-sm font-black text-amber-800">مخزون منخفض · الحد {formatQuantity(inventory.reorder_level)}</p>}
                     </div>
                   ))}
-                  {!storeFilter && product.inventories.length > 1 && (
-                    <div className="min-w-48 rounded-xl border border-teal-200 bg-teal-50 p-4">
-                      <p className="font-bold text-teal-800">الإجمالي</p>
-                      <p className="mt-1 text-2xl font-black text-teal-950">{formatQuantity(product.total_quantity)} <span className="text-base">{product.sale_unit}</span></p>
-                    </div>
-                  )}
                 </div>
               </article>
               </div>
@@ -345,7 +339,7 @@ export function ProductsPage({
       </div>
 
       {!readOnly && editingProduct !== undefined && <ProductEditor categories={categories} defaultStoreId={defaultStoreId} onClose={() => setEditingProduct(undefined)} onSaved={() => { setEditingProduct(undefined); void loadProducts() }} product={editingProduct} stores={stores} />}
-      {movementProduct && <MovementEditor onClose={() => setMovementProduct(null)} onSaved={() => { setMovementProduct(null); void loadProducts() }} product={movementProduct} />}
+      {movementProduct && <MovementEditor onClose={() => setMovementProduct(null)} onSaved={() => { setMovementProduct(null); void loadProducts() }} product={movementProduct} showroomStoreId={showroomStoreId} />}
       {showCategories && <CategoryEditor categories={categories} onCategoriesChanged={async () => { await loadCategories(); await loadProducts() }} onClose={() => setShowCategories(false)} />}
       {barcodePreview && <BarcodeDialog barcode={barcodePreview.barcode} onClose={() => setBarcodePreview(null)} productName={barcodePreview.name} />}
     </section>
@@ -396,7 +390,9 @@ function ProductEditor({ categories, defaultStoreId, onClose, onSaved, product, 
     event.preventDefault()
     const inventorySettings = stores
       .filter((store) => form.stores[store.id]?.enabled)
-      .map((store) => ({ storeId: store.id, reorderLevel: form.stores[store.id].reorderLevel, ...(!product ? { openingQuantity: form.stores[store.id].openingQuantity } : {}) }))
+      .map((store) => ({ storeId: store.id,
+        reorderLevel: store.code === 'SHOWROOM' ? form.stores[store.id].reorderLevel : '0',
+        ...(!product ? { openingQuantity: store.code === 'SHOWROOM' ? form.stores[store.id].openingQuantity : '0' } : {}) }))
     if (inventorySettings.length === 0) {
       setError('يجب اختيار متجر واحد على الأقل للصنف')
       return
@@ -435,7 +431,9 @@ function ProductEditor({ categories, defaultStoreId, onClose, onSaved, product, 
               return (
                 <div className={`rounded-xl border p-4 ${setting.enabled ? 'border-teal-300 bg-teal-50' : 'border-slate-200'}`} key={store.id}>
                   <label className="flex cursor-pointer items-center gap-3 text-lg font-black"><input checked={setting.enabled} className="size-5 accent-teal-700" onChange={(event) => updateStore(store.id, { enabled: event.target.checked })} type="checkbox" />{store.name}</label>
-                  {setting.enabled && <div className="mt-4 grid gap-3"><Field hint={form.saleUnit === 'قطعة' ? 'عدد صحيح' : 'يمكن إدخال كسر'} label="حد التنبيه"><input className={inputClass} inputMode="decimal" onChange={(event) => updateStore(store.id, { reorderLevel: event.target.value })} required value={setting.reorderLevel} /></Field>{!product && <Field label="الكمية الافتتاحية"><input className={inputClass} inputMode="decimal" onChange={(event) => updateStore(store.id, { openingQuantity: event.target.value })} required value={setting.openingQuantity} /></Field>}</div>}
+                  {setting.enabled && (store.code === 'SHOWROOM'
+                    ? <div className="mt-4 grid gap-3"><Field hint={form.saleUnit === 'قطعة' ? 'عدد صحيح' : 'يمكن إدخال كسر'} label="حد التنبيه"><input className={inputClass} inputMode="decimal" onChange={(event) => updateStore(store.id, { reorderLevel: event.target.value })} required value={setting.reorderLevel} /></Field>{!product && <Field label="الكمية الافتتاحية"><input className={inputClass} inputMode="decimal" onChange={(event) => updateStore(store.id, { openingQuantity: event.target.value })} required value={setting.openingQuantity} /></Field>}</div>
+                    : <p className="mt-3 text-sm font-bold text-slate-600">متاح في الكتالوج دون تتبع مخزون لهذا المحل.</p>)}
                 </div>
               )
             })}
@@ -449,8 +447,8 @@ function ProductEditor({ categories, defaultStoreId, onClose, onSaved, product, 
   )
 }
 
-function MovementEditor({ onClose, onSaved, product }: { onClose: () => void; onSaved: () => void; product: Product }) {
-  const [storeId, setStoreId] = useState(product.inventories[0]?.store_id ?? '')
+function MovementEditor({ onClose, onSaved, product, showroomStoreId }: { onClose: () => void; onSaved: () => void; product: Product; showroomStoreId: string }) {
+  const storeId = showroomStoreId
   const [movementType, setMovementType] = useState<MovementType>('correction')
   const [quantity, setQuantity] = useState('')
   const [reason, setReason] = useState('')
@@ -490,7 +488,7 @@ function MovementEditor({ onClose, onSaved, product }: { onClose: () => void; on
   return (
     <Modal onClose={onClose} title={`مخزون: ${product.name}`} wide>
       <form className="mt-6 grid gap-4 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2" onSubmit={save}>
-        <Field label="المتجر"><select className={inputClass} onChange={(event) => setStoreId(event.target.value)} value={storeId}>{product.inventories.map((inventory) => <option key={inventory.store_id} value={inventory.store_id}>{inventory.store_name}</option>)}</select></Field>
+        <Field label="المتجر"><input className={inputClass} readOnly value="المعرض" /></Field>
         <Field label="نوع الحركة"><select className={inputClass} onChange={(event) => { setMovementType(event.target.value as MovementType); setQuantity('') }} value={movementType}>{Object.entries(movementLabels).filter(([value]) => value !== 'customer_return' && value !== 'supplier_return').map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
         <Field hint={movementType === 'correction' || movementType === 'reversal' ? 'استخدم السالب للإنقاص والموجب للزيادة' : 'أدخل الكمية موجبة وسيُحدد النظام اتجاهها'} label="الكمية"><input className={inputClass} inputMode="decimal" onChange={(event) => setQuantity(event.target.value)} required value={quantity} /></Field>
         <Field label="السبب أو الملاحظة"><input className={inputClass} maxLength={500} onChange={(event) => setReason(event.target.value)} value={reason} /></Field>
@@ -539,7 +537,7 @@ function BarcodeDialog({ barcode, onClose, productName }: { barcode: string; onC
 function createProductForm(product: Product | null, stores: Store[], defaultStoreId: string | null): ProductForm {
   const settings = Object.fromEntries(stores.map((store, index) => {
     const inventory = product?.inventories.find((item) => item.store_id === store.id)
-    return [store.id, { enabled: Boolean(inventory) || (!product && (store.id === defaultStoreId || (!defaultStoreId && index === 0))), reorderLevel: inventory?.reorder_level ?? '0', openingQuantity: '0' }]
+    return [store.id, { enabled: Boolean(inventory) || (!product && (store.code === 'SHOWROOM' || store.id === defaultStoreId || (!defaultStoreId && index === 0))), reorderLevel: inventory?.reorder_level ?? '0', openingQuantity: '0' }]
   }))
   return { name: product?.name ?? '', barcode: product?.barcode ?? '', categoryId: product?.category_id ?? '', currentPurchasePrice: product?.current_purchase_price ?? '', defaultSalePrice: product?.default_sale_price ?? '', saleUnit: product?.sale_unit ?? 'قطعة', notes: product?.notes ?? '', stores: settings }
 }

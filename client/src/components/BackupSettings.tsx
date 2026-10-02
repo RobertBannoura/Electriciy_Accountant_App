@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { apiFetch } from '../api'
 
 type BackupStatus = {
@@ -38,10 +39,17 @@ function formatBackupDate(timestamp: string) {
 
 export function BackupSettings() {
   const desktop = window.desktop
+  const { hash } = useLocation()
   const [status, setStatus] = useState<BackupStatus | null>(null)
   const [state, setState] = useState<OperationState>('idle')
   const [message, setMessage] = useState<string | null>(null)
   const [selected, setSelected] = useState<SelectedBackup | null>(null)
+
+  useEffect(() => {
+    if (!desktop || hash !== '#backup-settings') return
+    const frame = window.requestAnimationFrame(() => document.getElementById('backup-settings')?.scrollIntoView({ block: 'start' }))
+    return () => window.cancelAnimationFrame(frame)
+  }, [desktop, hash])
 
   useEffect(() => {
     if (!desktop) return
@@ -172,8 +180,9 @@ export function BackupSettings() {
   }
 
   return (
-    <div className="mt-10 border-t border-slate-200 pt-8">
+    <div className="mt-10 scroll-mt-5 border-t border-slate-200 pt-8" id="backup-settings">
       <h2 className="text-xl font-black">النسخ الاحتياطي والاستعادة</h2>
+      <p className="mt-2 font-bold leading-7 text-amber-800">يظهر تذكير شهري لحفظ نسخة على قرص خارجي أو USB. اختر مجلد النسخ الشهرية على القرص، ثم أبقه موصولاً حتى اكتمال النسخ.</p>
       <p className="mt-2 leading-7 text-slate-600">
         ينشئ النظام نسخة تلقائية يوميًا عند تشغيل التطبيق وتوفر الاتصال. يحتفظ بآخر 7 ملفات نسخ يومية في المجلد المحلي؛ وبعد حفظ نسخة جديدة يحذف الأقدم فقط إذا تجاوز العدد 7. ينشئ أيضًا نسخة واحدة كل شهر في مجلد USB المحدد، ويعيد المحاولة عند توصيله.
       </p>

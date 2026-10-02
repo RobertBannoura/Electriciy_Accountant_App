@@ -40,23 +40,36 @@ export async function createCustomerReturn({ databasePool = pool, input, storeId
     await client.query(
       `SELECT id FROM products
        WHERE id IN (SELECT product_id FROM sale_items
-                    WHERE sale_id = $1::BIGINT AND id = ANY($2::BIGINT[]))
+                    WHERE sale_id = $1::BIGINT AND id = ANY($2::BIGINT[])
+                      AND COALESCE(tracks_inventory, product_id IS NOT NULL))
        ORDER BY id FOR UPDATE`,
       [sale.id, itemIds],
+    )
+    await client.query(
+      `SELECT product_id FROM store_inventory
+       WHERE store_id = $1::BIGINT AND product_id IN
+         (SELECT product_id FROM sale_items WHERE sale_id = $2::BIGINT
+            AND id = ANY($3::BIGINT[])
+            AND COALESCE(tracks_inventory, product_id IS NOT NULL))
+       ORDER BY product_id FOR UPDATE`,
+      [storeId, sale.id, itemIds],
     )
     const itemResult = await client.query(
       `SELECT item.id::TEXT AS id, item.product_id::TEXT AS product_id,
         item.description, item.quantity::TEXT AS quantity,
         item.line_total::TEXT AS line_total,
         item.unit_cost_snapshot::TEXT AS unit_cost_snapshot,
+        COALESCE(item.tracks_inventory, item.product_id IS NOT NULL) AS tracks_inventory,
         products.unit_name
        FROM sale_items AS item
-       INNER JOIN products ON products.id = item.product_id
-       INNER JOIN store_inventory AS inventory
+       LEFT JOIN products ON products.id = item.product_id
+       LEFT JOIN store_inventory AS inventory
          ON inventory.store_id = $2::BIGINT AND inventory.product_id = item.product_id
        WHERE item.sale_id = $1::BIGINT AND item.id = ANY($3::BIGINT[])
+         AND (NOT COALESCE(item.tracks_inventory, item.product_id IS NOT NULL) OR
+           (products.id IS NOT NULL AND inventory.product_id IS NOT NULL))
        ORDER BY item.product_id, item.id
-       FOR UPDATE OF item, products, inventory`,
+       FOR UPDATE OF item`,
       [sale.id, storeId, itemIds],
     )
     if (itemResult.rowCount !== itemIds.length) {
@@ -78,10 +91,10 @@ export async function createCustomerReturn({ databasePool = pool, input, storeId
        FROM store_inventory_balances
        WHERE store_id = $1::BIGINT
          AND product_id = ANY($2::BIGINT[])`,
-      [storeId, [...new Set(itemResult.rows.map((row) => row.product_id))]],
+      [storeId, [...new Set(itemResult.rows.filter((row) => row.tracks_inventory).map((row) => row.product_id))]],
     )
     const inventoryBalances = new Map(inventoryResult.rows.map((row) => [row.product_id, row.quantity]))
-    for (const productId of new Set(itemResult.rows.map((row) => row.product_id))) {
+    for (const productId of new Set(itemResult.rows.filter((row) => row.tracks_inventory).map((row) => row.product_id))) {
       const balance = await readInventoryCostBalance(client, storeId, productId)
       if (!new ReturnDecimal(balance.quantity).equals(inventoryBalances.get(productId) ?? '0')) {
         throw new AppError('رصيد تكلفة الصنف غير متطابق مع المخزون', 409, 'INVENTORY_COST_OUT_OF_SYNC')
@@ -200,6 +213,7 @@ export async function createCustomerReturn({ databasePool = pool, input, storeId
 function groupCustomerReturnLines(lines) {
   const groups = new Map()
   for (const line of lines) {
+    if (!line.tracks_inventory) continue
     const group = groups.get(line.product_id) ?? {
       productId: line.product_id, quantity: new ReturnDecimal(0), cost: new ReturnDecimal(0),
     }

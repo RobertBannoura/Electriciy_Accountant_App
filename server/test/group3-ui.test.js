@@ -16,7 +16,7 @@ test('products page uses the reusable scanner hook for barcode lookup', async ()
   assert.match(hook, /now - lastKeyAt <= maxInterKeyDelayMs/)
 })
 
-test('products page exposes all Group 3 filters, movements, and store-aware totals', async () => {
+test('products page exposes catalog filters and showroom-only inventory controls', async () => {
   const page = await readFile(clientUrl('src/pages/ProductsPage.tsx'), 'utf8')
 
   for (const label of [
@@ -26,12 +26,12 @@ test('products page exposes all Group 3 filters, movements, and store-aware tota
     'كل المتاجر',
     'مخزون منخفض',
     'حركة المخزون',
-    'الإجمالي',
   ]) {
     assert.match(page, new RegExp(label))
   }
-  assert.match(page, /product\.inventories\.length > 1/)
-  assert.match(page, /!storeFilter &&/)
+  assert.match(page, /store\.code === 'SHOWROOM'/)
+  assert.match(page, /inventory\.store_id === showroomStoreId/)
+  assert.match(page, /storeFilter === showroomStoreId/)
 })
 
 test('generated EAN-13 barcodes have a preview and generic print action', async () => {

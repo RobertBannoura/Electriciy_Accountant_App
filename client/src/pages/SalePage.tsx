@@ -16,6 +16,7 @@ import { currencySymbol, formatDecimal, formatQuantity } from '../money-display'
 import { InvoiceOutput } from '../components/InvoiceOutput'
 import type { SavedInvoice } from '../components/InvoiceOutput'
 import { SaleNamePicker } from '../components/SaleNamePicker'
+import type { Store } from '../types'
 import { nameKey, rankNameMatches } from '../../../server/src/customers/name-matching.js'
 
 type ProductInventory = {
@@ -248,10 +249,13 @@ async function errorMessage(response: Response) {
 export function SalePage({
   configuredStoreId,
   onDraftStateChange,
+  stores,
 }: {
   configuredStoreId: string | null
   onDraftStateChange: (active: boolean) => void
+  stores: Store[]
 }) {
+  const tracksStoreInventory = stores.some((store) => store.id === configuredStoreId && store.code === 'SHOWROOM')
   const [step, setStep] = useState<'items' | 'payment'>('items')
   const [search, setSearch] = useState('')
   const [results, setResults] = useState<SaleProduct[]>([])
@@ -707,7 +711,7 @@ export function SalePage({
 
     setSaving(true)
     setError(null)
-    setMessage('جارٍ حفظ الفاتورة وخصم المخزون وتسجيل الدفعات…')
+    setMessage(tracksStoreInventory ? 'جارٍ حفظ الفاتورة وخصم مخزون المعرض وتسجيل الدفعات…' : 'جارٍ حفظ الفاتورة وتسجيل الدفعات…')
     try {
       const response = await saleApiFetch('/sales', {
         method: 'POST',
@@ -937,7 +941,7 @@ export function SalePage({
 
         <div className="order-1 min-w-0 min-[1150px]:order-2" dir="rtl">
       <div className="relative rounded-3xl border-2 border-teal-200 bg-white p-4 shadow-lg shadow-teal-900/5">
-        <span className="mb-2 block text-lg font-black" id="sale-product-search-label">أضف صنفاً من المخزون</span>
+        <span className="mb-2 block text-lg font-black" id="sale-product-search-label">{tracksStoreInventory ? 'أضف صنفاً من مخزون المعرض' : 'أضف صنفاً من الكتالوج'}</span>
         <label aria-labelledby="sale-product-search-label" className="block" htmlFor="sale-product-search">
           <div className="flex min-h-14 items-center gap-3 rounded-2xl border-2 border-slate-300 bg-white px-4 focus-within:border-teal-600 focus-within:ring-4 focus-within:ring-teal-100">
             <svg aria-hidden="true" className="size-7 shrink-0 text-teal-700" fill="none" viewBox="0 0 24 24">
@@ -1000,7 +1004,7 @@ export function SalePage({
             {searching && <span className="shrink-0 font-bold text-slate-500" role="status">جارٍ البحث…</span>}
           </div>
         </label>
-        <p className="mt-2 text-sm font-bold text-slate-500">ابحث في المخزون، أو اكتب الصنف مباشرة في السطر الجاهز داخل الجدول.</p>
+        <p className="mt-2 text-sm font-bold text-slate-500">{tracksStoreInventory ? 'ابحث في مخزون المعرض، أو اكتب الصنف مباشرة في السطر الجاهز داخل الجدول.' : 'أصناف الكتالوج على هذه الفاتورة لا تغيّر مخزون المعرض. يمكنك أيضاً كتابة صنف مباشرة.'}</p>
 
         {search.trim() && productSearchOpen && !searching && (
           <div className="absolute inset-x-4 top-full z-20 mt-2 overflow-hidden rounded-2xl border-2 border-slate-200 bg-white shadow-2xl sm:inset-x-6" aria-label="نتائج البحث">
@@ -1013,7 +1017,7 @@ export function SalePage({
                     <div className="min-w-0">
                       <p className="text-lg font-black">{product.name}</p>
                       <p className="mt-1 font-bold text-slate-600">
-                        {product.sale_unit} · المتوفر {formatQuantity(resultStock(product))}
+                        {product.sale_unit}{tracksStoreInventory ? ` · المتوفر ${formatQuantity(resultStock(product))}` : ' · بدون تتبع مخزون'}
                         {product.default_sale_price === null
                           ? ' · السعر غير محدد'
                           : ` · السعر الافتراضي ${formatDecimal(product.default_sale_price)}`}

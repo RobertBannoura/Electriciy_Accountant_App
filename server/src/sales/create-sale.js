@@ -27,12 +27,13 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
     await client.query('BEGIN')
     await claimFinancialOperation(client, { userId, operation })
     const storeResult = await client.query(
-      'SELECT id FROM stores WHERE id = $1::BIGINT AND is_active = TRUE FOR SHARE',
+      'SELECT id, code FROM stores WHERE id = $1::BIGINT AND is_active = TRUE FOR SHARE',
       [storeId],
     )
     if (storeResult.rowCount === 0) {
       throw new AppError('المتجر غير موجود أو غير فعال', 404, 'STORE_NOT_FOUND')
     }
+    const tracksStoreInventory = storeResult.rows[0].code === 'SHOWROOM'
     const parties = await resolveSaleParties(client, input)
     input = { ...input, customerId: parties.customerId, customerProjectId: parties.customerProjectId }
     await requireCustomerAndProject(client, input.customerId, input.customerProjectId)
@@ -107,8 +108,9 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
       throw new AppError(paymentBreakdown.error, 400, 'INVALID_SALE_PAYMENTS')
     }
 
-    const requestedByProduct = aggregateRequestedQuantities(calculated.value.items)
-    const balanceResult = productIds.length === 0
+    const requestedByProduct = tracksStoreInventory
+      ? aggregateRequestedQuantities(calculated.value.items) : new Map()
+    const balanceResult = !tracksStoreInventory || productIds.length === 0
       ? { rows: [] }
       : await client.query(
         `
@@ -134,7 +136,7 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
     }
 
     const costBalances = new Map()
-    for (const productId of productIds) {
+    for (const productId of tracksStoreInventory ? productIds : []) {
       const costBalance = await readInventoryCostBalance(client, storeId, productId)
       const inventoryQuantity = balances.get(productId) ?? new InventoryDecimal(0)
       if (!new InventoryDecimal(costBalance.quantity).equals(inventoryQuantity)) {
@@ -148,7 +150,7 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
     }
     let saleCostTotal = new InventoryDecimal(0)
     const costedItems = calculated.value.items.map((item) => {
-      if (item.productId === null) {
+      if (!tracksStoreInventory || item.productId === null) {
         return {
           ...item,
           unitCostSnapshot: '0',
@@ -225,15 +227,15 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
           INSERT INTO sale_items (
             sale_id, product_id, description, quantity, original_unit_price,
             unit_price, line_discount, line_total, unit_cost_snapshot,
-            cost_total, gross_profit_before_invoice_discount
+            cost_total, gross_profit_before_invoice_discount, tracks_inventory
           ) VALUES (
             $1::BIGINT, $2::BIGINT, $3, $4::NUMERIC, $5::NUMERIC,
             $6::NUMERIC, $7::NUMERIC, $8::NUMERIC, $9::NUMERIC,
-            $10::NUMERIC, $11::NUMERIC
+            $10::NUMERIC, $11::NUMERIC, $12::BOOLEAN
           )
           RETURNING
             id::TEXT AS id,
-            product_id::TEXT AS product_id,
+            product_id::TEXT AS product_id, tracks_inventory,
             description,
             quantity::TEXT AS quantity,
             original_unit_price::TEXT AS original_price,
@@ -256,6 +258,7 @@ export async function createSale({ databasePool = pool, input, storeId, userId, 
           item.unitCostSnapshot,
           item.costTotal,
           item.grossProfitBeforeInvoiceDiscount,
+          tracksStoreInventory && item.productId !== null,
         ],
       )
       savedItems.push(itemResult.rows[0])
