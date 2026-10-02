@@ -1,6 +1,5 @@
 export const USERNAME_MAX_LENGTH = 64
 export const PASSWORD_MAX_LENGTH = 1024
-export const PROVISIONED_PASSWORD_MIN_LENGTH = 15
 
 export function normalizeUsername(value) {
   if (typeof value !== 'string') {
@@ -25,8 +24,5 @@ export function isValidLoginPassword(value) {
 }
 
 export function isValidProvisionedPassword(value) {
-  return (
-    isValidLoginPassword(value) &&
-    [...value].length >= PROVISIONED_PASSWORD_MIN_LENGTH
-  )
+  return isValidLoginPassword(value)
 }

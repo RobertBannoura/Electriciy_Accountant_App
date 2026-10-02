@@ -29,10 +29,11 @@ test('normalizes login usernames and validates credential bounds', () => {
   assert.equal(normalizeUsername('a'.repeat(65)), null)
   assert.equal(isValidLoginPassword('short'), true)
   assert.equal(isValidLoginPassword(''), false)
-  assert.equal(isValidProvisionedPassword('short'), false)
-  assert.equal(isValidProvisionedPassword('fourteen-char!'), false)
-  assert.equal(isValidProvisionedPassword('🔐'.repeat(8)), false)
+  assert.equal(isValidProvisionedPassword('a'), true)
+  assert.equal(isValidProvisionedPassword('short'), true)
   assert.equal(isValidProvisionedPassword('fifteen-chars!!'), true)
+  assert.equal(isValidProvisionedPassword(''), false)
+  assert.equal(isValidProvisionedPassword('a'.repeat(1025)), false)
 })
 
 test('hashes passwords with unique salts and verifies them safely', async () => {
@@ -49,7 +50,7 @@ test('hashes passwords with unique salts and verifies them safely', async () => 
   assert.equal(await verifyPassword('a-secure-password', `${firstHash}$extra`), false)
 })
 
-test('allows a short admin password only through the explicit local-development provision option', async () => {
+test('allows a short admin password without a minimum-length policy', async () => {
   const calls = []
   const client = {
     async query(text, params) {
@@ -66,20 +67,10 @@ test('allows a short admin password only through the explicit local-development 
     },
   }
 
-  await assert.rejects(
-    provisionAdmin(client, {
-      username: 'admin',
-      password: 'admin',
-      displayName: 'المدير',
-    }),
-    /at least 15 characters/,
-  )
-
   const admin = await provisionAdmin(client, {
     username: 'admin',
     password: 'admin',
     displayName: 'المدير',
-    allowLocalDevelopmentPassword: true,
   })
 
   assert.equal(admin.username, 'admin')
@@ -180,7 +171,7 @@ test('revokes existing sessions when the admin password is reprovisioned', async
   assert.deepEqual(calls[2].params, ['7'])
 })
 
-test('allows the admin testing password only in development', async () => {
+test('allows a short admin password in production', async () => {
   const previousNodeEnv = process.env.NODE_ENV
   const client = {
     async query(text) {
@@ -194,16 +185,6 @@ test('allows the admin testing password only in development', async () => {
 
   try {
     process.env.NODE_ENV = 'production'
-    await assert.rejects(
-      provisionAdmin(client, {
-        username: 'admin',
-        password: 'admin',
-        displayName: 'المدير',
-      }),
-      /at least 15 characters/,
-    )
-
-    process.env.NODE_ENV = 'development'
     const result = await provisionAdmin(client, {
       username: 'admin',
       password: 'admin',

@@ -3,23 +3,12 @@ import test from 'node:test'
 import { provisionAdmin } from '../src/auth/provision-admin.js'
 import { verifyPassword } from '../src/auth/password.js'
 
-test('short trial admin credential requires both explicit trial flags and provisioning opt-in', async () => {
+test('short trial admin credential is accepted and stored only as a hash', async () => {
   const originalNodeEnv = process.env.NODE_ENV
   const originalTrial = process.env.TRIAL_OFFLINE
-  const unavailableDatabase = { query: () => { throw new Error('Database should not be reached') } }
   try {
-    process.env.NODE_ENV = 'production'
-    delete process.env.TRIAL_OFFLINE
-    await assert.rejects(provisionAdmin(unavailableDatabase, {
-      username: 'admin', password: 'admin', allowOfflineTrialPassword: true,
-    }), /ADMIN_PASSWORD/)
-
     process.env.NODE_ENV = 'trial'
     process.env.TRIAL_OFFLINE = '1'
-    await assert.rejects(provisionAdmin(unavailableDatabase, {
-      username: 'admin', password: 'admin',
-    }), /ADMIN_PASSWORD/)
-
     let storedHash = null
     const database = {
       query: async (sql, parameters) => {
@@ -33,7 +22,6 @@ test('short trial admin credential requires both explicit trial flags and provis
     }
     const admin = await provisionAdmin(database, {
       username: 'admin', password: 'admin', displayName: 'Admin',
-      allowOfflineTrialPassword: true,
     })
     assert.equal(admin.username, 'admin')
     assert.equal(await verifyPassword('admin', storedHash), true)

@@ -35,7 +35,7 @@ export async function provisionAdmin(
     || (process.env.NODE_ENV === 'development' && password === 'admin')
 
   if (!passwordIsAllowed) {
-    throw new Error('ADMIN_PASSWORD must contain at least 15 characters.')
+    throw new Error('ADMIN_PASSWORD must be non-empty and at most 1024 characters.')
   }
 
   if (normalizedDisplayName.length === 0 || normalizedDisplayName.length > 100) {
