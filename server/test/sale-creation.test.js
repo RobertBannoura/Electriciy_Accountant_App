@@ -7,6 +7,7 @@ function fakeDatabase({
   balanceQuantity = '20',
   failOnSecondItem = false,
   failOnBankMovement = false,
+  storeCode = 'SHOWROOM',
 } = {}) {
   const state = {
     commands: [], itemInserts: [], movementInserts: [], paymentInserts: [],
@@ -22,8 +23,8 @@ function fakeDatabase({
       if (statement === 'BEGIN' || statement === 'COMMIT' || statement === 'ROLLBACK') {
         return { rowCount: null, rows: [] }
       }
-      if (statement.startsWith('SELECT id FROM stores')) {
-        return { rowCount: 1, rows: [{ id: '2' }] }
+      if (statement.startsWith('SELECT id, code FROM stores')) {
+        return { rowCount: 1, rows: [{ id: '2', code: storeCode }] }
       }
       if (statement.startsWith('SELECT id FROM customers')) {
         return { rowCount: 1, rows: [{ id: '9' }] }
@@ -230,6 +231,17 @@ test('manual sale lines save as invoice-only revenue without inventory movements
   assert.deepEqual(state.itemInserts[0].slice(8, 11), ['0', '0', '50'])
   assert.equal(state.movementInserts.length, 0)
   assert.equal(state.costMovements.length, 0)
+})
+
+test('catalog sale outside the showroom records revenue without consuming inventory', async () => {
+  const { databasePool, state } = fakeDatabase({ storeCode: 'AL_SALAM_ELECTRIC', balanceQuantity: '0' })
+  const sale = await createSale({ databasePool, input, storeId: '2', userId: '5' })
+  assert.equal(sale.cost_total, '0')
+  assert.equal(state.itemInserts.length, 2)
+  assert.equal(state.itemInserts.every((params) => params[1] === '7' && params[11] === false), true)
+  assert.equal(state.movementInserts.length, 0)
+  assert.equal(state.costMovements.length, 0)
+  assert.equal(state.commands.at(-1), 'COMMIT')
 })
 
 test('insufficient inventory rolls back before creating any sale records', async () => {

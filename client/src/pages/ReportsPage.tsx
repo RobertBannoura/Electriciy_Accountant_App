@@ -147,7 +147,7 @@ export function ReportsPage({ stores }: { stores: Store[] }) {
       { key: 'expenses' as const, label: 'المصاريف', value: formatIls(summary.expenses) },
       { key: 'customerDebt' as const, label: 'ديون العملاء', value: formatIls(summary.customer_debt) },
       { key: 'supplierDebt' as const, label: 'ديون الموردين', value: formatIls(summary.supplier_debt) },
-      { key: 'inventory' as const, label: 'المخزون', value: formatIls(summary.inventory_value) },
+      { key: 'inventory' as const, label: 'مخزون المعرض', value: formatIls(summary.inventory_value) },
       { key: 'money' as const, label: 'حركة الأموال', value: formatIls(summary.net_ils) },
       { key: 'checks' as const, label: 'الشيكات', value: `${summary.check_count} شيك` },
       { key: 'comparison' as const, label: 'مقارنة المحلين', value: `${report.store_comparison.length} محل` },
@@ -252,7 +252,7 @@ function ReportDetail({ report, selected }: { report: ReportResponse; selected: 
       </>}
 
       {simple[selected] && <>
-        <h2 className="text-2xl font-black">{selected === 'inventory' ? 'المخزون' : 'تفاصيل التقرير'}</h2>
+        <h2 className="text-2xl font-black">{selected === 'inventory' ? 'مخزون المعرض' : 'تفاصيل التقرير'}</h2>
         <div className="mt-4">{simple[selected]?.map(([label, value]) => <MetricRow key={label} label={label} value={value} />)}</div>
       </>}
 

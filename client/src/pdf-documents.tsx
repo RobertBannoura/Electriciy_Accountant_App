@@ -220,7 +220,7 @@ export function statementEntryLabel(entry: PdfStatementEntry, kind: PdfAccountSt
 
 function StatementHeader({ statement }: { statement: PdfAccountStatement }) {
   return <View>
-    <Text style={styles.title}>طلبية تسعير</Text>
+    <Text style={styles.title}>{statement.kind === 'customer' ? 'كشف حساب عميل' : 'كشف حساب مورد'} — {statement.party.name}</Text>
     <View style={styles.metaGrid}>
       <Text style={styles.meta}>الاسم: {statement.party.name}</Text>
       <Text style={styles.meta}>الهاتف: {statement.party.phone ?? '—'}</Text>
@@ -272,7 +272,7 @@ function StatementPdfDocument({ statement }: { statement: PdfAccountStatement })
     return result
   }, [[]])
 
-  return <Document title="طلبية تسعير">
+  return <Document title={`${statement.kind === 'customer' ? 'كشف حساب عميل' : 'كشف حساب مورد'} - ${statement.party.name}`}>
     {pages.map((entries, pageIndex) => <Page key={pageIndex} size="A4" style={styles.page}>
       <StatementHeader statement={statement} />
       {pageIndex === 0 && <View style={styles.balance}>
@@ -301,10 +301,11 @@ function StatementPdfDocument({ statement }: { statement: PdfAccountStatement })
 }
 
 function InvoiceHeader({ invoice, receipt }: { invoice: SavedInvoice; receipt: boolean }) {
+  const personName = invoice.customer_name?.trim() || invoice.receiver_name?.trim() || 'بدون اسم'
   return <>
-    <Text style={receipt ? styles.receiptTitle : styles.title}>طلبية تسعير</Text>
+    <Text style={receipt ? styles.receiptTitle : styles.title}>فاتورة بيع — {personName}</Text>
     <View style={[styles.invoiceHeading, receipt ? styles.receiptInvoiceHeading : {}]}>
-      <Text style={styles.rtl}>رقم الطلبية: {invoice.invoice_number}</Text>
+      <Text style={styles.rtl}>رقم الفاتورة: {invoice.invoice_number}</Text>
       <Text style={styles.rtl}>التاريخ: {invoice.business_date}</Text>
       <Text style={styles.rtl}>العميل: {invoice.customer_name ?? 'بدون عميل'}</Text>
       <Text style={styles.rtl}>المستلم: {invoice.receiver_name ?? ''}</Text>
@@ -336,7 +337,7 @@ function InvoiceRow({ item, receipt }: { item: SavedInvoice['items'][number]; re
 function InvoicePdfDocument({ invoice, size }: { invoice: SavedInvoice; size: 'A4' | '80mm' }) {
   const receipt = size === '80mm'
   const columns = receipt ? receiptInvoiceColumns : invoiceColumns
-  return <Document title={`طلبية تسعير ${invoice.invoice_number}`}>
+  return <Document title={`فاتورة بيع - ${invoice.customer_name?.trim() || invoice.receiver_name?.trim() || 'بدون اسم'} - ${invoice.invoice_number}`}>
     <Page size={receipt ? [226.77, 566.93] : 'A4'} style={receipt ? styles.receiptPage : styles.page}>
       <InvoiceHeader invoice={invoice} receipt={receipt} />
       <View style={[styles.table, { marginTop: 10 }]}>
@@ -345,7 +346,7 @@ function InvoicePdfDocument({ invoice, size }: { invoice: SavedInvoice; size: 'A
       </View>
       <View style={[styles.invoiceSummary, receipt ? { marginLeft: '20%' } : {}]}>
         <SummaryRow label="المجموع" value={invoice.items_subtotal} />
-        <SummaryRow label="خصم الطلبية" value={invoice.invoice_discount} />
+        <SummaryRow label="خصم الفاتورة" value={invoice.invoice_discount} />
         <SummaryRow bold label="الإجمالي" value={invoice.total} />
         <SummaryRow label="المدفوع" value={invoice.paid_total} />
         <SummaryRow label="المتبقي" value={invoice.remaining_due} />

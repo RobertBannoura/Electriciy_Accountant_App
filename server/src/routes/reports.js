@@ -92,6 +92,7 @@ reportsRouter.get('/home', requireStore, async (request, response) => {
          ON balances.store_id = inventory.store_id AND balances.product_id = inventory.product_id
        INNER JOIN products ON products.id = inventory.product_id
        WHERE inventory.store_id = $1::BIGINT
+         AND inventory.store_id IN (SELECT id FROM stores WHERE code = 'SHOWROOM')
          AND inventory.is_active = TRUE AND products.is_active = TRUE
          AND balances.quantity <= inventory.reorder_level`,
       [request.storeId],
@@ -223,7 +224,8 @@ reportsRouter.get('/', async (request, response) => {
          ON balances.store_id = inventory.store_id AND balances.product_id = inventory.product_id
        INNER JOIN store_inventory_cost_balances AS costs
          ON costs.store_id = inventory.store_id AND costs.product_id = inventory.product_id
-       WHERE inventory.is_active = TRUE AND ($1::BIGINT IS NULL OR inventory.store_id = $1)`,
+       WHERE inventory.is_active = TRUE AND stores.code = 'SHOWROOM'
+         AND ($1::BIGINT IS NULL OR inventory.store_id = $1)`,
       [storeId],
     ),
     query(

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 
 const controlSelector = 'a[href], button, input, select, summary, textarea, [tabindex]'
+const backControlSelector = '[data-arrow-navigation-back]'
 const dateInputTypes = new Set(['date', 'datetime-local', 'month', 'time', 'week'])
 const nativeArrowInputTypes = new Set(['color', 'file', 'number', 'radio', 'range'])
 
@@ -23,6 +24,7 @@ function activeModal() {
 
 function scopeFor(source: HTMLElement | null) {
   return activeModal()
+    ?? (source?.matches(backControlSelector) ? document.querySelector('[data-arrow-navigation]') : null)
     ?? source?.closest('[role="dialog"], dialog')
     ?? source?.closest('[data-arrow-navigation]')
     ?? source?.closest('main')
@@ -31,7 +33,12 @@ function scopeFor(source: HTMLElement | null) {
 }
 
 function controlsIn(scope: Element) {
-  return Array.from(scope.querySelectorAll(controlSelector)).filter(isAvailableControl)
+  const controls = Array.from(scope.querySelectorAll(controlSelector)).filter(isAvailableControl)
+  if (scope.matches('[data-arrow-navigation]') && !activeModal()) {
+    const backControl = document.querySelector<HTMLElement>(backControlSelector)
+    if (isAvailableControl(backControl)) controls.unshift(backControl)
+  }
+  return controls
 }
 
 function focusControl(control: HTMLElement) {

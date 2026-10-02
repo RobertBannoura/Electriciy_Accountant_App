@@ -172,7 +172,7 @@ test(
             currentPurchasePrice: '10',
             defaultSalePrice: '30',
             inventorySettings: [
-              { storeId: salam.id, reorderLevel: '10', openingQuantity: '100' },
+              { storeId: salam.id, reorderLevel: '0', openingQuantity: '0' },
               { storeId: showroom.id, reorderLevel: '10', openingQuantity: '100' },
             ],
           },
@@ -262,7 +262,7 @@ test(
         assert.equal(secondSaleResponse.response.status, 201, JSON.stringify(secondSaleResponse.body))
         saleTwo = secondSaleResponse.body.sale
         clearedCheckId = saleTwo.payments.find((payment) => payment.check_number === 'G8-CLEARED-030').id
-        money(saleOne.cost_total, '100')
+        money(saleOne.cost_total, '0')
         money(saleTwo.cost_total, '50')
 
         await updateSettings('purchase_created', false)
@@ -311,7 +311,7 @@ test(
         assert.equal(supplierReturnOne.response.status, 201, JSON.stringify(supplierReturnOne.body))
         assert.equal(supplierReturnTwo.response.status, 201, JSON.stringify(supplierReturnTwo.body))
         money(customerReturn.body.return.total, '60')
-        money(customerReturn.body.return.cost_total, '20')
+        money(customerReturn.body.return.cost_total, '0')
         money(supplierReturnOne.body.return.total, '100')
         money(supplierReturnTwo.body.return.total, '60')
 
@@ -399,30 +399,30 @@ test(
       await t.test('reports reconcile sales, purchase returns, snapshot COGS, expenses, and store comparison exactly', async () => {
         const all = (await api(`/reports?from=${monthStart}&to=${today}`)).body
         assertFinancial(all.summary, {
-          sales: '440', purchases: '540', cost_of_goods: '130', gross_profit: '310',
-          expenses: '75', net_profit: '235', sales_returns: '60', purchase_returns: '160',
+          sales: '440', purchases: '540', cost_of_goods: '50', gross_profit: '390',
+          expenses: '75', net_profit: '315', sales_returns: '60', purchase_returns: '160',
         })
         money(all.summary.customer_debt, '1300')
         money(all.summary.supplier_debt, '845')
-        money(all.summary.inventory_value, '2410')
-        assert.equal(all.summary.inventory_lines, '2')
+        money(all.summary.inventory_value, '1190')
+        assert.equal(all.summary.inventory_lines, '1')
         assert.equal(all.summary.low_stock_count, '0')
 
         const todayReport = (await api(`/reports?from=${today}&to=${today}`)).body
         assertFinancial(todayReport.summary, {
-          sales: '240', purchases: '240', cost_of_goods: '80', gross_profit: '160',
-          expenses: '50', net_profit: '110', sales_returns: '60', purchase_returns: '160',
+          sales: '240', purchases: '240', cost_of_goods: '0', gross_profit: '240',
+          expenses: '50', net_profit: '190', sales_returns: '60', purchase_returns: '160',
         })
         const week = (await api(`/reports?from=${weekStart}&to=${today}`)).body
         assertFinancial(week.summary, {
-          sales: '440', purchases: '540', cost_of_goods: '130', gross_profit: '310',
-          expenses: '75', net_profit: '235', sales_returns: '60', purchase_returns: '160',
+          sales: '440', purchases: '540', cost_of_goods: '50', gross_profit: '390',
+          expenses: '75', net_profit: '315', sales_returns: '60', purchase_returns: '160',
         })
 
         const salamReport = (await api(`/reports?from=${monthStart}&to=${today}&storeId=${salam.id}`)).body
         assertFinancial(salamReport.summary, {
-          sales: '240', purchases: '300', cost_of_goods: '80', gross_profit: '160',
-          expenses: '50', net_profit: '110', sales_returns: '60', purchase_returns: '100',
+          sales: '240', purchases: '300', cost_of_goods: '0', gross_profit: '240',
+          expenses: '50', net_profit: '190', sales_returns: '60', purchase_returns: '100',
         })
         const showroomReport = (await api(`/reports?from=${monthStart}&to=${today}&storeId=${showroom.id}`)).body
         assertFinancial(showroomReport.summary, {
@@ -434,7 +434,7 @@ test(
           sales: normalized(row.sales), purchases: normalized(row.purchases),
           gross: normalized(row.gross_profit), expenses: normalized(row.expenses), net: normalized(row.net_profit),
         })), [
-          { store: 'كهرباء السلام', sales: '240', purchases: '300', gross: '160', expenses: '50', net: '110' },
+          { store: 'كهرباء السلام', sales: '240', purchases: '300', gross: '240', expenses: '50', net: '190' },
           { store: 'المعرض', sales: '200', purchases: '240', gross: '150', expenses: '25', net: '125' },
         ])
 
@@ -448,9 +448,9 @@ test(
            WHERE sales.id = $1`,
           [saleOne.id],
         )
-        money(historical.rows[0].cost, '100')
-        money(historical.rows[0].profit, '200')
-        money(historical.rows[0].unit_cost, '10')
+        money(historical.rows[0].cost, '0')
+        money(historical.rows[0].profit, '300')
+        money(historical.rows[0].unit_cost, '0')
         money(historical.rows[0].current_purchase_price, '30')
         const maintenanceCostRows = await pool.query(
           `SELECT COUNT(*)::INTEGER AS count FROM inventory_cost_movements
@@ -474,7 +474,7 @@ test(
         assert.deepEqual(inventory.rows.map((row) => ({
           store: row.name, quantity: normalized(row.quantity), value: normalized(row.value),
         })), [
-          { store: 'كهرباء السلام', quantity: '107', value: '1220' },
+          { store: 'كهرباء السلام', quantity: '0', value: '0' },
           { store: 'المعرض', quantity: '103', value: '1190' },
         ])
 

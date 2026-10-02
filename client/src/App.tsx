@@ -88,6 +88,7 @@ function AuthenticatedApplication({
         const response = await apiFetch('/backups/export')
         if (!response.ok || stopped) return
         await desktop!.saveBackup(await response.json(), true)
+        window.dispatchEvent(new Event('backup-created'))
       } catch {
         console.warn('Automatic backup attempt failed.')
       } finally {
@@ -225,7 +226,7 @@ function AuthenticatedApplication({
         <Route path="finance" element={isPhoneWeb ? <Navigate replace to="/money" /> : <MobileFinancePage isOnline={isOnline} />} />
         <Route
           path="sale"
-          element={isPhoneWeb ? <Navigate replace to="/customers" /> : <SalePage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} />}
+          element={isPhoneWeb ? <Navigate replace to="/customers" /> : <SalePage configuredStoreId={configuredStoreId} key={configuredStoreId ?? 'no-store'} onDraftStateChange={setFinancialDraftActive} stores={stores} />}
         />
         <Route
           path="maintenance"

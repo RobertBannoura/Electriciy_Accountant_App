@@ -33,6 +33,7 @@ export type SavedInvoice = {
 
 export function InvoiceOutput({ invoice, onClose, celebrate = false }: { invoice: SavedInvoice; onClose: () => void; celebrate?: boolean }) {
   const documentRef = useRef<HTMLElement>(null)
+  const personName = invoice.customer_name?.trim() || invoice.receiver_name?.trim() || 'بدون اسم'
   return (
     <div aria-label="إخراج الفاتورة" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 p-3 print:static print:bg-white print:p-0" onClick={(event) => { if (event.target === event.currentTarget) onClose() }} role="dialog">
       <div className="mx-auto max-w-4xl rounded-3xl bg-white p-5 shadow-2xl print:max-w-none print:rounded-none print:p-0 print:shadow-none sm:p-7">
@@ -43,13 +44,13 @@ export function InvoiceOutput({ invoice, onClose, celebrate = false }: { invoice
           <DialogCloseButton onClick={onClose} />
         </div>
         <div className="mb-5 print:hidden">
-          <DocumentOutputActions allowReceipt createPdf={async (size) => (await import('../pdf-documents')).createInvoicePdf(invoice, size)} documentRef={documentRef} fileName={`طلبية-تسعير-${invoice.invoice_number}`} />
+          <DocumentOutputActions allowReceipt createPdf={async (size) => (await import('../pdf-documents')).createInvoicePdf(invoice, size)} documentRef={documentRef} fileName={`فاتورة-بيع-${personName}-${invoice.invoice_number}`} />
         </div>
         <article className="invoice-print-area print-document bg-white p-5" dir="rtl" ref={documentRef}>
           <header className="document-header border-b-2 border-slate-900 pb-4 text-right">
-            <h1 className="text-center text-3xl font-black">طلبية تسعير</h1>
+            <h1 className="text-center text-3xl font-black">فاتورة بيع — {personName}</h1>
             <div className="receipt-stack mt-3 grid grid-cols-2 gap-2 text-sm font-bold sm:grid-cols-4">
-              <p>رقم الطلبية: <span dir="ltr">{invoice.invoice_number}</span></p>
+              <p>رقم الفاتورة: <span dir="ltr">{invoice.invoice_number}</span></p>
               <p>التاريخ: {invoice.business_date}</p>
               <p>العميل: {invoice.customer_name ?? 'بدون عميل'}</p>
               <p>المستلم: {invoice.receiver_name ?? ''}</p>
@@ -61,7 +62,7 @@ export function InvoiceOutput({ invoice, onClose, celebrate = false }: { invoice
           </table>
           <footer className="document-footer mr-auto mt-5 max-w-sm border-t-2 border-slate-900 pt-3 font-bold">
             <p className="flex justify-between gap-4"><span>المجموع</span><ReceiptMoney value={invoice.items_subtotal} /></p>
-            <p className="mt-2 flex justify-between gap-4"><span>خصم الطلبية</span><ReceiptMoney value={invoice.invoice_discount} /></p>
+            <p className="mt-2 flex justify-between gap-4"><span>خصم الفاتورة</span><ReceiptMoney value={invoice.invoice_discount} /></p>
             <p className="mt-2 flex justify-between gap-4 text-xl font-black"><span>الإجمالي</span><ReceiptMoney value={invoice.total} /></p>
             <p className="mt-2 flex justify-between gap-4"><span>المدفوع</span><ReceiptMoney value={invoice.paid_total} /></p>
             <p className="mt-2 flex justify-between gap-4"><span>المتبقي</span><ReceiptMoney value={invoice.remaining_due} /></p>

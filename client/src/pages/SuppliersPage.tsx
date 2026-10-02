@@ -149,7 +149,10 @@ export function SuppliersPage({ defaultStoreId, readOnly = false, stores }: { de
           <h1 className="hidden text-3xl font-black sm:mt-1 sm:block sm:text-4xl">الموردون</h1>
           <p className="mt-2 hidden text-slate-600 sm:block">{readOnly ? 'ابحث عن المورد وافتح ملفه لعرض الرصيد وكشف الحساب.' : 'المبلغ المستحق محسوب من دفتر المورد ولا يُعدّل يدوياً.'}</p>
         </div>
-        <button className="hidden min-h-12 rounded-xl bg-teal-700 px-6 font-black text-white hover:bg-teal-800 disabled:opacity-60 sm:block" disabled={!operatingStoreId} onClick={() => setEditingSupplier(null)} type="button">+ إضافة مورد</button>
+        <div className="flex flex-wrap gap-3">
+          {!readOnly && operatingStoreId && <Link className="inline-flex min-h-12 items-center rounded-xl border border-violet-300 bg-violet-50 px-5 font-black text-violet-950 hover:bg-violet-100" to={`/purchase-returns?storeId=${encodeURIComponent(operatingStoreId)}`}>مرتجع مشتريات</Link>}
+          <button className="hidden min-h-12 rounded-xl bg-teal-700 px-6 font-black text-white hover:bg-teal-800 disabled:opacity-60 sm:block" disabled={!operatingStoreId} onClick={() => setEditingSupplier(null)} type="button">+ إضافة مورد</button>
+        </div>
       </div>
 
       <div className="mt-7 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -241,6 +244,7 @@ export function SupplierDetailPage({ defaultStoreId, readOnly = false, stores }:
 
       <div className="mt-5 flex flex-wrap gap-3 print:hidden">
         <Link className="hidden min-h-12 items-center rounded-xl bg-teal-700 px-5 font-black text-white hover:bg-teal-800 sm:inline-flex" to={`/purchases?supplierId=${supplier.id}&storeId=${operatingStoreId}`}>شراء جديد</Link>
+        {!readOnly && <Link className="inline-flex min-h-12 items-center rounded-xl border border-violet-300 bg-violet-50 px-5 font-black text-violet-950 hover:bg-violet-100" to={`/purchase-returns?${new URLSearchParams({ partyId: supplier.id, partyName: supplier.name, storeId: operatingStoreId })}`}>مرتجع مشتريات</Link>}
         {!readOnly && <Link className="inline-flex min-h-12 items-center rounded-xl bg-teal-700 px-5 font-black text-white hover:bg-teal-800" to={`/suppliers/${supplier.id}/payment?storeId=${operatingStoreId}`}>تسجيل دفعة</Link>}
         <button className="min-h-12 rounded-xl border border-slate-300 bg-white px-5 font-black hover:bg-slate-100" onClick={() => setShowStatement(true)} type="button">كشف حساب مورد</button>
         <button className="hidden min-h-12 rounded-xl px-5 font-black text-slate-700 hover:bg-slate-100 sm:block" onClick={() => setEditing(true)} type="button">تعديل البيانات</button>

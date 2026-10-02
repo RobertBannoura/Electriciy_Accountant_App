@@ -5,13 +5,13 @@ import {
   customerCheckStatusLabel,
   movementSourceLabel,
   paymentMethodLabel,
-  statusLabel,
 } from '../business-labels'
 import { Store } from '../types'
 import { formatCurrencyAmount, formatDecimal } from '../money-display'
 import { AccountStatementDialog } from '../components/AccountStatementDialog'
 import { DialogCloseButton } from '../components/DialogCloseButton'
 import { PaymentPromiseDialog } from '../components/PaymentPromiseDialog'
+import { SaleInvoiceViewer } from '../components/SaleInvoiceViewer'
 
 type StoreBalance = { store_id: string; store_name: string; amount_ils: string }
 type CustomerSummary = {
@@ -27,6 +27,7 @@ type CustomerSummary = {
 }
 type Sale = {
   id: string
+  store_id: string
   document_number: string | null
   business_date: string
   status: string
@@ -198,14 +199,17 @@ export function CustomersPage({
           <h1 className="hidden text-3xl font-black sm:mt-1 sm:block sm:text-4xl">العملاء</h1>
           <p className="mt-2 hidden text-slate-600 sm:block">{readOnly ? 'ابحث عن العميل وافتح ملفه لعرض الرصيد وتصدير كشف الحساب.' : 'الرصيد الظاهر محسوب من دفتر العميل ولا يُعدّل يدوياً.'}</p>
         </div>
-        <button
-          className="hidden min-h-12 rounded-xl bg-teal-700 px-6 font-black text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60 sm:block"
-          disabled={!operatingStoreId}
-          onClick={() => setEditingCustomer(null)}
-          type="button"
-        >
-          + إضافة عميل
-        </button>
+        <div className="flex flex-wrap gap-3">
+          {!readOnly && operatingStoreId && <Link className="inline-flex min-h-12 items-center rounded-xl border border-teal-300 bg-teal-50 px-5 font-black text-teal-950 hover:bg-teal-100" to={`/sales-returns?storeId=${encodeURIComponent(operatingStoreId)}`}>مرتجع مبيعات</Link>}
+          <button
+            className="hidden min-h-12 rounded-xl bg-teal-700 px-6 font-black text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60 sm:block"
+            disabled={!operatingStoreId}
+            onClick={() => setEditingCustomer(null)}
+            type="button"
+          >
+            + إضافة عميل
+          </button>
+        </div>
       </div>
 
       <div className="mt-7 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -342,6 +346,7 @@ export function CustomerDetailPage({
       <div className="mt-5 flex flex-wrap gap-3 print:hidden">
         <button className="min-h-12 rounded-xl border border-amber-300 bg-amber-50 px-5 font-black text-amber-950" onClick={() => setShowPromise(true)} type="button">{customer.payment_promise_date ? 'تغيير موعد الدفع' : 'وعد بالدفع'}</button>
         <Link className="hidden min-h-12 items-center rounded-xl bg-teal-700 px-5 font-black text-white hover:bg-teal-800 sm:inline-flex" to={`/sale?customerId=${customer.id}&storeId=${operatingStoreId}`}>بيع جديد</Link>
+        {!readOnly && <Link className="inline-flex min-h-12 items-center rounded-xl border border-teal-300 bg-teal-50 px-5 font-black text-teal-950 hover:bg-teal-100" to={`/sales-returns?${new URLSearchParams({ partyId: customer.id, partyName: customer.name, storeId: operatingStoreId })}`}>مرتجع مبيعات</Link>}
         <Link className="hidden min-h-12 items-center rounded-xl bg-amber-400 px-5 font-black text-slate-950 hover:bg-amber-300 sm:inline-flex" to={`/maintenance?customerId=${customer.id}`}>صيانة جديدة</Link>
         {!readOnly && <Link className="inline-flex min-h-12 items-center rounded-xl bg-teal-700 px-5 font-black text-white hover:bg-teal-800" to={`/customers/${customer.id}/payment?storeId=${operatingStoreId}`}>تسجيل دفعة</Link>}
         <button className="hidden min-h-12 rounded-xl bg-amber-500 px-5 font-black text-slate-950 hover:bg-amber-400 sm:block" onClick={() => setAddingProject(true)} type="button">مشروع جديد</button>
@@ -377,7 +382,7 @@ export function CustomerDetailPage({
       </section>
 
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
-        <DetailSection title={selectedProjectId ? 'مبيعات المشروع' : 'أحدث المبيعات لكل المشاريع'}><SalesList items={customer.recent_sales} /></DetailSection>
+        <DetailSection title={selectedProjectId ? 'فواتير بيع المشروع' : 'فواتير بيع العميل'}><CustomerSalesList activityStoreId={selectedActivityStoreId} customerId={customer.id} key={`${selectedProjectId}:${selectedActivityStoreId}`} operatingStoreId={operatingStoreId} projectId={selectedProjectId} /></DetailSection>
         {!selectedProjectId && <DetailSection title="الصيانة"><MaintenanceList items={customer.recent_maintenance} /></DetailSection>}
         <DetailSection title="الدفعات"><PaymentsList items={customer.payments} /></DetailSection>
         <DetailSection title="الشيكات"><ChecksList items={customer.checks} /></DetailSection>
@@ -497,9 +502,56 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
   return <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><h2 className="border-b border-slate-200 bg-slate-50 px-5 py-4 text-xl font-black">{title}</h2><div className="divide-y divide-slate-100">{children}</div></section>
 }
 
-function SalesList({ items }: { items: Sale[] }) {
-  if (!items.length) return <NoRecords />
-  return <>{items.map((item) => <RecordRow key={item.id} primary={`بيع ${item.document_number ?? `#${item.id}`}`} secondary={`${localDate(item.business_date)} · ${item.store_name} · ${statusLabel(item.status)}${item.project_name ? ` · ${item.project_name}` : ''}`} value={formatCurrencyAmount(item.total, item.currency_code)} />)}</>
+function CustomerSalesList({ activityStoreId, customerId, operatingStoreId, projectId }: { activityStoreId: string; customerId: string; operatingStoreId: string; projectId: string }) {
+  const [search, setSearch] = useState('')
+  const [appliedSearch, setAppliedSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [sales, setSales] = useState<Sale[]>([])
+  const [hasMore, setHasMore] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [viewingSale, setViewingSale] = useState<Sale | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const params = new URLSearchParams({ page: String(page), limit: '10' })
+    if (activityStoreId) params.set('storeId', activityStoreId)
+    if (projectId) params.set('projectId', projectId)
+    if (appliedSearch) params.set('search', appliedSearch)
+    setLoading(true)
+    setError(null)
+    customerApiFetch(`/customers/${customerId}/sales?${params}`, operatingStoreId, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await errorMessage(response))
+        return response.json() as Promise<{ sales: Sale[]; pagination: { hasMore: boolean } }>
+      })
+      .then((result) => { setSales(result.sales); setHasMore(result.pagination.hasMore) })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'تعذّر تحميل فواتير البيع')
+      })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
+  }, [activityStoreId, appliedSearch, customerId, operatingStoreId, page, projectId])
+
+  return <>
+    <form className="flex flex-wrap gap-2 p-4" onSubmit={(event) => { event.preventDefault(); setPage(1); setAppliedSearch(search.trim()) }} role="search">
+      <input aria-label="البحث برقم الفاتورة" className={`${inputClass} min-w-40 flex-1`} maxLength={100} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث برقم الفاتورة" value={search} />
+      <button className="min-h-12 rounded-xl bg-teal-700 px-5 font-black text-white hover:bg-teal-800" type="submit">بحث</button>
+    </form>
+    {loading && <p className="p-5 font-bold text-slate-600" role="status">جارٍ تحميل فواتير البيع…</p>}
+    {error && <p className="p-5 font-bold text-rose-800" role="alert">{error}</p>}
+    {!loading && !error && !sales.length && <NoRecords />}
+    {!loading && !error && sales.map((sale) => <div className="flex flex-wrap items-center justify-between gap-3 p-4" key={`${sale.store_id}:${sale.id}`}>
+      <div><p className="font-black">فاتورة بيع {sale.document_number ?? `#${sale.id}`}</p><p className="mt-1 text-sm text-slate-500">{localDate(sale.business_date)} · {sale.store_name}{sale.project_name ? ` · ${sale.project_name}` : ''} · {formatCurrencyAmount(sale.total, sale.currency_code)}</p></div>
+      <button className="min-h-11 rounded-xl bg-teal-50 px-4 font-black text-teal-800 hover:bg-teal-100" onClick={() => setViewingSale(sale)} type="button">عرض وطباعة الفاتورة</button>
+    </div>)}
+    {!loading && !error && (page > 1 || hasMore) && <div className="flex items-center justify-center gap-3 p-4">
+      <button className="min-h-11 rounded-xl border border-slate-300 px-4 font-black disabled:opacity-40" disabled={page === 1} onClick={() => setPage(page - 1)} type="button">السابق</button>
+      <span className="font-bold">صفحة {page}</span>
+      <button className="min-h-11 rounded-xl border border-slate-300 px-4 font-black disabled:opacity-40" disabled={!hasMore} onClick={() => setPage(page + 1)} type="button">التالي</button>
+    </div>}
+    {viewingSale && <SaleInvoiceViewer key={`${viewingSale.store_id}:${viewingSale.id}`} onClose={() => setViewingSale(null)} saleId={viewingSale.id} storeId={viewingSale.store_id} />}
+  </>
 }
 function MaintenanceList({ items }: { items: Maintenance[] }) {
   if (!items.length) return <NoRecords />

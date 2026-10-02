@@ -220,10 +220,10 @@ html[data-connection='offline'] a[href*='/payment'] {
 
   .barcode-print-area,
   .barcode-print-area *,
-  .customer-statement,
-  .customer-statement *,
-  .supplier-statement,
-  .supplier-statement *,
+  html:not([data-print-active='true']) .customer-statement,
+  html:not([data-print-active='true']) .customer-statement *,
+  html:not([data-print-active='true']) .supplier-statement,
+  html:not([data-print-active='true']) .supplier-statement *,
   .print-document,
   .print-document * {
     visibility: visible;

@@ -38,7 +38,7 @@ test(
       assert.equal(login.response.status, 201)
       const token = login.body.token
       const stores = await apiRequest(baseUrl, '/stores', { token })
-      const store = stores.body.stores.find((row) => row.code === 'AL_SALAM_ELECTRIC')
+      const store = stores.body.stores.find((row) => row.code === 'SHOWROOM')
       assert.ok(store)
       const storeId = store.id
       const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`

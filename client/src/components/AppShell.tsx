@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { AuthUser } from '../api'
 import { Store } from '../types'
 import { CustomerReminderNotifications } from './CustomerReminderNotifications'
+import { MonthlyBackupReminder } from './MonthlyBackupReminder'
 
 type AppShellProps = {
   configuredStore: Store | null
@@ -93,7 +94,7 @@ export function AppShell({ configuredStore, isOnline, stores, user, onBrowserSto
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             {showBackButton && (
-              <button aria-label="الرجوع إلى الصفحة السابقة" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-3 font-black text-slate-800 ring-1 ring-inset ring-slate-300 shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-teal-100 sm:px-4" onClick={goBack} type="button">
+              <button aria-label="الرجوع إلى الصفحة السابقة" className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-3 font-black text-slate-800 ring-1 ring-inset ring-slate-300 shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-teal-100 sm:px-4" data-arrow-navigation-back onClick={goBack} type="button">
                 <svg aria-hidden="true" className="size-5" fill="none" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" /></svg>
                 <span>رجوع</span>
               </button>
@@ -123,6 +124,7 @@ export function AppShell({ configuredStore, isOnline, stores, user, onBrowserSto
       {!isOnline && <div className="border-b border-rose-300 bg-rose-50 px-4 py-3 text-center font-black text-rose-900" role="alert">لا يوجد اتصال بالخادم. العمليات المالية متوقفة حتى عودة الاتصال.</div>}
 
       <div className={`mx-auto px-4 py-5 sm:px-8 sm:py-10 ${['/sale', '/purchases'].includes(location.pathname) ? 'max-w-[78rem]' : 'max-w-6xl'}`}>
+        <MonthlyBackupReminder />
         {financialRouteLocked && <p className="mb-4 rounded-2xl border-2 border-rose-300 bg-rose-50 p-5 text-center text-lg font-black text-rose-900" role="alert">هذه العملية غير متاحة دون اتصال بالخادم.</p>}
         <div aria-disabled={financialRouteLocked} className={financialRouteLocked ? 'select-none opacity-45' : undefined} data-arrow-navigation inert={financialRouteLocked}><Outlet /></div>
       </div>

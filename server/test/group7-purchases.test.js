@@ -58,14 +58,14 @@ test('purchase input accepts invoice-only manual supplier lines with a required 
   }).error, /اسم الصنف اليدوي/)
 })
 
-function fakeDatabase({ failBank = false } = {}) {
+function fakeDatabase({ failBank = false, storeCode = 'SHOWROOM' } = {}) {
   const state = { commands: [], purchaseItems: [], inventory: [], inventoryCosts: [], productPrices: [], ledgers: [], payments: [], checks: [], cash: [], bank: [], released: false }
   const client = {
     async query(sql, params = []) {
       const statement = sql.replace(/\s+/g, ' ').trim()
       state.commands.push(statement)
       if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(statement)) return { rowCount: null, rows: [] }
-      if (statement.startsWith('SELECT id FROM stores')) return { rowCount: 1, rows: [{ id: '2' }] }
+      if (statement.startsWith('SELECT id, code FROM stores')) return { rowCount: 1, rows: [{ id: '2', code: storeCode }] }
       if (statement.startsWith('SELECT id FROM products WHERE id = ANY')) {
         return { rowCount: params[0].length, rows: params[0].map((id) => ({ id })) }
       }
@@ -180,6 +180,18 @@ test('manual purchase lines save as supplier cost without inventory or catalog p
   assert.equal(state.productPrices.length, 0)
   assert.equal(state.inventory.length, 0)
   assert.equal(state.inventoryCosts.length, 0)
+  assert.equal(state.commands.at(-1), 'COMMIT')
+})
+
+test('catalog purchase outside the showroom records supplier debt without stock', async () => {
+  const { databasePool, state } = fakeDatabase({ storeCode: 'AL_SALAM_ELECTRIC' })
+  const purchase = await createPurchase({ databasePool, input: purchaseInput, storeId: '2', userId: '5' })
+  assert.equal(purchase.total, '100')
+  assert.equal(state.purchaseItems[0][1], '7')
+  assert.equal(state.purchaseItems[0][5], false)
+  assert.equal(state.inventory.length, 0)
+  assert.equal(state.inventoryCosts.length, 0)
+  assert.equal(state.ledgers.length > 0, true)
   assert.equal(state.commands.at(-1), 'COMMIT')
 })
 

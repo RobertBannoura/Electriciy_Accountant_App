@@ -26,7 +26,7 @@ returnsRouter.get('/customer/sources', async (request, response) => {
        SELECT id FROM sales WHERE store_id = $1::BIGINT
          AND ($4::TEXT IS NULL OR customer_id::TEXT = $4 OR ($4 = 'cash' AND customer_id IS NULL))
          AND EXISTS (SELECT 1 FROM sale_items i WHERE i.sale_id = sales.id
-           AND i.product_id IS NOT NULL AND i.quantity > COALESCE(
+           AND i.quantity > COALESCE(
              (SELECT SUM(r.quantity) FROM customer_return_items r WHERE r.sale_item_id = i.id), 0))
        ORDER BY business_date DESC, id DESC
        LIMIT $2::INTEGER OFFSET $3::INTEGER
@@ -45,8 +45,7 @@ returnsRouter.get('/customer/sources', async (request, response) => {
        SELECT SUM(quantity) AS quantity FROM customer_return_items
        WHERE sale_item_id = item.id
      ) AS returned ON TRUE
-     WHERE item.product_id IS NOT NULL
-       AND item.quantity > COALESCE(returned.quantity, 0::NUMERIC)
+     WHERE item.quantity > COALESCE(returned.quantity, 0::NUMERIC)
      ORDER BY sale.business_date DESC, sale.id DESC, item.id`,
     [request.storeId, pagination.fetchLimit, pagination.offset, partyId],
   )
@@ -66,7 +65,7 @@ returnsRouter.get('/supplier/sources', async (request, response) => {
        SELECT id FROM purchases WHERE store_id = $1::BIGINT
          AND ($4::TEXT IS NULL OR supplier_id::TEXT = $4)
          AND EXISTS (SELECT 1 FROM purchase_items i WHERE i.purchase_id = purchases.id
-           AND i.product_id IS NOT NULL AND i.quantity > COALESCE(
+           AND i.quantity > COALESCE(
              (SELECT SUM(r.quantity) FROM supplier_return_items r WHERE r.purchase_item_id = i.id), 0))
        ORDER BY business_date DESC, id DESC
        LIMIT $2::INTEGER OFFSET $3::INTEGER
@@ -85,8 +84,7 @@ returnsRouter.get('/supplier/sources', async (request, response) => {
        SELECT SUM(quantity) AS quantity FROM supplier_return_items
        WHERE purchase_item_id = item.id
      ) AS returned ON TRUE
-     WHERE item.product_id IS NOT NULL
-       AND item.quantity > COALESCE(returned.quantity, 0::NUMERIC)
+     WHERE item.quantity > COALESCE(returned.quantity, 0::NUMERIC)
      ORDER BY purchase.business_date DESC, purchase.id DESC, item.id`,
     [request.storeId, pagination.fetchLimit, pagination.offset, partyId],
   )

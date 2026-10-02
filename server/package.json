@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/index.js",
+    "dev": "node src/db/migrate.js && node --watch src/index.js",
     "start": "node src/index.js",
     "test": "node --test",
     "test:security:financial": "node --test security-test/group10-financial-security-postgres.integration.js",

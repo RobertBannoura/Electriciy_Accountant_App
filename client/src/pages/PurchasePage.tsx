@@ -342,7 +342,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
 
   async function save() {
     if (!canSave || !purchaseStoreId) return
-    setSaving(true); setError(null); setMessage('جارٍ حفظ الشراء والمخزون والحسابات…')
+    setSaving(true); setError(null); setMessage(store?.code === 'SHOWROOM' ? 'جارٍ حفظ الشراء ومخزون المعرض والحسابات…' : 'جارٍ حفظ الشراء والحسابات…')
     try {
       const response = await scopedFetch('/purchases', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -393,7 +393,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
         <select className={inputClass} disabled={saving} onChange={(event) => selectPurchaseStore(event.target.value)} value={purchaseStoreId}>
           {stores.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select>
-        <span className="mt-2 block text-sm font-bold text-violet-800">تُسجّل الفاتورة والمخزون والدفعات على المحل المختار.</span>
+        <span className="mt-2 block text-sm font-bold text-violet-800">{store?.code === 'SHOWROOM' ? 'تُسجّل الفاتورة والدفعات، وتُضاف أصناف الكتالوج إلى مخزون المعرض.' : 'تُسجّل الفاتورة والدفعات دون تغيير مخزون المعرض.'}</span>
       </label>
       {message && <p className="mt-5 rounded-xl bg-emerald-50 p-4 text-lg font-black text-emerald-900" role="status">{message}</p>}
       {error && <p className="mt-5 rounded-xl bg-rose-50 p-4 text-lg font-black text-rose-900" role="alert">{error}</p>}
@@ -465,7 +465,7 @@ export function PurchasePage({ configuredStoreId, stores, onDraftStateChange }: 
 
           if (/^\d{4,}$/.test(term)) void scanBarcode(term)
         }} placeholder="امسح الباركود أو ابحث باسم الصنف" role="combobox" value={search} />
-        <p className="mt-2 text-sm font-bold text-slate-500">ابحث في المخزون، أو اكتب الصنف مباشرة في السطر الجاهز داخل الجدول.</p>
+        <p className="mt-2 text-sm font-bold text-slate-500">{store?.code === 'SHOWROOM' ? 'ابحث في مخزون المعرض، أو اكتب الصنف مباشرة في السطر الجاهز داخل الجدول.' : 'ابحث في الكتالوج، أو اكتب الصنف مباشرة. هذه الفاتورة لا تغيّر المخزون.'}</p>
         {searching && <p className="mt-2 font-bold text-slate-500">جارٍ البحث…</p>}
         {search.trim() && productSearchOpen && results.length > 0 && !searching && (
           <div className="mt-2 max-h-96 divide-y overflow-y-auto rounded-2xl border bg-white shadow-xl" id="purchase-product-options" role="listbox">

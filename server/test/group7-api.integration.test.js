@@ -38,8 +38,8 @@ test(
       assert.equal(login.response.status, 201)
       const token = login.body.token
       const storesResponse = await apiRequest(baseUrl, '/stores', { token })
-      const store = storesResponse.body.stores.find((row) => row.code === 'AL_SALAM_ELECTRIC')
-      const otherStore = storesResponse.body.stores.find((row) => row.code === 'SHOWROOM')
+      const store = storesResponse.body.stores.find((row) => row.code === 'SHOWROOM')
+      const otherStore = storesResponse.body.stores.find((row) => row.code === 'AL_SALAM_ELECTRIC')
       assert.ok(store && otherStore)
       const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`
 
@@ -47,6 +47,15 @@ test(
         token, method: 'POST', body: { name: `Group 7 QA ${unique}` },
       })
       assert.equal(category.response.status, 201)
+      const nonShowroomOpening = await apiRequest(baseUrl, '/products', {
+        token, method: 'POST', body: {
+          name: `Invalid opening ${unique}`, categoryId: category.body.category.id,
+          saleUnit: 'قطعة', currentPurchasePrice: '10', defaultSalePrice: '20',
+          inventorySettings: [{ storeId: otherStore.id, reorderLevel: '0', openingQuantity: '1' }],
+        },
+      })
+      assert.equal(nonShowroomOpening.response.status, 400)
+      assert.equal(nonShowroomOpening.body.error.code, 'SHOWROOM_STOCK_ONLY')
       const product = await apiRequest(baseUrl, '/products', {
         token, method: 'POST', body: {
           name: `QA cable ${unique}`, categoryId: category.body.category.id,
@@ -154,6 +163,101 @@ test(
       })
       assert.equal(excessiveSupplierReturn.response.status, 409)
       assert.equal(excessiveSupplierReturn.body.error.code, 'RETURN_QUANTITY_EXCEEDED')
+
+      const manualSale = await apiRequest(baseUrl, '/sales', {
+        token, storeId: store.id, method: 'POST', body: {
+          invoiceNumber: `S-MANUAL-${unique}`, date: '2026-09-09',
+          customerId: customer.body.customer.id, invoiceDiscount: '0',
+          items: [{ productId: null, description: 'Manual service', quantity: '1', actualPrice: '45', discount: '0' }],
+          payments: [],
+        },
+      })
+      assert.equal(manualSale.response.status, 201)
+      const manualSaleSources = await apiRequest(baseUrl,
+        `/returns/customer/sources?partyId=${customer.body.customer.id}`, { token, storeId: store.id })
+      assert.deepEqual(
+        manualSaleSources.body.documents.find((row) => row.id === manualSale.body.sale.id)?.items.map((row) => row.product_id),
+        [null],
+      )
+      const manualSaleReturn = await apiRequest(baseUrl, '/returns/customer', {
+        token, storeId: store.id, method: 'POST', body: {
+          partyId: customer.body.customer.id,
+          sourceDocumentId: manualSale.body.sale.id,
+          items: [{ sourceItemId: manualSale.body.sale.items[0].id, quantity: '1' }],
+        },
+      })
+      assert.equal(manualSaleReturn.response.status, 201)
+      money(manualSaleReturn.body.return.total, '45')
+      money(manualSaleReturn.body.return.cost_total, '0')
+      money(await partyBalance(pool, 'customer_balances', 'customer_id', customer.body.customer.id), '60')
+
+      const manualPurchase = await apiRequest(baseUrl, '/purchases', {
+        token, storeId: store.id, method: 'POST', body: {
+          supplierId: supplier.body.supplier.id, documentNumber: `P-MANUAL-${unique}`,
+          businessDate: '2026-09-09',
+          items: [{ productId: null, description: 'Manual supply', quantity: '1', purchasePrice: '40' }],
+          payments: [],
+        },
+      })
+      assert.equal(manualPurchase.response.status, 201)
+      const manualPurchaseSources = await apiRequest(baseUrl,
+        `/returns/supplier/sources?partyId=${supplier.body.supplier.id}`, { token, storeId: store.id })
+      assert.deepEqual(
+        manualPurchaseSources.body.documents.find((row) => row.id === manualPurchase.body.purchase.id)?.items.map((row) => row.product_id),
+        [null],
+      )
+      const manualPurchaseReturn = await apiRequest(baseUrl, '/returns/supplier', {
+        token, storeId: store.id, method: 'POST', body: {
+          partyId: supplier.body.supplier.id,
+          sourceDocumentId: manualPurchase.body.purchase.id,
+          items: [{ sourceItemId: manualPurchase.body.purchase.items[0].id, quantity: '1' }],
+        },
+      })
+      assert.equal(manualPurchaseReturn.response.status, 201)
+      money(manualPurchaseReturn.body.return.total, '40')
+      money(manualPurchaseReturn.body.return.inventory_cost_total, '0')
+      money(await partyBalance(pool, 'supplier_balances', 'supplier_id', supplier.body.supplier.id), '130')
+      await assertInventory(pool, store.id, productId, '15', '210', '14')
+
+      const otherStoreSale = await apiRequest(baseUrl, '/sales', {
+        token, storeId: otherStore.id, method: 'POST', body: {
+          invoiceNumber: `S-NON-STOCK-${unique}`, date: '2026-09-09',
+          customerId: customer.body.customer.id, invoiceDiscount: '0',
+          items: [{ productId, quantity: '1', actualPrice: '30', discount: '0' }],
+          payments: [],
+        },
+      })
+      assert.equal(otherStoreSale.response.status, 201)
+      money(otherStoreSale.body.sale.cost_total, '0')
+      const otherStoreSaleReturn = await apiRequest(baseUrl, '/returns/customer', {
+        token, storeId: otherStore.id, method: 'POST', body: {
+          sourceDocumentId: otherStoreSale.body.sale.id,
+          items: [{ sourceItemId: otherStoreSale.body.sale.items[0].id, quantity: '1' }],
+        },
+      })
+      assert.equal(otherStoreSaleReturn.response.status, 201)
+      money(otherStoreSaleReturn.body.return.cost_total, '0')
+
+      const otherStorePurchase = await apiRequest(baseUrl, '/purchases', {
+        token, storeId: otherStore.id, method: 'POST', body: {
+          supplierId: supplier.body.supplier.id, documentNumber: `P-NON-STOCK-${unique}`,
+          businessDate: '2026-09-09', items: [{ productId, quantity: '2', purchasePrice: '20' }],
+          payments: [],
+        },
+      })
+      assert.equal(otherStorePurchase.response.status, 201)
+      const otherStorePurchaseReturn = await apiRequest(baseUrl, '/returns/supplier', {
+        token, storeId: otherStore.id, method: 'POST', body: {
+          sourceDocumentId: otherStorePurchase.body.purchase.id,
+          items: [{ sourceItemId: otherStorePurchase.body.purchase.items[0].id, quantity: '2' }],
+        },
+      })
+      assert.equal(otherStorePurchaseReturn.response.status, 201)
+      money(otherStorePurchaseReturn.body.return.inventory_cost_total, '0')
+      await assertInventory(pool, otherStore.id, productId, '0', '0', '0')
+      await assertInventory(pool, store.id, productId, '15', '210', '14')
+      money(await partyBalance(pool, 'customer_balances', 'customer_id', customer.body.customer.id), '60')
+      money(await partyBalance(pool, 'supplier_balances', 'supplier_id', supplier.body.supplier.id), '130')
 
       const latestPurchase = await apiRequest(baseUrl, '/purchases', {
         token, storeId: store.id, method: 'POST', body: {

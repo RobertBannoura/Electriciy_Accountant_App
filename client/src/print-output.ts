@@ -38,12 +38,12 @@ export async function outputPrintDocument({
   size: PrintSize
 }) {
   element.dataset.printActive = 'true'
+  document.documentElement.dataset.printActive = 'true'
   element.dataset.printSize = size
   document.documentElement.dataset.printSize = size
-  await document.fonts.ready
-  await nextPaint()
-
   try {
+    await document.fonts.ready
+    await nextPaint()
     if (mode === 'pdf' && window.desktop) {
       return await window.desktop.savePdf({ fileName, pageSize: size })
     }
@@ -51,6 +51,7 @@ export async function outputPrintDocument({
     return { saved: false, canceled: false, browserDialog: true }
   } finally {
     delete element.dataset.printActive
+    delete document.documentElement.dataset.printActive
     delete document.documentElement.dataset.printSize
   }
 }
